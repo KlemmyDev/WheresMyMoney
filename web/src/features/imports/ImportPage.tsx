@@ -7,6 +7,9 @@
  * 2. Check the categories: what was sorted automatically, what needs you, transfers between accounts and merges.
  *    Choosing a category can be remembered for the merchant.
  * 3. Done: the success tick, and whether the ledger now matches the statement (an opening balance fixes it if not).
+ *
+ * Several files can be chosen or dropped at once. They queue up oldest month first (read from uBank's file names, so
+ * each account's history builds in order) and go through the same three steps one at a time, each to its own account.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -120,6 +123,14 @@ const FIELDS = [
   ["balance", "Balance"],
 ] as const;
 
+/** uBank names files `<nickname>-<last4>_<YYYY-MM>.csv`: oldest month first, then by name. */
+function byMonth(a: File, b: File): number {
+  const month = (f: File) => /_(\d{4}-\d{2})\.csv$/i.exec(f.name)?.[1] ?? "";
+  return month(a).localeCompare(month(b)) || a.name.localeCompare(b.name);
+}
+
+type Outcome = { added: number } | "skipped";
+
 export function ImportPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -139,7 +150,46 @@ export function ImportPage() {
   const [done, setDone] = useState<Done | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [queue, setQueue] = useState<File[]>([]);
+  const [pos, setPos] = useState(0);
+  const [outcomes, setOutcomes] = useState<Record<number, Outcome>>({});
   const input = useRef<HTMLInputElement>(null);
+
+  // Everything about the file in hand, cleared before the next one.
+  const resetFile = () => {
+    setInfo(null);
+    setNeeds(null);
+    setCols({});
+    setAccount(null);
+    setAnalysis(null);
+    setChoices({});
+    setAlways(new Set());
+    setLastChosen(null);
+    setFilter("need");
+    setDone(null);
+    setError(null);
+    setStep(1);
+  };
+
+  const start = (list: FileList | File[] | null | undefined) => {
+    const files = [...(list ?? [])].filter((f) => /\.csv$/i.test(f.name) || f.type === "text/csv").sort(byMonth);
+    if (!files.length) return setError("Choose CSV files: statements export as .csv.");
+    resetFile();
+    setQueue(files);
+    setPos(0);
+    setOutcomes({});
+    open(files[0]);
+  };
+
+  const goTo = (i: number) => {
+    resetFile();
+    setPos(i);
+    open(queue[i]);
+  };
+  const skip = () => {
+    setOutcomes((o) => ({ ...o, [pos]: "skipped" }));
+    if (pos + 1 < queue.length) goTo(pos + 1);
+  };
 
   const open = async (f: File, columns?: Record<string, number | null>) => {
     setError(null);
@@ -155,7 +205,7 @@ export function ImportPage() {
       } else {
         setNeeds(null);
         setInfo(r);
-        const acct = r.account_id ?? account;
+        const acct = r.account_id;
         setAccount(acct);
         if (acct) await analyse(r.token, acct);
       }
@@ -184,6 +234,7 @@ export function ImportPage() {
       }),
     onSuccess: (d) => {
       setDone(d);
+      setOutcomes((o) => ({ ...o, [pos]: { added: d.added + d.merged } }));
       setStep(3);
       refresh(qc);
     },
@@ -203,6 +254,7 @@ export function ImportPage() {
               ACCOUNTS
             </Link>{" "}
             › IMPORT A STATEMENT
+            {queue.length > 1 ? ` · FILE ${pos + 1} OF ${queue.length}` : ""}
             {step === 2 && acct && analysis ? ` · ${acct.name.toUpperCase()} · ${analysis.counts.new} NEW` : ""}
           </>
         }
@@ -210,6 +262,7 @@ export function ImportPage() {
         actions={<Steps step={step} />}
       />
       {error && <ErrorText>{error}</ErrorText>}
+      {queue.length > 1 && <Queue files={queue} pos={pos} outcomes={outcomes} />}
       {step === 1 && (
         <div className="flex flex-wrap items-start gap-4">
           <div className="flex min-w-0 flex-[1.6_1_560px] flex-col gap-4">
@@ -221,13 +274,14 @@ export function ImportPage() {
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={(e) => {
                     e.preventDefault();
-                    const f = e.dataTransfer.files[0];
-                    if (f) open(f);
+                    start(e.dataTransfer.files);
                   }}
                   className="press flex min-h-[180px] w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-line bg-page text-ink"
                 >
-                  <b>{busy ? "Reading…" : "Drop a statement CSV, or click to choose"}</b>
-                  <span className="text-ink-3">uBank files are recognised by name: account and month</span>
+                  <b>{busy ? "Reading…" : "Drop statement CSVs, or click to choose"}</b>
+                  <span className="text-ink-3">
+                    One or several at once. uBank files are recognised by name: account and month
+                  </span>
                 </button>
               ) : (
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -245,17 +299,22 @@ export function ImportPage() {
                       </div>
                     )}
                   </div>
-                  <Button onClick={() => input.current?.click()}>Choose a different file</Button>
+                  <div className="flex gap-2">
+                    {queue.length > 1 && pos + 1 < queue.length && <Button onClick={skip}>Skip this file</Button>}
+                    <Button onClick={() => input.current?.click()}>
+                      {queue.length > 1 ? "Choose different files" : "Choose a different file"}
+                    </Button>
+                  </div>
                 </div>
               )}
               <input
                 ref={input}
                 type="file"
                 accept=".csv,text/csv"
+                multiple
                 className="hidden"
                 onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) open(f);
+                  start(e.target.files);
                   e.target.value = "";
                 }}
               />
@@ -479,6 +538,17 @@ export function ImportPage() {
           done={done}
           analysis={analysis}
           account={acct}
+          next={pos + 1 < queue.length ? { name: queue[pos + 1].name, n: pos + 2, of: queue.length } : null}
+          onNext={() => goTo(pos + 1)}
+          total={
+            queue.length > 1 && pos + 1 >= queue.length
+              ? {
+                  files: Object.values(outcomes).filter((o) => o !== "skipped").length,
+                  added: Object.values(outcomes).reduce((s, o) => s + (o === "skipped" ? 0 : o.added), 0),
+                  skipped: Object.values(outcomes).filter((o) => o === "skipped").length,
+                }
+              : null
+          }
           onOpening={async () => {
             try {
               const r = await apiSend<{ amount: number; date: string }>(
@@ -827,22 +897,69 @@ function Rec({ title, value, children }: { title: string; value: React.ReactNode
   );
 }
 
+/** The files chosen together: done (with how many came in), skipped, the one in hand, and those still to come. */
+function Queue({ files, pos, outcomes }: { files: File[]; pos: number; outcomes: Record<number, Outcome> }) {
+  return (
+    <ol aria-label="Files" className="m-0 flex list-none flex-wrap gap-2 p-0">
+      {files.map((f, i) => {
+        const o = outcomes[i];
+        const now = i === pos;
+        return (
+          <li
+            key={`${f.name}-${i}`}
+            aria-current={now ? "step" : undefined}
+            className={cn(
+              "rise flex min-h-9 items-center gap-2 rounded-full border px-3 text-[13px] transition-colors duration-200",
+              now ? "border-teal bg-teal/10 text-ink" : "border-line bg-tile",
+              o === "skipped" ? "text-ink-3 line-through" : o ? "text-ink-2" : !now && "text-ink-3",
+            )}
+            style={{ "--i": i } as CSSProperties}
+          >
+            <span
+              className={cn(
+                "mono flex size-5 items-center justify-center rounded-full text-[11px]",
+                o && o !== "skipped"
+                  ? "bg-teal text-page"
+                  : now
+                    ? "border border-teal text-teal"
+                    : "border border-line",
+              )}
+              aria-hidden
+            >
+              {o && o !== "skipped" ? "✓" : i + 1}
+            </span>
+            <span className="max-w-[240px] truncate">{f.name}</span>
+            {o && o !== "skipped" && <span className="mono text-xs text-ink-3">+{o.added}</span>}
+            {o === "skipped" && <span className="sr-only">skipped</span>}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 function DoneView({
   done,
   analysis,
   onOpening,
   account,
+  next,
+  onNext,
+  total,
 }: {
   done: Done;
   analysis: Analysis;
   onOpening: () => void;
   account?: Account;
+  next: { name: string; n: number; of: number } | null;
+  onNext: () => void;
+  total: { files: number; added: number; skipped: number } | null;
 }) {
   return (
     <Tile i={0} className="max-w-[640px] items-start gap-3">
       <SuccessTick />
       <div className="rise text-xl font-semibold" style={{ "--i": 1 } as CSSProperties}>
-        {done.added + done.merged} transactions imported
+        {done.added + done.merged} {done.added + done.merged === 1 ? "transaction" : "transactions"} imported
       </div>
       <div className="rise text-ink-2" style={{ "--i": 2 } as CSSProperties}>
         {done.skipped ? `${done.skipped} already here were skipped. ` : ""}
@@ -875,19 +992,31 @@ function DoneView({
           Opening balance of {money(done.opening.amount, { cents: true })} added, dated {longDate(done.opening.date)}.
         </div>
       )}
-      <div className="flex gap-2">
+      {total && (
+        <div className="reveal rounded-lg border border-teal/40 bg-teal/5 px-3.5 py-3 text-[13px]">
+          All done: <b>{total.added}</b> transactions from {total.files} {total.files === 1 ? "file" : "files"}
+          {total.skipped ? `, ${total.skipped} skipped` : ""}.
+        </div>
+      )}
+      <div className="flex flex-wrap gap-2">
         <Link
           to="/accounts"
           className="press inline-flex min-h-10 items-center rounded-lg border border-line px-3.5 text-[13px] text-ink no-underline hover:bg-raised"
         >
           See the account
         </Link>
-        <a
-          href="/import"
-          className="press inline-flex min-h-10 items-center rounded-lg border border-teal bg-teal px-3.5 text-[13px] font-semibold text-page no-underline"
-        >
-          Import another
-        </a>
+        {next ? (
+          <Button primary onClick={onNext}>
+            Next: {next.name} ({next.n} of {next.of})
+          </Button>
+        ) : (
+          <a
+            href="/import"
+            className="press inline-flex min-h-10 items-center rounded-lg border border-teal bg-teal px-3.5 text-[13px] font-semibold text-page no-underline"
+          >
+            Import more
+          </a>
+        )}
       </div>
     </Tile>
   );
