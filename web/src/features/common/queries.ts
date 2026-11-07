@@ -177,3 +177,68 @@ export const setupQuery = queryOptions({
 export function refresh(qc: QueryClient) {
   return qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== "auth" });
 }
+
+export type Fund = {
+  id: number;
+  ticker: string;
+  name: string;
+  group: string;
+  group_name: string;
+  target: number | null;
+  units: number;
+  price: number | null;
+  price_date: string | null;
+  value: number;
+  cost: number;
+  gain: number;
+  realised: number;
+  day: number;
+  first: string | null;
+  share: number;
+};
+
+export type Trade = {
+  id: number;
+  fund_id: number;
+  ticker: string;
+  date: string;
+  side: "buy" | "sell";
+  units: number;
+  price: number;
+  fee: number;
+  amount: number;
+};
+
+export type Portfolio = {
+  funds: Fund[];
+  total: number;
+  cost: number;
+  gain: number;
+  realised: number;
+  day: number;
+  price_date: string | null;
+  checked: string | null;
+  failed: string[];
+  first: string | null;
+  annual: number | null;
+  loan_rate_bp: number | null;
+  targets_set: boolean;
+  trades: Trade[];
+  distributions: {
+    year_total: number;
+    quarters: { quarter: string; start: string; amount: number; likely: boolean }[];
+  };
+  groups: Record<string, string>;
+};
+
+export const investmentsQuery = queryOptions({
+  queryKey: ["investments"],
+  queryFn: ({ signal }) => apiGet<Portfolio>("investments", undefined, { signal }),
+});
+
+export const investmentHistoryQuery = (range: string) =>
+  queryOptions({
+    queryKey: ["investments", "history", range],
+    queryFn: ({ signal }) =>
+      apiGet<{ date: string; value: number; cost: number }[]>("investments/history", { range }, { signal }),
+  });

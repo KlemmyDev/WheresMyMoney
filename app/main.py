@@ -29,6 +29,7 @@ from app.features.checkins.router import router as checkins_router
 from app.features.dashboard.router import router as dashboard_router
 from app.features.demo.seed import seed as seed_demo
 from app.features.imports.router import router as imports_router
+from app.features.investments.router import router as investments_router
 from app.features.keys.router import router as keys_router
 from app.features.keys.router import v1 as keys_v1_router
 from app.features.notifications.router import router as notifications_router
@@ -64,6 +65,7 @@ ROUTERS = [
     imports_router,
     spending_router,
     dashboard_router,
+    investments_router,
     updates_router,
     backups_router,
     health_router,
@@ -93,8 +95,10 @@ def create_app(config: Config | None = None, *, serve_web: bool = True) -> FastA
             await services.updates.start()  # asks GitHub for a newer version every few hours, unless turned off
             await services.notifications.start()  # check-in reminders and alerts
             await services.backups.start()  # a backup each night at 3am
+            await services.investments.start()  # fund prices, once a day after the market shuts
         yield
         if config.background:
+            await services.investments.stop()
             await services.backups.stop()
             await services.notifications.stop()
             await services.updates.stop()

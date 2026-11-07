@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import datetime as dt
 import random
+import sqlite3
 import time
 
 from app.core import dates
@@ -77,6 +78,7 @@ def seed(db: Database, today: dt.date | None = None) -> bool:
                 "Pay",
                 "Interest",
                 "Transfer",
+                "Dividends",
             )
         }
 
@@ -191,6 +193,8 @@ def seed(db: Database, today: dt.date | None = None) -> bool:
                 move(offset, day, -377000, "HOME LOAN REPAYMENT 9917", cat["Bills"])
                 interest = round(bal[savings] * 0.045 / 12)
                 move(savings, day, interest, "Interest", cat["Interest"])
+            if day.day == 16 and day.month in (1, 4, 7, 10):
+                move(offset, day, round(rng.uniform(300, 470) * 100), "VANGUARD DISTRIBUTION", cat["Dividends"])
             if day.day == 25:
                 need = max(320000 - bal[spend], 0)
                 if need:
@@ -241,6 +245,65 @@ def seed(db: Database, today: dt.date | None = None) -> bool:
             figure = ledger.balance(conn, acct, last_pay.isoformat())
             rough = round(figure, -3)
             ledger.add_known(conn, acct, last_pay.isoformat(), rough, "checkin", False, now - 3600, checkin_id)
+        _investments(conn, today, rng, now)
         conn.execute("INSERT OR REPLACE INTO kv (key, value) VALUES ('setting:setup_done', 'true')")
         conn.execute("INSERT OR REPLACE INTO kv (key, value) VALUES ('setting:household', '\"Demo household\"')")
     return True
+
+
+# The demo's ETFs: ticker, name, group, target, today's price (dollars), its yearly growth.
+FUNDS = [
+    ("VAS", "Vanguard Australian Shares", "aus", 0.5, 101.20, 0.07),
+    ("VGS", "Vanguard International Shares", "intl", 0.35, 138.40, 0.10),
+    ("VAF", "Vanguard Australian Fixed Interest", "bonds", 0.15, 44.975, 0.005),
+]
+
+
+def _investments(conn: sqlite3.Connection, today: dt.date, rng: random.Random, now: int) -> None:
+    """Three ETFs bought most quarters for four and a half years (one sold down once), with five years of made-up
+    daily closes that end at today's price."""
+    first = today - dt.timedelta(days=round(4.6 * 365))
+    for n, (ticker, name, group, target, end, growth) in enumerate(FUNDS):
+        cur = conn.execute(
+            "INSERT INTO funds (ticker, name, grp, target, sort, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (ticker, name, group, target, n, now),
+        )
+        fund_id = int(cur.lastrowid or 0)
+        closes: dict[str, float] = {}
+        day = today - dt.timedelta(days=5 * 365)
+        wobble = 0.0
+        while day <= today:
+            if day.weekday() < 5:
+                years_back = (today - day).days / 365.25
+                wobble = wobble * 0.97 + rng.gauss(0, 0.006 if group != "bonds" else 0.002)
+                dip = -0.12 if group != "bonds" and 1.6 < years_back < 2.1 else 0.0
+                closes[day.isoformat()] = round(end * 100 * (1 + growth) ** -years_back * (1 + wobble + dip), 2)
+            day += dt.timedelta(days=1)
+        if closes:  # scaled so the last close is today's price
+            scale = end * 100 / closes[max(closes)]
+            closes = {d: float(round(c * scale)) for d, c in closes.items()}
+            closes[max(closes)] = end * 100
+        conn.executemany(
+            "INSERT INTO prices (fund_id, date, close) VALUES (?, ?, ?)",
+            [(fund_id, d, c) for d, c in closes.items()],
+        )
+        dates_known = sorted(closes)
+        buy = first + dt.timedelta(days=14 * n)
+        while buy < today - dt.timedelta(days=20):
+            if rng.random() < (0.8 if group != "bonds" else 0.5):
+                on = next((d for d in dates_known if d >= buy.isoformat()), dates_known[-1])
+                price = closes[on]
+                units = max(1, round(200000 * (0.5 if group == "bonds" else 1) / price))
+                conn.execute(
+                    "INSERT INTO trades (fund_id, date, side, units, price, fee, created_at) VALUES (?, ?, ?, ?, ?, 0,"
+                    " ?)",
+                    (fund_id, on, "buy", units, price, now),
+                )
+            buy = dates.add_months(buy, 3)
+        if ticker == "VAS":
+            on = next(d for d in dates_known if d >= (today - dt.timedelta(days=280)).isoformat())
+            conn.execute(
+                "INSERT INTO trades (fund_id, date, side, units, price, fee, created_at) VALUES (?, ?, 'sell', 10, ?,"
+                " 0, ?)",
+                (fund_id, on, closes[on], now),
+            )
