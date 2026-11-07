@@ -43,6 +43,13 @@ async def one(svc: ServicesDep, account_id: int):
     return {**account, "history": history}
 
 
+@router.get("/accounts/{account_id}/activity")
+async def activity(svc: ServicesDep, account_id: int, days: int = 365):
+    """Up to a year a day at a time: {"start", "end", "estimated", "days": [{"date", "balance", "in", "out"}]}. The
+    loan is estimated (interest and repayments) until one of its statements is imported."""
+    return await run(svc.accounts.activity, account_id, days)
+
+
 @router.put("/accounts/{account_id}")
 async def update(svc: ServicesDep, account_id: int, body: JsonBody):
     return await run(svc.accounts.update, account_id, body)

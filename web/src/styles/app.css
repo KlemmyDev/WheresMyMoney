@@ -83,7 +83,8 @@ body {
   font-family: var(--font-sans);
   font-size: 14px;
   line-height: 1.45;
-  -webkit-font-smoothing: antialiased;
+  /* No -webkit-font-smoothing: antialiased. On a Mac it turns off the system's font smoothing, which draws light text
+     on these dark tiles thin and grey; the designs are drawn with the system's default, fuller and crisper. */
 }
 
 ::selection {
@@ -348,6 +349,12 @@ body {
   animation: grow-y var(--duration-chart) var(--ease-enter) both;
   animation-delay: calc(min(var(--i, 0), 8) * var(--duration-stagger) + 150ms);
 }
+/* A bar hanging down from a baseline (money out, under the accounts' chart). */
+.grow-down {
+  transform-origin: top;
+  animation: grow-y var(--duration-chart) var(--ease-enter) both;
+  animation-delay: calc(min(var(--i, 0), 8) * var(--duration-stagger) + 150ms);
+}
 .draw {
   animation: draw var(--duration-chart) var(--ease-enter) both;
 }
@@ -408,6 +415,7 @@ body {
     animation: fade-out var(--duration-exit) linear both !important;
   }
   .grow,
+  .grow-down,
   .draw,
   .fill-after,
   .pop,
