@@ -305,29 +305,6 @@ body {
 .push-in {
   animation: push-in 320ms var(--ease-enter) both;
 }
-/* The header's page row, when you change section: it slides in from the side you moved towards. */
-@keyframes slide-l {
-  from {
-    opacity: 0;
-    transform: translateX(-28px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-.slide-r {
-  animation: push-in 300ms var(--ease-enter) both;
-}
-.slide-l {
-  animation: slide-l 300ms var(--ease-enter) both;
-}
-.no-scrollbar {
-  scrollbar-width: none;
-}
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
-}
 .reveal {
   animation: reveal var(--duration-content) var(--ease-enter) both;
 }
@@ -380,8 +357,6 @@ body {
   .rise,
   .screen,
   .push-in,
-  .slide-r,
-  .slide-l,
   .reveal,
   .dialog-in,
   .sheet-in,

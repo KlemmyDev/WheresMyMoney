@@ -57,11 +57,11 @@ export function Logo({ size = 28, compact = false }: { size?: number; compact?: 
   return (
     <span className="flex items-center gap-2">
       <Mark size={size} />
-      {/* `compact` (the header): just the mark until there's room for the name beside the sections. */}
+      {/* `compact` (the header): just the mark until there's room for the name beside the tabs. */}
       <span
         className={cn(
           "font-brand text-[15px] font-semibold tracking-[-0.02em] whitespace-nowrap text-ink",
-          compact && "hidden lg:inline",
+          compact && "sm:hidden md:inline",
         )}
       >
         WheresMyMoney
