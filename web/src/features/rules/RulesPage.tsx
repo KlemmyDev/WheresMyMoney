@@ -4,6 +4,8 @@
  * with how it went at the last check-in or import. The app never moves money itself.
  */
 import { Loading } from "~/features/common/brand";
+import { Banner, Card, EmptyState } from "~/features/common/ds";
+import { Chip as IconChip, I, type Glyph, type Tone } from "~/features/common/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiSend, errorMessage } from "~/features/common/api";
@@ -24,14 +26,22 @@ import {
   Switch,
   Tile,
   TileTitle,
+  cn,
 } from "~/features/common/ui";
 
 const STATUS: Record<string, [string, "good" | "warn" | "mute" | "bad"]> = {
-  ok: ["✓ ADDED UP", "good"],
-  missing: ["⚑ DIDN'T SHOW UP", "warn"],
-  differed: ["AMOUNT DIFFERED", "warn"],
-  nothing: ["NOTHING TO SWEEP", "mute"],
-  skipped: ["SKIPPED", "mute"],
+  ok: ["Added up", "good"],
+  missing: ["Didn't show up", "warn"],
+  differed: ["Amount differed", "warn"],
+  nothing: ["Nothing to sweep", "mute"],
+  skipped: ["Skipped", "mute"],
+};
+
+const KIND: Record<Rule["kind"], { g: Glyph; tone: Tone }> = {
+  pay: { g: I.pay, tone: "savings" },
+  transfer: { g: I.transfer, tone: "offset" },
+  top_up: { g: I.spending, tone: "spending" },
+  sweep: { g: I.bills, tone: "bills" },
 };
 
 export function ruleWhat(r: Rule, names: Record<number, string>): string {
@@ -61,6 +71,7 @@ export function RulesPage() {
   const transfers = rules.filter((r) => r.kind !== "pay").length;
   const monthly = rules.filter((r) => r.enabled && (r.kind === "top_up" || r.kind === "sweep"));
   const differed = rules.find((r) => r.last_status === "differed");
+  const problem = rules.find((r) => r.enabled && (r.last_status === "missing" || r.last_status === "differed"));
   return (
     <>
       <PageHead
@@ -72,13 +83,37 @@ export function RulesPage() {
           </Button>
         }
       />
-      <Tile i={0} aria-label="How rules work" className="flex-row items-center">
-        <span className="text-ink-2">
-          Rules are your plan. Set each transfer up once as a scheduled transfer in your banking app. At every balance
-          check-in, WheresMyMoney compares what you typed with what the rules expected and flags anything that doesn't
-          add up.
-        </span>
-      </Tile>
+      {problem ? (
+        <Banner
+          g={I.rules}
+          tone="bills"
+          title={`${problem.label || ruleWhat(problem, names)} ${problem.last_status === "missing" ? "didn't show up" : "moved a different amount"}`}
+          action={
+            <Button primary onClick={() => setEditing(problem)}>
+              Look at the rule
+            </Button>
+          }
+        >
+          At the last check-in{problem.last_run ? `, for ${shortDate(problem.last_run)}` : ""}. If it was skipped once,
+          nothing to do; if the bank transfer changed, change the rule to match.
+        </Banner>
+      ) : (
+        <Card lit tint="accent" aria-label="How rules work">
+          <div className="flex items-center gap-3.5">
+            <IconChip g={I.shield} tone="savings" size="lg" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-[17px] font-semibold">
+                {rules.some((r) => r.last_status) ? "Every rule added up at the last check-in" : "Rules are your plan"}
+              </span>
+              <span className="block text-[13px] text-ink-3">
+                Set each transfer up once as a scheduled transfer in your banking app. At every check-in the app
+                compares what you typed with what the rules expected, and flags anything that doesn't add up. It never
+                moves money.
+              </span>
+            </span>
+          </div>
+        </Card>
+      )}
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,520px),1fr))] gap-4">
         {payday && (
           <Tile i={1} aria-labelledby="r-pay">
@@ -190,66 +225,67 @@ export function RulesPage() {
         </Tile>
       </div>
       <Tile i={3} aria-labelledby="r-all">
-        <TileTitle id="r-all" right={<span className="mono text-ink-3">CHECKED AT EACH BALANCE CHECK-IN</span>}>
+        <TileTitle
+          id="r-all"
+          right={
+            <span className="text-[12px] tracking-normal text-ink-3 normal-case">
+              Checked at each check-in · tap one to edit
+            </span>
+          }
+        >
           All rules
         </TileTitle>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] border-collapse text-[13px]">
-            <thead>
-              <tr className="text-left text-xs text-ink-3">
-                <th className="border-b border-line px-2.5 py-2 font-semibold">When</th>
-                <th className="border-b border-line px-2.5 py-2 font-semibold">Do this</th>
-                <th className="border-b border-line px-2.5 py-2 text-right font-semibold">Amount</th>
-                <th className="border-b border-line px-2.5 py-2 font-semibold">Last run</th>
-                <th className="border-b border-line px-2.5 py-2 font-semibold">At last check</th>
-                <th className="border-b border-line px-2.5 py-2 font-semibold">On</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rules.map((r) => {
-                const st = STATUS[r.last_status ?? ""];
-                return (
-                  <tr key={r.id} className="hover:bg-raised/40">
-                    <td className="border-b border-line px-2.5 py-2.5">
-                      Every {EVERY_LABEL[r.every].toLowerCase()}{" "}
-                      <span className="mono text-ink-3">· from {shortDate(r.anchor)}</span>
-                    </td>
-                    <td className="border-b border-line px-2.5 py-2.5">
-                      <button
-                        type="button"
-                        className="cursor-pointer border-0 bg-transparent p-0 text-left text-ink hover:text-teal"
-                        onClick={() => setEditing(r)}
-                      >
-                        {r.label ? <b className="font-medium">{r.label}</b> : null}
-                        {r.label ? <span className="text-ink-3"> · </span> : null}
-                        {ruleWhat(r, names)}
-                      </button>
-                    </td>
-                    <td className="mono border-b border-line px-2.5 py-2.5 text-right">
-                      {r.kind === "sweep" || r.kind === "top_up" ? "varies" : money(r.amount)}
-                    </td>
-                    <td className="mono border-b border-line px-2.5 py-2.5 text-ink-2">
-                      {r.last_run ? shortDate(r.last_run) : "Never"}
-                    </td>
-                    <td className="border-b border-line px-2.5 py-2.5">
-                      {st ? <Pill tone={st[1]}>{st[0]}</Pill> : <Pill>NOT CHECKED YET</Pill>}
-                    </td>
-                    <td className="border-b border-line px-2.5 py-2.5">
-                      <Switch
-                        label={`${r.label || ruleWhat(r, names)} on`}
-                        checked={r.enabled}
-                        onChange={() => toggle.mutate(r)}
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="flex flex-col gap-2.5">
+          {rules.map((r) => {
+            const st = STATUS[r.last_status ?? ""];
+            const k = KIND[r.kind];
+            return (
+              <div key={r.id} className={cn("flex items-center gap-3", !r.enabled && "opacity-55")}>
+                <button
+                  type="button"
+                  onClick={() => setEditing(r)}
+                  className="chip-host press flex min-h-[72px] min-w-0 flex-1 cursor-pointer items-center gap-3.5 rounded-[20px] border border-line bg-tile-2 px-4 py-3 text-left text-ink hover:border-line-2"
+                >
+                  <IconChip g={k.g} tone={k.tone} size="lg" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-semibold">{r.label || ruleWhat(r, names)}</span>
+                    <span className="block truncate text-[13px] text-ink-3">
+                      {r.label ? `${ruleWhat(r, names)} · ` : ""}every {EVERY_LABEL[r.every].toLowerCase()} · next{" "}
+                      {shortDate(r.next_run)}
+                    </span>
+                  </span>
+                  <span className="flex flex-none flex-col items-end gap-1">
+                    <span className="num">
+                      {r.kind === "sweep"
+                        ? `${r.amount / 100} months`
+                        : r.kind === "top_up"
+                          ? `to ${money(r.amount)}`
+                          : money(r.amount)}
+                    </span>
+                    {st ? <Pill tone={st[1]}>{st[0]}</Pill> : <Pill>Not checked yet</Pill>}
+                  </span>
+                </button>
+                <Switch
+                  label={`${r.label || ruleWhat(r, names)} on`}
+                  checked={r.enabled}
+                  onChange={() => toggle.mutate(r)}
+                />
+              </div>
+            );
+          })}
           {!rules.length && (
-            <div className="py-4 text-ink-3">
-              No rules yet. Add your pay and the transfers you've set up in your banking app.
-            </div>
+            <EmptyState
+              g={I.rules}
+              tone="neutral"
+              title="No rules yet"
+              action={
+                <Button primary onClick={() => setEditing("new")}>
+                  New rule
+                </Button>
+              }
+            >
+              Add your pay and the transfers you've set up in your banking app.
+            </EmptyState>
           )}
         </div>
         {differed && (

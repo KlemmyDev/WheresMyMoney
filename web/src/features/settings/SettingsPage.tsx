@@ -103,6 +103,13 @@ function Row({ children, className }: { children: ReactNode; className?: string 
 
 type Member = { id: number; username: string; name: string };
 
+const AVATARS = [
+  "linear-gradient(135deg, #8b7bff, #f472b6)",
+  "linear-gradient(135deg, #34d399, #5b84f5)",
+  "linear-gradient(135deg, #f59e2e, #ec5f9c)",
+  "linear-gradient(135deg, #67e8f9, #8b7bff)",
+];
+
 function Household() {
   const qc = useQueryClient();
   const toast = useToast();
@@ -174,14 +181,21 @@ function Household() {
       {session.data?.auth_enabled !== false && (
         <Tile i={1}>
           <TileTitle>Who's in it</TileTitle>
-          {(members.data?.members ?? []).map((m) => (
+          {(members.data?.members ?? []).map((m, i) => (
             <Row key={m.id}>
-              <span className="flex items-center gap-2.5">
-                <span className="inline-flex size-7 items-center justify-center rounded-full bg-offset text-xs font-semibold text-page">
+              <span className="flex min-h-12 items-center gap-3">
+                <span
+                  aria-hidden
+                  className="inline-flex size-11 items-center justify-center rounded-full text-[16px] font-semibold text-white"
+                  style={{ background: AVATARS[i % AVATARS.length] }}
+                >
                   {m.name.slice(0, 1).toUpperCase()}
                 </span>
-                {m.name} <span className="mono text-xs text-ink-3">{m.username}</span>
-                {m.id === session.data?.user_id && <Pill tone="teal">YOU</Pill>}
+                <span>
+                  <span className="block font-semibold">{m.name}</span>
+                  <span className="mono block text-xs text-ink-3">{m.username}</span>
+                </span>
+                {m.id === session.data?.user_id && <Pill tone="teal">You</Pill>}
               </span>
               {m.id !== session.data?.user_id && (
                 <Button small onClick={() => remove.mutate(m.id)}>
