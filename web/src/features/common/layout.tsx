@@ -1,77 +1,70 @@
 /**
- * Every signed-in page's frame: the two-tier header (direction D on the navigation canvas). The pages sit in four
- * sections (Overview, Money, Future, Manage). The top row picks a section, the row under it picks a page in that
- * section, and each section remembers the page you were last on, so going back to Money returns you to Loan.
+ * Every signed-in page's frame (Nightfall, from the uplift canvas).
  *
- * Motion: the section underline and the page pill slide to the new one in 240ms on the move curve; changing section
- * slides the page row in from the side you moved towards (300ms); the page itself swaps with the short lift. On a
- * phone the sections move to a bar at the bottom (thumb reach) and the pages become chips under the title.
+ * Desktop: one top bar in a card. Overview is a tab; Money, Future and Manage are tabs that open a compact card of
+ * their pages (icon chip and name) on hover or click. Check in and Add transaction sit on the right.
+ *
+ * Phone: the same four tabs move to a floating bar at the bottom (thumb reach) with + in the middle. A tab opens its
+ * card as a sheet; + opens the things you record. Every target is at least 44px.
  */
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type AnchorHTMLAttributes,
-  type ReactNode,
-  type RefObject,
-} from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { CheckinDialog } from "~/features/checkins/CheckinDialog";
-import { dayDate } from "~/features/common/format";
-import { Logo, Mark } from "~/features/common/brand";
-import { useReducedMotion } from "~/features/common/motion";
+import { Logo } from "~/features/common/brand";
+import { Chip, I, type Glyph, type Tone } from "~/features/common/icons";
+import { Sheet } from "~/features/common/ds";
 import { Button, cn } from "~/features/common/ui";
 import { AddSpending } from "~/features/spending/AddSpending";
 
-type Page = { to: string; label: string; soon?: true; also?: readonly string[] };
-type Section = { id: string; label: string; hint: string; icon: string; pages: readonly Page[] };
+type Page = { to: string; label: string; sub: string; g: Glyph; tone: Tone; soon?: true; also?: readonly string[] };
+type Section = { id: string; label: string; g: Glyph; pages: readonly Page[] };
 
 export const SECTIONS: readonly Section[] = [
   {
     id: "overview",
     label: "Overview",
-    hint: "Today, and over time",
-    icon: "M4 13h6V4H4zM14 20h6v-9h-6zM4 20h6v-4H4zM14 8h6V4h-6z",
+    g: I.overview,
     pages: [
-      { to: "/", label: "Dashboard" },
-      { to: "/net-worth", label: "Net worth", soon: true },
+      { to: "/", label: "Overview", sub: "Today, and the month ahead", g: I.overview, tone: "grad" },
+      { to: "/net-worth", label: "Net worth", sub: "Owned minus owed", g: I.networth, tone: "invest", soon: true },
     ],
   },
   {
     id: "money",
     label: "Money",
-    hint: "Where it is, what's due, where it went",
-    icon: "M3 7h18v12H3zM16 13h2M3 7l3-3h12l3 3",
+    g: I.accounts,
     pages: [
-      { to: "/accounts", label: "Accounts" },
-      { to: "/loan", label: "Loan" },
-      { to: "/bills", label: "Bills" },
+      { to: "/accounts", label: "Accounts", sub: "Four accounts and what moved them", g: I.accounts, tone: "" },
+      { to: "/loan", label: "Loan and offset", sub: "What your accounts save you", g: I.loan, tone: "loan" },
+      { to: "/bills", label: "Bills", sub: "What's due, and what's held", g: I.bills, tone: "bills" },
       // "All transactions" and "Sort by merchant" are reached from Spending, so they keep Spending lit.
-      { to: "/spending", label: "Spending", also: ["/transactions", "/sort"] },
+      {
+        to: "/spending",
+        label: "Spending",
+        sub: "This month, by category",
+        g: I.spending,
+        tone: "spending",
+        also: ["/transactions", "/sort"],
+      },
     ],
   },
   {
     id: "future",
     label: "Future",
-    hint: "Coming in phases 3 and 4",
-    icon: "M5 20v-6M12 20V9M19 20V4",
+    g: I.invest,
     pages: [
-      { to: "/investments", label: "Investments", soon: true },
-      { to: "/retirement", label: "Retirement", soon: true },
+      { to: "/investments", label: "Investments", sub: "ETFs and shares", g: I.invest, tone: "invest", soon: true },
+      { to: "/retirement", label: "Retirement", sub: "When you could stop", g: I.retire, tone: "savings", soon: true },
     ],
   },
   {
     id: "manage",
     label: "Manage",
-    hint: "How the app sorts and stores",
-    icon: "M4 7h10M18 7h2M4 17h4M12 17h8M16 5a2 2 0 1 1 0 4a2 2 0 1 1 0-4M10 15a2 2 0 1 1 0 4a2 2 0 1 1 0-4",
+    g: I.settings,
     pages: [
-      { to: "/rules", label: "Rules" },
-      { to: "/import", label: "Import" },
-      { to: "/settings", label: "Settings" },
+      { to: "/rules", label: "Rules", sub: "Your plan for moving money", g: I.rules, tone: "neutral" },
+      { to: "/import", label: "Import", sub: "Drop in a uBank CSV", g: I.import, tone: "neutral" },
+      { to: "/settings", label: "Settings", sub: "Household, alerts, updates", g: I.settings, tone: "neutral" },
     ],
   },
 ];
@@ -89,181 +82,135 @@ type Actions = { checkin: () => void; addSpending: () => void };
 const ActionsContext = createContext<Actions>({ checkin: () => {}, addSpending: () => {} });
 export const useActions = () => useContext(ActionsContext);
 
-function useClock() {
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 30_000);
-    return () => clearInterval(t);
-  }, []);
-  return now;
-}
-
-// Each section's last page, for this visit (sessionStorage, so a reload keeps it but a new tab starts fresh).
-const MEMO_KEY = "wmm:nav-memo";
-function readMemo(): Record<string, string> {
-  try {
-    if (typeof window === "undefined") return {};
-    return JSON.parse(sessionStorage.getItem(MEMO_KEY) ?? "{}") as Record<string, string>;
-  } catch {
-    return {};
-  }
-}
-
-/** Where each section's link goes: the page you were last on there, else its first page. */
-function useSectionTargets(section: number, page: Page | null) {
-  const [memo, setMemo] = useState(readMemo);
-  // Going to a page updates its section's memory as part of the same render (no effect round-trip).
-  const id = section >= 0 ? SECTIONS[section].id : null;
-  if (id && page && memo[id] !== page.to) setMemo({ ...memo, [id]: page.to });
-  useEffect(() => {
-    try {
-      sessionStorage.setItem(MEMO_KEY, JSON.stringify(memo));
-    } catch {
-      // Private mode: the memory lasts until the page reloads.
-    }
-  }, [memo]);
-  return SECTIONS.map((s) => memo[s.id] ?? s.pages[0].to);
-}
-
-/**
- * Where the sliding marker sits under the element in `box` whose data-key is `active`: its left and width, measured
- * (so it follows real label widths and fonts), and whether it has been placed before (the first placement doesn't
- * slide in from nowhere).
- */
-function useMarker(box: RefObject<HTMLElement | null>, active: string | null, inset = 0) {
-  const [bar, setBar] = useState<{ left: number; width: number; placed: boolean } | null>(null);
-  useLayoutEffect(() => {
-    const el = box.current;
-    if (!el) return;
-    const measure = () => {
-      const t = active ? el.querySelector<HTMLElement>(`[data-key="${active}"]`) : null;
-      if (!t) return setBar(null);
-      const b = el.getBoundingClientRect();
-      const r = t.getBoundingClientRect();
-      const left = r.left - b.left + el.scrollLeft + inset;
-      const width = r.width - inset * 2;
-      setBar((prev) =>
-        prev && prev.left === left && prev.width === width ? prev : { left, width, placed: prev !== null },
-      );
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    document.fonts?.ready.then(measure);
-    return () => ro.disconnect();
-  }, [box, active, inset]);
-  return bar;
-}
-
-/** The side the page row slides in from: the right when you moved to a later section, the left for an earlier one. */
-function useDirection(section: number) {
-  const [seen, setSeen] = useState({ section, dir: "" });
-  if (seen.section !== section) setSeen({ section, dir: section > seen.section ? "slide-r" : "slide-l" });
-  return seen.section !== section ? "" : seen.dir;
-}
-
 export function AppShell({ children }: { children: ReactNode }) {
   const path = useRouterState({ select: (s) => s.location.pathname });
   const search = useRouterState({ select: (s) => s.location.search as Record<string, unknown> });
   const navigate = useNavigate();
   const [checkin, setCheckin] = useState(false);
   const [adding, setAdding] = useState(false);
-  const now = useClock();
+  const [sheet, setSheet] = useState<string | null>(null);
   const { section, page } = locate(path);
-  const targets = useSectionTargets(section, page);
-  const dir = useDirection(section);
-  const iso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-  const current = SECTIONS[section];
+  // A route change closes any open sheet.
+  const [seenPath, setSeenPath] = useState(path);
+  if (seenPath !== path) {
+    setSeenPath(path);
+    if (sheet) setSheet(null);
+  }
+  const sheetSection = SECTIONS.find((s) => s.id === sheet);
 
   return (
     <ActionsContext.Provider value={{ checkin: () => setCheckin(true), addSpending: () => setAdding(true) }}>
-      <div className="min-h-screen pb-[88px] sm:pb-0">
-        <header className="sticky top-0 z-30">
-          {/* Desktop: sections, then that section's pages. */}
-          <div className="hidden border-b border-line bg-tile sm:block">
-            <div className="mx-auto flex h-[60px] max-w-[1360px] items-center gap-6 px-7">
-              <Link
-                to="/"
-                className="flex flex-none items-center text-ink no-underline"
-                aria-label="WheresMyMoney, dashboard"
-              >
-                <Logo compact />
-              </Link>
-              <SectionTabs section={section} targets={targets} />
-              <div className="ml-auto flex flex-none items-center gap-2">
-                <span className="mono mr-2 hidden text-[11px] tracking-[0.04em] whitespace-nowrap text-ink-3 xl:inline">
-                  {dayDate(iso).toUpperCase()} · {time}
-                </span>
-                <Button className="hidden whitespace-nowrap md:inline-flex" onClick={() => navigate({ to: "/import" })}>
-                  Import CSV
-                </Button>
-                <Button primary className="whitespace-nowrap" onClick={() => setCheckin(true)}>
-                  Check in
-                </Button>
-              </div>
-            </div>
-          </div>
-          {current && (
-            <div className="hidden overflow-hidden border-b border-line bg-page/90 backdrop-blur-md sm:block">
-              <div key={current.id} className={cn("mx-auto flex h-12 max-w-[1360px] items-center gap-4 px-7", dir)}>
-                <PageRow section={current} path={path} />
-                <span className="mono ml-auto hidden text-[10.5px] tracking-[0.08em] whitespace-nowrap text-ink-3 uppercase lg:inline">
-                  {current.hint}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* Phone: the page's name and the two actions, then the section's pages as chips. */}
-          <div className="border-b border-line bg-page/90 backdrop-blur-md sm:hidden">
-            <div className="flex h-14 items-center gap-2.5 px-4">
-              <Link to="/" aria-label="WheresMyMoney, dashboard" className="flex flex-none">
-                <Mark size={26} />
-              </Link>
-              <span className="min-w-0 truncate text-[17px] font-semibold">{page?.label ?? ""}</span>
-              <button
-                type="button"
-                aria-label="Add spending"
-                onClick={() => setAdding(true)}
-                className="press ml-auto flex size-10 flex-none cursor-pointer items-center justify-center rounded-full border border-line bg-tile text-ink-2"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  width="19"
-                  height="19"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  aria-hidden
-                >
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-              </button>
-              <button
-                type="button"
-                onClick={() => setCheckin(true)}
-                className="press min-h-10 flex-none cursor-pointer rounded-full border-0 bg-teal px-4 text-[13px] font-semibold text-page"
-              >
+      <div className="min-h-screen pb-[120px] sm:pb-0">
+        <header className="sticky top-0 z-30 hidden px-4 pt-4 sm:block sm:px-7">
+          <div className="mx-auto flex min-h-16 max-w-[1360px] items-center gap-6 rounded-[20px] border border-line bg-tile py-2 pr-3 pl-5 shadow-[var(--shadow-card)]">
+            <Link
+              to="/"
+              className="flex flex-none items-center text-ink no-underline"
+              aria-label="WheresMyMoney, overview"
+            >
+              <Logo compact />
+            </Link>
+            <TopTabs section={section} path={path} />
+            <div className="ml-auto flex flex-none items-center gap-2">
+              <Button className="whitespace-nowrap" onClick={() => setCheckin(true)}>
                 Check in
-              </button>
+              </Button>
+              <Button primary className="whitespace-nowrap" onClick={() => setAdding(true)}>
+                Add transaction
+              </Button>
             </div>
-            {current && (
-              <div key={current.id} className={cn("overflow-hidden", dir)}>
-                <PhoneChips section={current} path={path} />
-              </div>
-            )}
           </div>
         </header>
+
+        {/* Phone: the page's name, with Check in where a thumb can still reach it. */}
+        <header className="flex items-center gap-3 px-4 pt-[max(env(safe-area-inset-top),14px)] pb-2 sm:hidden">
+          <div className="min-w-0 flex-1">
+            <div className="text-[13px] text-ink-3">{section >= 0 ? SECTIONS[section].label : ""}</div>
+            <div className="truncate text-[22px] leading-7 font-semibold tracking-[-0.02em]">{page?.label ?? ""}</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setCheckin(true)}
+            className="press inline-flex min-h-11 flex-none cursor-pointer items-center gap-2 rounded-full border border-line bg-tile-2 px-3.5 text-[13px] font-semibold text-ink-2"
+          >
+            <span
+              aria-hidden
+              className="size-[7px] rounded-full bg-bills-fill shadow-[0_0_8px_var(--color-bills-fill)]"
+            />
+            Check in
+          </button>
+        </header>
+
         <main
           key={page?.to ?? path}
-          className="screen mx-auto flex max-w-[1360px] flex-col gap-4 px-4 pt-6 pb-14 sm:px-7"
+          className="screen mx-auto flex max-w-[1360px] flex-col gap-4 px-4 pt-4 pb-14 sm:px-7 sm:pt-6"
         >
           {children}
         </main>
-        <PhoneSections section={section} targets={targets} />
+
+        <PhoneBar section={section} sheet={sheet} setSheet={setSheet} />
       </div>
+
+      <Sheet open={!!sheetSection} onClose={() => setSheet(null)} title={sheetSection?.label ?? ""} phoneOnly>
+        <div className="flex flex-col gap-2">
+          {sheetSection?.pages.map((p) => (
+            <Link
+              key={p.to}
+              to={p.to}
+              activeProps={{}}
+              aria-current={page?.to === p.to ? "page" : undefined}
+              className="chip-host press flex min-h-16 items-center gap-3.5 rounded-[18px] border border-line bg-tile-2 px-3 text-ink no-underline aria-[current=page]:border-teal/50"
+            >
+              <Chip g={p.g} tone={p.tone} size="lg" />
+              <span className="min-w-0 flex-1">
+                <span className="block font-semibold">{p.label}</span>
+                <span className="block text-[13px] text-ink-3">{p.sub}</span>
+              </span>
+              {p.soon ? <SoonPill /> : <Chevron />}
+            </Link>
+          ))}
+        </div>
+      </Sheet>
+
+      <Sheet open={sheet === "add"} onClose={() => setSheet(null)} title="Record something" phoneOnly>
+        <div className="grid grid-cols-2 gap-2.5">
+          <ActionTile
+            g={I.spending}
+            tone="spending"
+            label="Add a spend"
+            sub="Or income, or a transfer"
+            onClick={() => {
+              setSheet(null);
+              setAdding(true);
+            }}
+          />
+          <ActionTile
+            g={I.offset}
+            tone="offset"
+            label="Check in"
+            sub="Type what uBank shows"
+            onClick={() => {
+              setSheet(null);
+              setCheckin(true);
+            }}
+          />
+          <ActionTile
+            g={I.bills}
+            tone="bills"
+            label="Pay a bill"
+            sub="Mark one paid"
+            onClick={() => navigate({ to: "/bills" })}
+          />
+          <ActionTile
+            g={I.import}
+            tone="neutral"
+            label="Import"
+            sub="A uBank statement"
+            onClick={() => navigate({ to: "/import" })}
+          />
+        </div>
+      </Sheet>
+
       <CheckinDialog
         // A notification's "time for a check-in" opens it (/?checkin=1).
         open={checkin || !!search?.checkin}
@@ -281,206 +228,226 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 }
 
-function Icon({ d, size = 17, className }: { d: string; size?: number; className?: string }) {
+function Chevron() {
   return (
     <svg
       viewBox="0 0 24 24"
-      width={size}
-      height={size}
+      width="18"
+      height="18"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.8"
+      strokeWidth="2"
       strokeLinecap="round"
-      strokeLinejoin="round"
       aria-hidden
-      className={className}
+      className="flex-none text-ink-3"
     >
-      <path d={d} />
+      <path d="M9 6l6 6-6 6" />
     </svg>
   );
 }
 
-/** A small amber dot on a page that isn't built yet, with the words for screen readers. */
-function Soon() {
-  return (
-    <>
-      <span aria-hidden className="size-[5px] flex-none rounded-full bg-warn" />
-      <span className="sr-only">(coming soon)</span>
-    </>
-  );
+function SoonPill() {
+  return <span className="flex-none rounded-full bg-raised px-2 py-px text-[11px] font-semibold text-ink-3">Soon</span>;
 }
 
-/**
- * A link to a section. A plain anchor that navigates through the router, because the router's Link marks itself
- * aria-current="page" whenever its target is open, and a section is the current section, not the page.
- */
-function SectionLink({
-  to,
-  current,
-  ...rest
-}: Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "href"> & { to: string; current: boolean; "data-key"?: string }) {
-  const navigate = useNavigate();
-  return (
-    <a
-      {...rest}
-      href={to}
-      aria-current={current ? "true" : undefined}
-      onClick={(e) => {
-        if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-        e.preventDefault();
-        navigate({ to });
-      }}
-    />
-  );
-}
+const TAB =
+  "inline-flex cursor-pointer items-center gap-1.5 rounded-xl border-0 bg-transparent px-3 py-2 text-[14px] font-medium whitespace-nowrap no-underline transition-colors duration-150";
 
-/** The top row: one link per section, to the page you were last on there, with an underline that slides. */
-function SectionTabs({ section, targets }: { section: number; targets: string[] }) {
+/** The desktop tabs. Overview is a link; the others open a compact card of their pages on hover or click. */
+function TopTabs({ section, path }: { section: number; path: string }) {
+  const [open, setOpen] = useState<string | null>(null);
   const box = useRef<HTMLElement>(null);
-  const active = section >= 0 ? SECTIONS[section].id : null;
-  const bar = useMarker(box, active, 14);
-  return (
-    <nav ref={box} aria-label="Sections" className="relative flex h-full min-w-0">
-      {SECTIONS.map((s, i) => (
-        <SectionLink
-          key={s.id}
-          to={targets[i]}
-          current={i === section}
-          data-key={s.id}
-          className={cn(
-            "group inline-flex h-full items-center gap-2 px-3.5 text-[14px] font-medium whitespace-nowrap no-underline transition-colors duration-150",
-            i === section ? "text-ink" : "text-ink-3 hover:text-ink-2",
-          )}
-        >
-          <Icon
-            d={s.icon}
-            className={cn(
-              "hidden transition-transform duration-[240ms] ease-[var(--ease-spring)] group-hover:-translate-y-px md:block",
-              i === section && "text-teal",
-            )}
-          />
-          {s.label}
-        </SectionLink>
-      ))}
-      {bar && (
-        <span
-          aria-hidden
-          className={cn(
-            "absolute -bottom-px h-0.5 rounded-full bg-teal shadow-[0_0_10px_rgb(45_212_191/0.55)]",
-            bar.placed && "transition-[left,width] duration-[240ms] ease-[var(--ease-move)]",
-          )}
-          style={{ left: bar.left, width: bar.width }}
-        />
-      )}
-    </nav>
-  );
-}
-
-/** The second row on desktop: the section's pages, with a raised pill that slides to the one you're on. */
-function PageRow({ section, path }: { section: Section; path: string }) {
-  const box = useRef<HTMLElement>(null);
-  const active = locate(path).page?.to ?? null;
-  const bar = useMarker(box, active);
-  return (
-    <nav ref={box} aria-label={`${section.label} pages`} className="relative flex h-[34px] min-w-0">
-      {bar && (
-        <span
-          aria-hidden
-          className={cn(
-            "absolute top-0 h-[34px] rounded-[9px] bg-raised shadow-[inset_0_0_0_1px_#2c3644]",
-            bar.placed && "transition-[left,width] duration-[240ms] ease-[var(--ease-move)]",
-          )}
-          style={{ left: bar.left, width: bar.width }}
-        />
-      )}
-      {section.pages.map((p) => (
-        <Link
-          key={p.to}
-          to={p.to}
-          data-key={p.to}
-          activeProps={{}}
-          aria-current={p.to === active ? "page" : undefined}
-          className={cn(
-            "press relative inline-flex h-[34px] items-center gap-1.5 rounded-[9px] px-3.5 text-[13.5px] font-medium whitespace-nowrap no-underline",
-            p.to === active ? "text-ink" : "text-ink-3 hover:text-ink",
-          )}
-        >
-          {p.label}
-          {p.soon && <Soon />}
-        </Link>
-      ))}
-    </nav>
-  );
-}
-
-/** The phone's page chips under the title; the row scrolls to keep the one you're on in view. */
-function PhoneChips({ section, path }: { section: Section; path: string }) {
-  const row = useRef<HTMLElement>(null);
-  const reduced = useReducedMotion();
-  const active = locate(path).page?.to ?? null;
+  const [seenPath, setSeenPath] = useState(path);
+  if (seenPath !== path) {
+    setSeenPath(path);
+    setOpen(null);
+  }
   useEffect(() => {
-    const r = row.current;
-    const a = active ? r?.querySelector<HTMLElement>(`[data-key="${active}"]`) : null;
-    if (!r || !a) return;
-    const left = a.offsetLeft - 16;
-    if (left < r.scrollLeft || a.offsetLeft + a.offsetWidth > r.scrollLeft + r.clientWidth)
-      r.scrollTo({ left, behavior: reduced ? "auto" : "smooth" });
-  }, [active, reduced]);
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(null);
+    const onDown = (e: PointerEvent) => {
+      if (!box.current?.contains(e.target as Node)) setOpen(null);
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onDown);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onDown);
+    };
+  }, [open]);
   return (
-    <nav
-      ref={row}
-      aria-label={`${section.label} pages`}
-      className="no-scrollbar relative flex gap-2 overflow-x-auto px-4 pt-0.5 pb-3"
-    >
-      {section.pages.map((p) => (
-        <Link
-          key={p.to}
-          to={p.to}
-          data-key={p.to}
-          activeProps={{}}
-          aria-current={p.to === active ? "page" : undefined}
-          className={cn(
-            "press inline-flex min-h-[38px] flex-none items-center gap-1.5 rounded-full border px-[15px] text-[13.5px] font-medium no-underline",
-            p.to === active ? "border-teal bg-teal text-page" : "border-line bg-tile text-ink-2",
-          )}
-        >
-          {p.label}
-          {p.soon && <Soon />}
-        </Link>
-      ))}
+    <nav ref={box} aria-label="Sections" className="flex min-w-0 flex-1 items-center gap-1">
+      <Link
+        to="/"
+        activeProps={{}}
+        aria-current={section === 0 ? "page" : undefined}
+        className={cn(TAB, section === 0 ? "font-semibold text-ink" : "text-ink-2 hover:bg-raised hover:text-ink")}
+      >
+        Overview
+      </Link>
+      {SECTIONS.slice(1).map((s, k) => {
+        const i = k + 1;
+        const isOpen = open === s.id;
+        return (
+          <div
+            key={s.id}
+            className="relative"
+            onMouseEnter={() => setOpen(s.id)}
+            onMouseLeave={() => setOpen((o) => (o === s.id ? null : o))}
+          >
+            <button
+              type="button"
+              aria-expanded={isOpen}
+              aria-haspopup="true"
+              aria-current={i === section ? "true" : undefined}
+              onClick={() => setOpen(isOpen ? null : s.id)}
+              className={cn(
+                TAB,
+                isOpen
+                  ? "bg-teal/15 font-semibold text-teal"
+                  : i === section
+                    ? "font-semibold text-ink"
+                    : "text-ink-2 hover:bg-raised hover:text-ink",
+              )}
+            >
+              {s.label}{" "}
+              <span aria-hidden className="text-[10px]">
+                ▾
+              </span>
+            </button>
+            {isOpen && (
+              <div
+                role="menu"
+                aria-label={`${s.label} pages`}
+                className="absolute top-[calc(100%+12px)] left-0 z-40 flex w-[248px] flex-col gap-0.5 rounded-2xl border border-line bg-tile p-1.5 shadow-[var(--shadow-float)] before:absolute before:inset-x-0 before:-top-3.5 before:h-3.5 before:content-['']"
+              >
+                {s.pages.map((p) => (
+                  <Link
+                    key={p.to}
+                    to={p.to}
+                    role="menuitem"
+                    activeProps={{}}
+                    aria-current={on(path, p.to) ? "page" : undefined}
+                    className="chip-host flex min-h-10 items-center gap-2.5 rounded-[10px] px-2 text-[14px] font-medium text-ink no-underline transition-colors duration-150 hover:bg-raised"
+                  >
+                    <Chip g={p.g} tone={p.tone} size="md" />
+                    <span className="flex-1">{p.label}</span>
+                    {p.soon && <SoonPill />}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </nav>
   );
 }
 
-/** The phone's bottom bar: the four sections, with a short line that slides over the one you're in. */
-function PhoneSections({ section, targets }: { section: number; targets: string[] }) {
+const PHONE_TAB =
+  "press flex h-[62px] cursor-pointer flex-col items-center justify-center gap-1 rounded-[18px] border-0 bg-transparent text-[11px] font-semibold no-underline";
+
+/** The phone's floating bar: Overview, Money, +, Future, Manage. */
+function PhoneBar({
+  section,
+  sheet,
+  setSheet,
+}: {
+  section: number;
+  sheet: string | null;
+  setSheet: (s: string | null) => void;
+}) {
+  const sectionTab = (i: number) => {
+    const s = SECTIONS[i];
+    const expanded = sheet === s.id;
+    const current = i === section;
+    return (
+      <button
+        key={s.id}
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded={expanded}
+        aria-current={current ? "true" : undefined}
+        onClick={() => setSheet(expanded ? null : s.id)}
+        className={cn(PHONE_TAB, expanded ? "text-teal" : current ? "text-ink" : "text-ink-3")}
+      >
+        <Chip g={s.g} size="md" tone={current ? "grad" : "neutral"} className={current ? "" : "!bg-transparent"} />
+        {s.label}
+      </button>
+    );
+  };
   return (
     <nav
       aria-label="Sections"
-      className="fixed inset-x-0 bottom-0 z-30 flex border-t border-line bg-tile px-2 pb-[max(env(safe-area-inset-bottom),12px)] sm:hidden"
+      className="fixed inset-x-3 bottom-[max(env(safe-area-inset-bottom),14px)] z-30 grid h-[70px] grid-cols-5 items-center rounded-[26px] border border-line-2 bg-tile/85 px-1 shadow-[var(--shadow-float)] backdrop-blur-xl backdrop-saturate-150 sm:hidden"
     >
-      <span
-        aria-hidden
-        className="absolute -top-px h-0.5 w-10 rounded-full bg-teal shadow-[0_0_10px_rgb(45_212_191/0.55)] transition-[left,opacity] duration-300 ease-[var(--ease-move)]"
-        style={{
-          left: `calc(8px + ${Math.max(section, 0)} * (100% - 16px) / 4 + (100% - 16px) / 8 - 20px)`,
-          opacity: section < 0 ? 0 : 1,
-        }}
-      />
-      {SECTIONS.map((s, i) => (
-        <SectionLink
-          key={s.id}
-          to={targets[i]}
-          current={i === section}
-          className={cn(
-            "press flex min-h-[62px] flex-1 flex-col items-center justify-center gap-1 text-[11.5px] font-medium no-underline",
-            i === section ? "text-teal" : "text-ink-3",
-          )}
+      <Link
+        to="/"
+        activeProps={{}}
+        aria-current={section === 0 ? "true" : undefined}
+        className={cn(PHONE_TAB, section === 0 ? "text-ink" : "text-ink-3")}
+      >
+        <Chip
+          g={I.overview}
+          size="md"
+          tone={section === 0 ? "grad" : "neutral"}
+          className={section === 0 ? "" : "!bg-transparent"}
+        />
+        Overview
+      </Link>
+      {sectionTab(1)}
+      <button
+        type="button"
+        aria-label="Record something"
+        aria-haspopup="dialog"
+        aria-expanded={sheet === "add"}
+        onClick={() => setSheet(sheet === "add" ? null : "add")}
+        className="press btn-primary mx-auto flex size-[58px] -translate-y-4 cursor-pointer items-center justify-center rounded-[20px] border-0"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          width="26"
+          height="26"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.4"
+          strokeLinecap="round"
+          aria-hidden
+          className={cn("transition-transform duration-200", sheet === "add" && "rotate-45")}
         >
-          <Icon d={s.icon} size={22} />
-          {s.label}
-        </SectionLink>
-      ))}
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+      </button>
+      {sectionTab(2)}
+      {sectionTab(3)}
     </nav>
+  );
+}
+
+function ActionTile({
+  g,
+  tone,
+  label,
+  sub,
+  onClick,
+}: {
+  g: Glyph;
+  tone: Tone;
+  label: string;
+  sub: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="chip-host press flex min-h-28 cursor-pointer flex-col gap-3.5 rounded-[20px] border border-line bg-tile-2 p-3.5 text-left text-ink"
+    >
+      <Chip g={g} tone={tone} size="lg" />
+      <span>
+        <span className="block font-semibold">{label}</span>
+        <span className="block text-[13px] text-ink-3">{sub}</span>
+      </span>
+    </button>
   );
 }

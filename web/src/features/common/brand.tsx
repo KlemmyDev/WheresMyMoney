@@ -30,7 +30,7 @@ export function Mark({ size = 28, draw = false, light = false }: { size?: number
         <path
           d={PATH}
           fill="none"
-          stroke={light ? "#0d9488" : "#2dd4bf"}
+          stroke={light ? "#4b7a0e" : "#a395ff"}
           strokeWidth={stroke}
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -43,7 +43,7 @@ export function Mark({ size = 28, draw = false, light = false }: { size?: number
           cx="50"
           cy="21"
           r={dot}
-          fill={light ? "#0f1720" : "#e6edf3"}
+          fill={light ? "#111214" : "#f1f2f8"}
           className={draw ? "pop" : undefined}
           style={draw ? { transformBox: "fill-box", transformOrigin: "center", animationDelay: "700ms" } : undefined}
         />

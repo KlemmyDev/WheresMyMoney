@@ -3,6 +3,7 @@ import { createRootRouteWithContext, HeadContent, Outlet, Scripts } from "@tanst
 import { useEffect, type ReactNode } from "react";
 import appCss from "~/styles/app.css?url";
 import { ToastProvider } from "~/features/common/overlay";
+import { THEME_SCRIPT } from "~/features/common/theme";
 import type { RouterContext } from "~/router";
 
 export const Route = createRootRouteWithContext<RouterContext>()({
@@ -14,8 +15,8 @@ export const Route = createRootRouteWithContext<RouterContext>()({
         content: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
       },
       { title: "WheresMyMoney" },
-      { name: "theme-color", content: "#0d1117" },
-      { name: "color-scheme", content: "dark" },
+      { name: "theme-color", content: "#0a0b12" },
+      { name: "color-scheme", content: "dark light" },
       { name: "apple-mobile-web-app-title", content: "Money" },
       { name: "mobile-web-app-capable", content: "yes" },
     ],
@@ -46,8 +47,10 @@ function Root() {
 
 function RootDocument({ children }: { children: ReactNode }) {
   return (
-    <html lang="en-AU">
+    <html lang="en-AU" data-theme="dark" suppressHydrationWarning>
       <head>
+        {/* Dark, light or the device's choice, set before the first paint. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
         <HeadContent />
       </head>
       <body>

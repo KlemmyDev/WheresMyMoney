@@ -163,7 +163,7 @@ function Readouts({ data }: { data: AccountsOverview }) {
       <Tile
         i={0}
         aria-labelledby="ac-off"
-        className="border-teal/35 bg-[linear-gradient(160deg,rgb(45_212_191/0.14),rgb(45_212_191/0.03)_60%),var(--color-tile)]"
+        className="border-teal/35 bg-[linear-gradient(160deg,color-mix(in_srgb,var(--color-accent-fill)_14%,transparent),color-mix(in_srgb,var(--color-accent-fill)_3%,transparent)_60%),var(--color-tile)]"
       >
         <div className="flex items-center gap-2 text-[13px] text-ink-2">
           <span aria-hidden className="pulse-ring size-2 rounded-full bg-teal" />
@@ -285,9 +285,9 @@ function AccountCard({
         "press rise flex w-full cursor-pointer flex-col gap-2.5 rounded-tile border bg-tile p-4 text-left text-ink transition-[border-color,box-shadow,transform,background-color] duration-200 hover:-translate-y-0.5",
         loan && "border-dashed",
         on
-          ? "border-[var(--c)] bg-[#18202a] shadow-[0_0_0_3px_color-mix(in_srgb,var(--c)_16%,transparent)]"
+          ? "border-[var(--c)] bg-tile-2 shadow-[0_0_0_3px_color-mix(in_srgb,var(--c)_16%,transparent)]"
           : loan
-            ? "border-[#36414e]"
+            ? "border-line-2"
             : "border-line",
       )}
       style={{ "--i": i + 3, "--c": c } as CSSProperties}

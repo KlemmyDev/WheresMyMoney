@@ -150,7 +150,9 @@ export function BillsPage() {
                   style={
                     {
                       "--i": i,
-                      background: strong ? "var(--color-bills)" : `rgb(251 191 36 / ${0.12 + r * 0.3})`,
+                      background: strong
+                        ? "var(--color-bills)"
+                        : `color-mix(in srgb, var(--color-bills-fill) ${Math.round((0.12 + r * 0.3) * 100)}%, transparent)`,
                       color: strong ? "var(--color-page)" : undefined,
                     } as CSSProperties
                   }
