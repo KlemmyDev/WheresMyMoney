@@ -15,6 +15,7 @@ import { Route as SetupRouteImport } from './routes/setup'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppAccountsRouteImport } from './routes/_app/accounts'
 import { Route as AppBillsRouteImport } from './routes/_app/bills'
+import { Route as AppDesignRouteImport } from './routes/_app/design'
 import { Route as AppImportRouteImport } from './routes/_app/import'
 import { Route as AppInvestmentsRouteImport } from './routes/_app/investments'
 import { Route as AppLoanRouteImport } from './routes/_app/loan'
@@ -53,6 +54,11 @@ const AppAccountsRoute = AppAccountsRouteImport.update({
 const AppBillsRoute = AppBillsRouteImport.update({
   id: '/bills',
   path: '/bills',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDesignRoute = AppDesignRouteImport.update({
+  id: '/design',
+  path: '/design',
   getParentRoute: () => AppRoute,
 } as any)
 const AppImportRoute = AppImportRouteImport.update({
@@ -112,6 +118,7 @@ export interface FileRoutesByFullPath {
   '/setup': typeof SetupRoute
   '/accounts': typeof AppAccountsRoute
   '/bills': typeof AppBillsRoute
+  '/design': typeof AppDesignRoute
   '/import': typeof AppImportRoute
   '/investments': typeof AppInvestmentsRoute
   '/loan': typeof AppLoanRoute
@@ -128,6 +135,7 @@ export interface FileRoutesByTo {
   '/setup': typeof SetupRoute
   '/accounts': typeof AppAccountsRoute
   '/bills': typeof AppBillsRoute
+  '/design': typeof AppDesignRoute
   '/import': typeof AppImportRoute
   '/investments': typeof AppInvestmentsRoute
   '/loan': typeof AppLoanRoute
@@ -147,6 +155,7 @@ export interface FileRoutesById {
   '/setup': typeof SetupRoute
   '/_app/accounts': typeof AppAccountsRoute
   '/_app/bills': typeof AppBillsRoute
+  '/_app/design': typeof AppDesignRoute
   '/_app/import': typeof AppImportRoute
   '/_app/investments': typeof AppInvestmentsRoute
   '/_app/loan': typeof AppLoanRoute
@@ -167,6 +176,7 @@ export interface FileRouteTypes {
     | '/setup'
     | '/accounts'
     | '/bills'
+    | '/design'
     | '/import'
     | '/investments'
     | '/loan'
@@ -183,6 +193,7 @@ export interface FileRouteTypes {
     | '/setup'
     | '/accounts'
     | '/bills'
+    | '/design'
     | '/import'
     | '/investments'
     | '/loan'
@@ -201,6 +212,7 @@ export interface FileRouteTypes {
     | '/setup'
     | '/_app/accounts'
     | '/_app/bills'
+    | '/_app/design'
     | '/_app/import'
     | '/_app/investments'
     | '/_app/loan'
@@ -262,6 +274,13 @@ declare module '@tanstack/react-router' {
       path: '/bills'
       fullPath: '/bills'
       preLoaderRoute: typeof AppBillsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/design': {
+      id: '/_app/design'
+      path: '/design'
+      fullPath: '/design'
+      preLoaderRoute: typeof AppDesignRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/import': {
@@ -340,6 +359,7 @@ declare module '@tanstack/react-router' {
 interface AppRouteChildren {
   AppAccountsRoute: typeof AppAccountsRoute
   AppBillsRoute: typeof AppBillsRoute
+  AppDesignRoute: typeof AppDesignRoute
   AppImportRoute: typeof AppImportRoute
   AppInvestmentsRoute: typeof AppInvestmentsRoute
   AppLoanRoute: typeof AppLoanRoute
@@ -356,6 +376,7 @@ interface AppRouteChildren {
 const AppRouteChildren: AppRouteChildren = {
   AppAccountsRoute: AppAccountsRoute,
   AppBillsRoute: AppBillsRoute,
+  AppDesignRoute: AppDesignRoute,
   AppImportRoute: AppImportRoute,
   AppInvestmentsRoute: AppInvestmentsRoute,
   AppLoanRoute: AppLoanRoute,

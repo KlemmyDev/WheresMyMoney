@@ -1,24 +1,27 @@
 @import "tailwindcss";
-@import "@fontsource/ibm-plex-sans/400.css";
-@import "@fontsource/ibm-plex-sans/500.css";
-@import "@fontsource/ibm-plex-sans/600.css";
-@import "@fontsource/ibm-plex-mono/400.css";
-@import "@fontsource/ibm-plex-mono/500.css";
-@import "@fontsource/ibm-plex-mono/600.css";
+@import "@fontsource/instrument-sans/400.css";
+@import "@fontsource/instrument-sans/500.css";
+@import "@fontsource/instrument-sans/600.css";
+@import "@fontsource/instrument-sans/700.css";
+@import "@fontsource/geist-mono/400.css";
+@import "@fontsource/geist-mono/500.css";
+@import "@fontsource/geist-mono/600.css";
 /* Sora 600 is only for the wordmark (brand/README.md). */
 @import "@fontsource/sora/600.css";
 
 /*
- * WheresMyMoney's design tokens: the Cockpit direction from the design canvas. Dark, dense tiles, IBM Plex Sans for
- * words and IBM Plex Mono (tabular) for every figure. Each account role has its colour (offset blue, bills amber,
- * spending violet, savings green), and teal is the app's own: coverage, primary actions, what's selected.
+ * WheresMyMoney's design tokens: "Nightfall" from the uplift canvas. Dark first (violet to pink light on near-black),
+ * with a light take (lime on warm grey) under data-theme="light". Instrument Sans for words, Geist Mono (tabular) for
+ * every figure. Each account role keeps its colour (offset blue, bills amber, spending pink, savings green); the
+ * accent (still named teal in the code, for continuity) is the app's own: primary actions, what's selected.
+ * Duotone icon chips carry the art style, and hatching always means "likely" (a forecast).
  *
  * The fonts come with the app (@fontsource), so nothing is fetched from Google.
  */
 @theme static {
-  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
-  --font-brand: "Sora", "IBM Plex Sans", system-ui, sans-serif;
+  --font-sans: "Instrument Sans", system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, monospace;
+  --font-brand: "Sora", "Instrument Sans", system-ui, sans-serif;
 
   --breakpoint-*: initial;
   --breakpoint-sm: 640px;
@@ -26,28 +29,38 @@
   --breakpoint-lg: 1180px;
   --breakpoint-xl: 1400px;
 
-  --color-page: #0d1117;
-  --color-tile: #151b23;
-  --color-raised: #1d2530;
-  --color-ink: #e6edf3;
-  --color-ink-2: #b1bac4;
-  --color-ink-3: #8d97a3;
-  --color-line: #262f3a;
-  --color-teal: #2dd4bf;
-  --color-teal-hover: #5eead4;
-  --color-offset: #60a5fa;
-  --color-savings: #4ade80;
-  --color-bills: #fbbf24;
-  --color-spending: #a78bfa;
-  --color-track: #94a3b8;
-  --color-rose: #fb7185;
-  --color-sky: #38bdf8;
-  --color-out: #64748b;
-  --color-good: #4ade80;
-  --color-warn: #fbbf24;
-  --color-bad: #f87171;
+  --color-page: #0a0b12;
+  --color-tile: #12131e;
+  --color-tile-2: #171827;
+  --color-sunken: #0e0f18;
+  --color-raised: #202236;
+  --color-ink: #f1f2f8;
+  --color-ink-2: #b4b8cc;
+  --color-ink-3: #8a8fa6;
+  --color-line: #24263a;
+  --color-line-2: #33365a;
+  --color-teal: #a395ff;
+  --color-teal-hover: #b9afff;
+  --color-accent-fill: #8b7bff;
+  --color-offset: #86a8ff;
+  --color-offset-fill: #5b84f5;
+  --color-savings: #6ee7b0;
+  --color-savings-fill: #34d399;
+  --color-bills: #ffbb6b;
+  --color-bills-fill: #f59e2e;
+  --color-spending: #ff8cc0;
+  --color-spending-fill: #ec5f9c;
+  --color-invest: #67e8f9;
+  --color-track: #8a8fa6;
+  --color-rose: #ff8cc0;
+  --color-sky: #67e8f9;
+  --color-out: #6b7088;
+  --color-good: #6ee7b0;
+  --color-warn: #ffbb6b;
+  --color-bad: #ff8a80;
+  --color-on-solid: #0a0b12;
 
-  --radius-tile: 12px;
+  --radius-tile: 22px;
 
   /* Motion (the motion spec): press 90, hover and toggles 150, content and tabs 240, sheets and dialogs 360 (exit
      250), numbers 600, charts 700, stagger 40, the success spring 420. */
@@ -69,6 +82,58 @@
   --animate-fade: fade 240ms var(--ease-enter) both;
 }
 
+/* The light take: lime and warm grey, ink nearly black. */
+:root[data-theme="light"] {
+  --color-page: #ebebe7;
+  --color-tile: #ffffff;
+  --color-tile-2: #f7f7f4;
+  --color-sunken: #f3f3ef;
+  --color-raised: #e8e8e2;
+  --color-ink: #111214;
+  --color-ink-2: #4a4d52;
+  --color-ink-3: #686b71;
+  --color-line: #e5e5df;
+  --color-line-2: #d6d6ce;
+  --color-teal: #4b7a0e;
+  --color-teal-hover: #3d6609;
+  --color-accent-fill: #a3d63c;
+  --color-offset: #2f5fd0;
+  --color-savings: #3b7a0b;
+  --color-savings-fill: #8fcf3c;
+  --color-bills: #9c5200;
+  --color-bills-fill: #f5a524;
+  --color-spending: #b8275f;
+  --color-invest: #0b6f8f;
+  --color-track: #686b71;
+  --color-rose: #b8275f;
+  --color-sky: #0b6f8f;
+  --color-out: #9a9da3;
+  --color-good: #3b7a0b;
+  --color-warn: #9c5200;
+  --color-bad: #bf2a1f;
+  --color-on-solid: #ffffff;
+  --grad: linear-gradient(100deg, #a3d63c 0%, #e8d94a 60%, #f5a524 100%);
+  --btn-bg: #111214;
+  --btn-ink: #ffffff;
+  --glow: rgb(163 214 60 / 0.18);
+  --card-art: linear-gradient(125deg, #a3d63c 0%, #d9dc48 55%, #f5b84a 100%);
+  --stripe: rgb(255 255 255 / 0.35);
+  --shadow-card: 0 1px 2px rgb(17 18 20 / 0.04), 0 8px 28px rgb(17 18 20 / 0.05);
+  --shadow-float: 0 18px 44px rgb(17 18 20 / 0.16);
+  color-scheme: light;
+}
+
+:root {
+  --grad: linear-gradient(100deg, #8b7bff 0%, #c77dff 50%, #f472b6 100%);
+  --btn-bg: linear-gradient(100deg, #8b7bff, #f472b6);
+  --btn-ink: #ffffff;
+  --glow: rgb(139 123 255 / 0.13);
+  --card-art: linear-gradient(125deg, #7c6cf6 0%, #b77cf3 45%, #f07bbd 100%);
+  --stripe: rgb(255 255 255 / 0.16);
+  --shadow-card: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  --shadow-float: 0 18px 48px rgb(0 0 0 / 0.6);
+}
+
 html {
   color-scheme: dark;
   background: var(--color-page);
@@ -78,17 +143,21 @@ html {
 
 body {
   margin: 0;
-  background: var(--color-page);
+  min-height: 100vh;
+  background:
+    radial-gradient(1100px 700px at -10% 105%, var(--glow), transparent 60%),
+    radial-gradient(900px 500px at 110% -10%, var(--glow), transparent 55%), var(--color-page);
+  background-attachment: fixed;
   color: var(--color-ink);
   font-family: var(--font-sans);
-  font-size: 14px;
-  line-height: 1.45;
+  font-size: 15px;
+  line-height: 1.47;
   /* No -webkit-font-smoothing: antialiased. On a Mac it turns off the system's font smoothing, which draws light text
      on these dark tiles thin and grey; the designs are drawn with the system's default, fuller and crisper. */
 }
 
 ::selection {
-  background: rgb(45 212 191 / 0.3);
+  background: color-mix(in srgb, var(--color-accent-fill) 35%, transparent);
 }
 
 :focus-visible {
@@ -285,10 +354,10 @@ body {
 }
 @keyframes flash {
   from {
-    background-color: rgb(45 212 191 / 0.25);
+    background-color: color-mix(in srgb, var(--color-accent-fill) 25%, transparent);
   }
   to {
-    background-color: rgb(45 212 191 / 0);
+    background-color: color-mix(in srgb, var(--color-accent-fill) 0%, transparent);
   }
 }
 
@@ -326,10 +395,10 @@ body {
 /* A live dot (the dashboard's "safe to spend today"): a soft ring that keeps spreading out from it. */
 @keyframes pulse-ring {
   from {
-    box-shadow: 0 0 0 0 rgb(45 212 191 / 0.55);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent-fill) 55%, transparent);
   }
   to {
-    box-shadow: 0 0 0 10px rgb(45 212 191 / 0);
+    box-shadow: 0 0 0 10px color-mix(in srgb, var(--color-accent-fill) 0%, transparent);
   }
 }
 .pulse-ring {
@@ -494,4 +563,152 @@ body {
   .grow-x {
     animation: none !important;
   }
+}
+
+/*
+ * Icon chips: the art style. A duotone glyph (20% fill, 1.6 stroke) on a tinted square; hover or press turns it solid
+ * with a glow. Tones match the account roles and categories.
+ */
+.ic {
+  --c: var(--color-teal);
+  --wash: color-mix(in srgb, var(--color-accent-fill) 16%, transparent);
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: var(--wash);
+  color: var(--c);
+  transition:
+    background-color var(--duration-hover) var(--ease-enter),
+    color var(--duration-hover) var(--ease-enter),
+    box-shadow var(--duration-hover) var(--ease-enter);
+}
+.ic svg {
+  width: 56%;
+  height: 56%;
+}
+.ic.sm {
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+}
+.ic.md {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+}
+.ic.lg {
+  width: 40px;
+  height: 40px;
+  border-radius: 13px;
+}
+.ic.xl {
+  width: 52px;
+  height: 52px;
+  border-radius: 17px;
+}
+.ic.xxl {
+  width: 72px;
+  height: 72px;
+  border-radius: 22px;
+}
+.ic.round {
+  border-radius: 999px;
+}
+.ic.offset,
+.ic.loan {
+  --c: var(--color-offset-fill);
+  --wash: color-mix(in srgb, var(--color-offset-fill) 17%, transparent);
+}
+.ic.bills {
+  --c: var(--color-bills-fill);
+  --wash: color-mix(in srgb, var(--color-bills-fill) 16%, transparent);
+}
+.ic.spending {
+  --c: var(--color-spending-fill);
+  --wash: color-mix(in srgb, var(--color-spending-fill) 16%, transparent);
+}
+.ic.savings {
+  --c: var(--color-savings-fill);
+  --wash: color-mix(in srgb, var(--color-savings-fill) 15%, transparent);
+}
+.ic.invest {
+  --c: var(--color-invest);
+  --wash: color-mix(in srgb, var(--color-invest) 14%, transparent);
+}
+.ic.neutral {
+  --c: var(--color-ink-2);
+  --wash: var(--color-raised);
+}
+.ic.bad {
+  --c: var(--color-bad);
+  --wash: color-mix(in srgb, var(--color-bad) 15%, transparent);
+}
+.ic.grad {
+  background: var(--grad);
+  color: #fff;
+}
+.ic.solid,
+.chip-host:hover .ic,
+.chip-host:active .ic,
+.chip-host[aria-current="page"] .ic,
+.chip-host[aria-pressed="true"] .ic {
+  background: var(--c);
+  color: var(--color-on-solid);
+  box-shadow: 0 0 18px -2px var(--c);
+}
+.ic.grad.solid {
+  background: var(--grad);
+  color: #fff;
+}
+
+/* A card with a lit gradient edge (the hero cards). */
+.lit {
+  position: relative;
+}
+.lit::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    140deg,
+    color-mix(in srgb, var(--color-accent-fill) 70%, transparent),
+    transparent 35%,
+    transparent 70%,
+    color-mix(in srgb, var(--color-spending-fill) 45%, transparent)
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Fills: striped for what happened, hatched for what's likely. */
+.striped {
+  background-image: repeating-linear-gradient(135deg, var(--stripe) 0 2px, transparent 2px 7px);
+}
+.hatched {
+  background-image: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--c, var(--color-accent-fill)) 55%, transparent) 0 2px,
+    transparent 2px 6px
+  );
+}
+
+/* The primary action: the theme's gradient (dark) or ink (light). */
+.btn-primary {
+  background: var(--btn-bg);
+  color: var(--btn-ink);
+  box-shadow: 0 8px 24px -10px var(--color-accent-fill);
+}
+.btn-primary:hover:not(:disabled) {
+  filter: brightness(1.08);
 }

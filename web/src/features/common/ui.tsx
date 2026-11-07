@@ -25,7 +25,7 @@ export function Tile({
     <Tag
       {...rest}
       className={cn(
-        "flex min-w-0 flex-col gap-2.5 rounded-tile border border-line bg-tile px-5 py-[18px]",
+        "flex min-w-0 flex-col gap-3 rounded-tile border border-line bg-tile p-[18px] shadow-[var(--shadow-card)] sm:p-[22px]",
         i != null && "rise",
         className,
       )}
@@ -59,7 +59,7 @@ export function Pill({ tone = "mute", children }: { tone?: keyof typeof PILL; ch
   return (
     <span
       className={cn(
-        "mono inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs font-semibold whitespace-nowrap",
+        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-[3px] text-xs font-semibold whitespace-nowrap",
         PILL[tone],
       )}
     >
@@ -89,11 +89,11 @@ export function Button({
       type="button"
       {...rest}
       className={cn(
-        "press inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border px-3.5 text-[13px] font-medium disabled:cursor-default disabled:opacity-50",
-        small ? "min-h-8 px-2.5 text-xs" : "min-h-10",
+        "press inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl border px-4 text-[14px] font-semibold disabled:cursor-default disabled:opacity-50",
+        small ? "min-h-[34px] rounded-[10px] px-3 text-[13px]" : "min-h-[42px]",
         primary
-          ? "border-teal bg-teal font-semibold text-page enabled:hover:bg-teal-hover"
-          : "border-line bg-tile text-ink enabled:hover:bg-raised",
+          ? "btn-primary border-transparent"
+          : "border-line bg-tile-2 text-ink enabled:hover:border-line-2 enabled:hover:bg-raised",
         className,
       )}
     />
@@ -123,14 +123,14 @@ export function Switch({
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cn(
-        "relative h-6 w-10 flex-none cursor-pointer rounded-full border p-0 transition-colors duration-150 ease-[var(--ease-enter)]",
-        checked ? "border-teal bg-teal" : "border-line bg-raised",
+        "relative h-[26px] w-11 flex-none cursor-pointer rounded-full border p-0 transition-colors duration-150 ease-[var(--ease-enter)]",
+        checked ? "btn-primary border-transparent" : "border-line bg-raised",
       )}
     >
       <i
         className={cn(
-          "absolute top-0.5 size-[18px] rounded-full transition-[left,background-color] duration-150 ease-[var(--ease-enter)]",
-          checked ? "left-[18px] bg-page" : "left-0.5 bg-ink-3",
+          "absolute top-[2px] size-5 rounded-full bg-white shadow-[0_1px_3px_rgb(0_0_0/0.35)] transition-[left] duration-150 ease-[var(--ease-enter)]",
+          checked ? "left-[20px]" : "left-[2px]",
         )}
       />
     </button>
@@ -163,7 +163,7 @@ export function Choice<T extends string | number>({
             type="button"
             aria-pressed={on}
             onClick={() => onChange(o.value)}
-            className="press min-h-9 cursor-pointer rounded-md border px-3 text-[13px] font-medium"
+            className="press min-h-10 cursor-pointer rounded-full border px-3.5 text-[13px] font-semibold"
             style={
               on
                 ? {
@@ -195,7 +195,11 @@ export function Segmented<T extends string>({
   label: string;
 }) {
   return (
-    <div role="group" aria-label={label} className="inline-flex rounded-lg border border-line bg-tile p-[3px]">
+    <div
+      role="group"
+      aria-label={label}
+      className="inline-flex gap-0.5 rounded-xl border border-line bg-sunken p-[3px]"
+    >
       {options.map((o) => (
         <button
           key={o.value}
@@ -203,8 +207,8 @@ export function Segmented<T extends string>({
           aria-pressed={o.value === value}
           onClick={() => onChange(o.value)}
           className={cn(
-            "press min-h-8 cursor-pointer rounded-md border-0 px-3 text-[13px] font-medium",
-            o.value === value ? "bg-raised text-ink" : "bg-transparent text-ink-3 hover:text-ink-2",
+            "press min-h-8 cursor-pointer rounded-[9px] border-0 px-3 text-[13px] font-semibold",
+            o.value === value ? "bg-teal/15 text-teal" : "bg-transparent text-ink-3 hover:text-ink-2",
           )}
         >
           {o.label}
@@ -221,7 +225,7 @@ export function Input({ className, ...rest }: InputHTMLAttributes<HTMLInputEleme
       className={cn(
         // Figures by default; `font-sans` (a name, a note) opts out of the mono class, which twMerge can't see.
         !className?.includes("font-sans") && "mono",
-        "min-h-[42px] w-full rounded-lg border border-line bg-page px-3 text-sm font-medium text-ink transition-[border-color,box-shadow] duration-150 ease-[var(--ease-enter)] placeholder:text-ink-3 focus:border-teal focus:shadow-[0_0_0_3px_rgb(45_212_191/0.2)] focus:outline-none",
+        "min-h-[46px] w-full rounded-xl border border-line bg-sunken px-3.5 text-[15px] font-medium text-ink transition-[border-color,box-shadow] duration-150 ease-[var(--ease-enter)] placeholder:text-ink-3 focus:border-teal focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-accent-fill)_20%,transparent)] focus:outline-none",
         className,
       )}
     />
@@ -237,7 +241,7 @@ export function Select({
     <select
       {...rest}
       className={cn(
-        "min-h-[42px] w-full cursor-pointer rounded-lg border border-line bg-page px-3 text-sm text-ink focus:border-teal focus:outline-none",
+        "min-h-[46px] w-full cursor-pointer rounded-xl border border-line bg-sunken px-3.5 text-[15px] text-ink focus:border-teal focus:outline-none",
         className,
       )}
     >

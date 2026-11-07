@@ -218,7 +218,7 @@ function SafeToday({ m }: { m: Month }) {
     <Tile
       i={1}
       aria-labelledby="b-safe"
-      className="border-teal/35 bg-[linear-gradient(160deg,rgb(45_212_191/0.14),rgb(45_212_191/0.03)_60%),var(--color-tile)]"
+      className="border-teal/35 bg-[linear-gradient(160deg,color-mix(in_srgb,var(--color-accent-fill)_14%,transparent),color-mix(in_srgb,var(--color-accent-fill)_3%,transparent)_60%),var(--color-tile)]"
     >
       <div className="flex items-center gap-2 text-[13px] text-ink-2">
         <span aria-hidden className="pulse-ring size-2 rounded-full bg-teal" />
@@ -415,7 +415,7 @@ function Timeline({ m, hover, setHover }: { m: Month; hover: number | null; setH
                     className={cn(
                       "block w-full rounded-t-[3px] transition-colors duration-150",
                       done ? "grow" : "fill-after border border-dashed border-spending/45",
-                      done && (sel === i ? "bg-[#c4b5fd]" : "bg-spending"),
+                      done && (sel === i ? "bg-spending" : "bg-spending"),
                       !done && sel === i && "bg-spending/25",
                     )}
                     style={{ height: `max(3px, ${Math.min(val / barTop, 1) * 100}%)`, "--i": i } as CSSProperties}
