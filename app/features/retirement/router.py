@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Request
 
 from app.dependencies import JsonBody, ServicesDep, run
 
@@ -34,3 +34,16 @@ async def update_person(svc: ServicesDep, person_id: int, body: JsonBody):
 @router.delete("/people/{person_id}")
 async def remove_person(svc: ServicesDep, person_id: int):
     return {"removed": await run(svc.retirement.remove_person, person_id)}
+
+
+@router.post("/people/{person_id}/statement")
+async def read_statement(svc: ServicesDep, person_id: int, request: Request):
+    """Read a super statement (the PDF as the body) for its balance, fees and investment options. Nothing is saved:
+    what's found comes back to be checked, then saved with PUT /people/{id}."""
+    from app.features.retirement import statements
+
+    raw = await request.body()
+    if not any(p["id"] == person_id for p in await run(svc.retirement.people)):
+        raise HTTPException(status_code=404, detail="That person's super has gone.")
+    text = await run(statements.read_text, raw)
+    return await run(statements.parse, text)
