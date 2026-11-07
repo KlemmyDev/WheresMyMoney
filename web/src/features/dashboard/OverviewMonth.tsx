@@ -12,7 +12,8 @@ import { Bar, BigNumber, Card, CardHead, ChoiceChip, Eyebrow, Stat } from "~/fea
 import { dayDate, money, parseDate, shortDate } from "~/features/common/format";
 import { Chip, I, type Glyph, type Tone } from "~/features/common/icons";
 import { transactionsQuery } from "~/features/common/queries";
-import type { Dashboard, SpendingMonth } from "~/features/common/types";
+import type { Dashboard, SpendingMonth, Transaction } from "~/features/common/types";
+import { TransactionSheet } from "~/features/spending/TransactionSheet";
 import { Pill, cn } from "~/features/common/ui";
 import type { Month } from "~/features/dashboard/DashboardPage";
 
@@ -490,6 +491,7 @@ const HOW: Record<string, [string, "teal" | "info" | "good" | "warn" | "mute"]> 
 /** The latest few transactions across the household, newest first. */
 export function RecentActivity() {
   const q = useQuery(transactionsQuery({ limit: 6 }));
+  const [open, setOpen] = useState<Transaction | null>(null);
   return (
     <Card aria-labelledby="act-h" className="md:col-span-6">
       <CardHead
@@ -505,10 +507,11 @@ export function RecentActivity() {
         {(q.data ?? []).map((t) => {
           const [how, tone] = t.merged ? (["Matched", "good"] as const) : (HOW[t.kind] ?? ["", "mute"]);
           return (
-            <Link
+            <button
               key={t.id}
-              to="/transactions"
-              className="chip-host press flex min-h-16 items-center gap-3 rounded-2xl px-1.5 text-ink no-underline hover:bg-tile-2"
+              type="button"
+              onClick={() => setOpen(t)}
+              className="chip-host press flex min-h-16 w-full cursor-pointer items-center gap-3 rounded-2xl border-0 bg-transparent px-1.5 text-left text-ink hover:bg-tile-2"
             >
               <Chip
                 g={t.amount > 0 ? I.pay : I.spending}
@@ -529,11 +532,12 @@ export function RecentActivity() {
                 </span>
                 {how && <Pill tone={tone}>{how}</Pill>}
               </span>
-            </Link>
+            </button>
           );
         })}
         {q.data && !q.data.length && <span className="px-1.5 py-2 text-[13px] text-ink-3">No transactions yet.</span>}
       </div>
+      <TransactionSheet tx={open} onClose={() => setOpen(null)} />
     </Card>
   );
 }
