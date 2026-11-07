@@ -11,6 +11,11 @@ Looking it over (`open`, then `analyse` for an account) works out, row by row:
   the end of that day;
 - each new row's category: a bill it matches (by amount and date), a learned merchant rule, a transfer matched to a
   rule by amount and date (uBank calls every transfer just "Transfer"), or a suggestion the household confirms.
+  uBank's longer export also says each row's payment type ("Internal Transfer") and uBank's own category, which
+  count as a transfer and as a suggestion when nothing else knows the merchant.
+
+uBank's longer export has no account number in its name: its rows name the account ("Pay Account"), and once it's
+been imported to one of the household's accounts, that name finds it next time.
 
 Importing (`commit`) writes all of that, remembers the categories it's told to, and notes how the rules it matched went
 (a top-up whose amount differed from what the rule called for, say).
@@ -46,6 +51,31 @@ TRANSFER_DAYS = 3  # a transfer this many days from a rule's run still matches i
 BILL_DAYS = 5
 DIFFERS = 100  # cents: a top-up more than $1 away from what the rule called for differed
 FORMAT_KEY = "csv_format:"
+NAME_KEY = "csv_account:"  # a bank's name for an account → the household's account it was imported to
+# uBank's own categories (in its longer export), as the household's starting ones, for a merchant nothing else knows.
+BANK_CATEGORIES = {
+    "groceries": "Groceries",
+    "eating & drinking out": "Eating out",
+    "food delivery & takeaway": "Eating out",
+    "alcohol": "Eating out",
+    "petrol": "Fuel",
+    "parking & vehicle expenses": "Fuel",
+    "entertainment": "Fun",
+    "hobbies, books & games": "Fun",
+    "holidays & travel": "Fun",
+    "children & family": "Kids",
+    "home renovations & maintenance": "Home",
+    "furniture & homewares": "Home",
+    "health & medical": "Health",
+    "beauty & grooming": "Health",
+    "utilities, phone & internet": "Bills",
+    "insurance": "Bills",
+    "subscriptions & apps": "Bills",
+    "salary": "Pay",
+    "general shopping": "Other",
+    "clothing & accessories": "Other",
+    "electronics": "Other",
+}
 
 
 @dataclass
@@ -61,8 +91,10 @@ class Pending:
         return self.statement.owed() if account["kind"] == "loan" else self.statement
 
 
-def _transfer(description: str) -> bool:
-    d = description.strip().upper()
+def _transfer(r: Row) -> bool:
+    if (r.kind or "").strip().lower() == "internal transfer":
+        return True
+    d = r.description.strip().upper()
     return d == "TRANSFER" or d.startswith(("TRANSFER TO", "TRANSFER FROM", "INTERNAL TRANSFER"))
 
 
@@ -100,8 +132,21 @@ class ImportService:
             now = time.time()
             self._pending = {k: p for k, p in self._pending.items() if now - p.created < KEEP}
             self._pending[token] = Pending(token, st, now, user_id)
-        account = self.accounts.by_last4(st.last4) if st.last4 else None
+        account = self.accounts.by_last4(st.last4) if st.last4 else self._by_name(st.account_names)
         return {"token": token, "account_id": account["id"] if account else None, **self._file(st)}
+
+    def _by_name(self, names: list[str]) -> dict[str, Any] | None:
+        """The household's account a bank's names for it point to: remembered from an earlier import, or the same
+        name."""
+        if not names:
+            return None
+        with self.db.reading() as conn:
+            for name in names:
+                row = conn.execute("SELECT value FROM kv WHERE key = ?", (NAME_KEY + name.lower(),)).fetchone()
+                if row and (account := self.accounts.get(int(row[0]))) is not None:
+                    return account
+        wanted = {n.lower() for n in names}
+        return next((a for a in self.accounts.rows() if str(a["name"]).strip().lower() in wanted), None)
 
     def _remembered(self, header: list[str]) -> Columns | None:
         with self.db.reading() as conn:
@@ -133,6 +178,8 @@ class ImportService:
             "balance_problems": st.balance_problems[:20],
             "reversed": st.reversed,
             "date_format": st.date_format,
+            "account_names": st.account_names,
+            "zero_rows": st.zero_rows,
             "sample": [r.__dict__ for r in st.rows[-5:]],
         }
 
@@ -345,7 +392,7 @@ class ImportService:
     ) -> None:
         day = dates.parse(r.date)
         window = (day - dt.timedelta(days=TRANSFER_DAYS), day + dt.timedelta(days=TRANSFER_DAYS))
-        if _transfer(r.description):
+        if _transfer(r):
             item.update(category_id=transfer_cat, why="transfer", sure=True)
             for rule in rule_list:
                 if not rule.runs(*window):
@@ -405,7 +452,7 @@ class ImportService:
         if learned_cat is not None:
             item.update(category_id=learned_cat, why="rule", sure=True)
             return
-        suggestion = merchants.suggest(m)
+        suggestion = merchants.suggest(m) or BANK_CATEGORIES.get((r.bank_category or "").lower())
         if suggestion and suggestion.lower() in by_name:
             item.update(suggest_id=by_name[suggestion.lower()], suggest=suggestion, why="suggest", sure=False)
             return
@@ -524,6 +571,10 @@ class ImportService:
             if analysis["loan"]:
                 loan_update = self._save_loan_changes(conn, account_id, analysis["loan"], import_id, now)
             conn.execute("UPDATE imports SET added = ?, merged = ? WHERE id = ?", (added, merged, import_id))
+            for name in st.account_names:
+                conn.execute(
+                    "INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)", (NAME_KEY + name.lower(), str(account_id))
+                )
         # How the rules it matched went.
         for x in analysis["rows"]:
             if x.get("rule_id") and x["status"] not in ("duplicate", "note"):

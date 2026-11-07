@@ -5,6 +5,12 @@ uBank's export is recognised as it is: a file per account per month named `<Nick
 header "Date","Description","Debit","Credit","Balance", dates like 02 Oct 2026, debits and credits in their own columns
 as $5,000.00, and a signed balance (+$3,000.00, -$12.50), oldest row first.
 
+uBank's longer export (a date range of one account, "Ubank transactions 07-11-2025 - 07-11-2026.csv") is recognised
+too: "Date and time" like 13:04 07-11-26, Debit and Credit, the account it came from and went to, the payment type,
+uBank's own category, a receipt number and a transaction ID, newest row first, with no balance. Its $0.00 rows (a card
+being checked) are left out. The account's names are read from the rows (money out shows its nickname, money in its
+product name), and the payment type and uBank's category come along to help sort each row.
+
 Another bank's file has its columns matched once (`Columns`), and that's remembered for files with the same header.
 
 The running balance is checked row by row: each row's balance should be the one before it plus the row's amount. It
@@ -22,8 +28,31 @@ from dataclasses import dataclass, field, replace
 MAX_BYTES = 5_000_000
 MAX_ROWS = 20_000
 NAME = re.compile(r"^(?P<nickname>.+?)-(?P<last4>\d{4})_(?P<year>\d{4})-(?P<month>\d{2})\.csv$", re.IGNORECASE)
-DATE_FORMATS = ("%d %b %Y", "%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%d %B %Y", "%d/%m/%y", "%d-%b-%Y", "%d %b %y")
+DATE_FORMATS = (
+    "%H:%M %d-%m-%y",
+    "%d %b %Y",
+    "%d/%m/%Y",
+    "%Y-%m-%d",
+    "%d-%m-%Y",
+    "%d %B %Y",
+    "%d/%m/%y",
+    "%d-%b-%Y",
+    "%d %b %y",
+)
 UBANK_HEADER = ["Date", "Description", "Debit", "Credit", "Balance"]
+UBANK_EXPORT_HEADER = [
+    "Date and time",
+    "Description",
+    "Debit",
+    "Credit",
+    "From account",
+    "To account",
+    "Payment type",
+    "Category",
+    "Receipt number",
+    "Transaction ID",
+    "Tags",
+]
 
 
 class StatementError(ValueError):
@@ -55,6 +84,9 @@ class Columns:
 
 
 UBANK = Columns(date=0, description=1, debit=2, credit=3, balance=4, bank="ubank")
+UBANK_EXPORT = Columns(date=0, description=1, debit=2, credit=3, bank="ubank-export")
+# The export's other columns, by position.
+FROM, TO, KIND, CATEGORY = 4, 5, 6, 7
 
 
 @dataclass(frozen=True)
@@ -64,6 +96,12 @@ class Row:
     description: str
     amount: int
     balance: int | None
+    kind: str | None = None  # the bank's payment type ("Visa", "Internal Transfer"), when its file says
+    bank_category: str | None = None  # the bank's own category for it ("Groceries"), when its file says
+
+
+# A row as it's read: date, description, amount, balance, payment type, the bank's category.
+Parsed = tuple[str, str, int, int | None, str | None, str | None]
 
 
 @dataclass
@@ -79,6 +117,8 @@ class Statement:
     balance_problems: list[int] = field(default_factory=list)  # rows whose balance doesn't follow
     reversed: bool = False
     date_format: str | None = None
+    account_names: list[str] = field(default_factory=list)  # what the bank calls the account, when its rows say
+    zero_rows: int = 0  # $0.00 rows left out
 
     @property
     def first_date(self) -> str | None:
@@ -175,8 +215,11 @@ def signature(header: list[str]) -> str:
 
 
 def recognise(header: list[str]) -> Columns | None:
-    if [h.strip() for h in header] == UBANK_HEADER:
+    names = [h.strip() for h in header]
+    if names == UBANK_HEADER:
         return UBANK
+    if names[: len(UBANK_EXPORT_HEADER) - 1] == UBANK_EXPORT_HEADER[:-1]:  # Tags may be left off
+        return UBANK_EXPORT
     return None
 
 
@@ -193,7 +236,12 @@ def parse(filename: str, raw: bytes, columns: Columns | None = None) -> Statemen
         i for i in (cols.date, cols.description, cols.debit, cols.credit, cols.amount, cols.balance) if i is not None
     )
     fmt = guess_format([r[cols.date] for r in body[:50] if len(r) > cols.date])
-    parsed: list[tuple[str, str, int, int | None]] = []
+    export = cols.bank == "ubank-export"
+    if export:
+        width = max(width, CATEGORY)
+    parsed: list[Parsed] = []
+    names: dict[str, int] = {}
+    zero = 0
     for n, r in enumerate(body, start=2):
         if len(r) <= width:
             raise StatementError(f"Row {n} has fewer columns than the header.")
@@ -208,11 +256,25 @@ def parse(filename: str, raw: bytes, columns: Columns | None = None) -> Statemen
             balance = cents(r[cols.balance]) if cols.balance is not None else None
         except ValueError as e:
             raise StatementError(f"Row {n}: {e}") from None
-        parsed.append((day, " ".join(r[cols.description].split()), amount, balance))
+        kind = category = None
+        if export:
+            if amount == 0:
+                zero += 1
+                continue
+            own = (r[FROM] if amount < 0 else r[TO]).strip()
+            if own:
+                names[own] = names.get(own, 0) + 1
+            kind = r[KIND].strip() or None
+            category = r[CATEGORY].strip() or None
+        parsed.append((day, " ".join(r[cols.description].split()), amount, balance, kind, category))
+    if not parsed:
+        raise StatementError("That statement has no transactions in it.")
     nickname, last4, month = read_name(filename)
     st = Statement(filename, header, cols, [], last4=last4, month=month, nickname=nickname, date_format=fmt)
+    st.account_names = sorted(names, key=lambda k: -names[k])
+    st.zero_rows = zero
     ordered, problems, flipped = _order(parsed)
-    st.rows = [Row(i, d, desc, a, b) for i, (d, desc, a, b) in enumerate(ordered)]
+    st.rows = [Row(i, d, desc, a, b, k, c) for i, (d, desc, a, b, k, c) in enumerate(ordered)]
     st.reversed = flipped
     if cols.balance is not None:
         st.balance_problems = problems
@@ -220,7 +282,7 @@ def parse(filename: str, raw: bytes, columns: Columns | None = None) -> Statemen
     return st
 
 
-def _follows(rows: list[tuple[str, str, int, int | None]]) -> list[int]:
+def _follows(rows: list[Parsed]) -> list[int]:
     """The rows (by index) whose balance isn't the previous balance plus their amount."""
     bad = []
     for i in range(1, len(rows)):
@@ -230,9 +292,7 @@ def _follows(rows: list[tuple[str, str, int, int | None]]) -> list[int]:
     return bad
 
 
-def _order(
-    rows: list[tuple[str, str, int, int | None]],
-) -> tuple[list[tuple[str, str, int, int | None]], list[int], bool]:
+def _order(rows: list[Parsed]) -> tuple[list[Parsed], list[int], bool]:
     """Oldest first, as uBank writes them; turned around when the dates or the balances say it's newest first."""
     forward = _follows(rows)
     backward_rows = list(reversed(rows))
