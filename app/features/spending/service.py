@@ -161,6 +161,51 @@ def learn(conn: sqlite3.Connection, merchant_text: str, category_id: int, descri
     return changed, pattern
 
 
+def _splits(conn: sqlite3.Connection, tx_ids: list[int]) -> dict[int, list[dict[str, Any]]]:
+    """The parts of split transactions, by transaction."""
+    out: dict[int, list[dict[str, Any]]] = {}
+    if not tx_ids:
+        return out
+    rows = conn.execute(
+        "SELECT s.transaction_id, s.category_id, c.name, s.amount FROM splits s LEFT JOIN categories c"
+        f" ON c.id = s.category_id WHERE s.transaction_id IN ({','.join('?' * len(tx_ids))}) ORDER BY s.sort, s.id",
+        tx_ids,
+    ).fetchall()
+    for tx_id, category_id, name, amount in rows:
+        out.setdefault(tx_id, []).append({"category_id": category_id, "category": name, "amount": amount})
+    return out
+
+
+def _save_splits(conn: sqlite3.Connection, tx_id: int, parts: Any) -> None:
+    """Split a transaction across categories: [{"category_id": 1, "amount": 12000}, ...], adding up to its amount.
+    An empty list puts it back in one category (its biggest part's)."""
+    amount = conn.execute("SELECT amount FROM transactions WHERE id = ?", (tx_id,)).fetchone()[0]
+    conn.execute("DELETE FROM splits WHERE transaction_id = ?", (tx_id,))
+    if not parts:
+        conn.execute("UPDATE transactions SET category_by = 'you' WHERE id = ? AND category_by = 'split'", (tx_id,))
+        return
+    try:
+        clean = [(int(p["category_id"]), int(p["amount"])) for p in parts]
+    except (KeyError, TypeError, ValueError):
+        raise ValueError("Each part needs a category and an amount.") from None
+    if len(clean) < 2:
+        raise ValueError("A split needs at least two parts.")
+    if any(a <= 0 for _, a in clean):
+        raise ValueError("Each part needs an amount.")
+    if sum(a for _, a in clean) != abs(amount):
+        raise ValueError(f"The parts need to add up to {abs(amount) / 100:,.2f}.")
+    known = {r[0] for r in conn.execute("SELECT id FROM categories")}
+    if any(c not in known for c, _ in clean):
+        raise ValueError("Choose a category for each part.")
+    for n, (category, part) in enumerate(clean):
+        conn.execute(
+            "INSERT INTO splits (transaction_id, category_id, amount, sort) VALUES (?, ?, ?, ?)",
+            (tx_id, category, part, n),
+        )
+    biggest = max(clean, key=lambda p: p[1])[0]
+    conn.execute("UPDATE transactions SET category_id = ?, category_by = 'split' WHERE id = ?", (biggest, tx_id))
+
+
 class SpendingService:
     def __init__(self, db: Database):
         self.db = db
@@ -292,8 +337,8 @@ class SpendingService:
     ) -> list[dict[str, Any]]:
         sql = (
             "SELECT t.id, t.account_id, t.date, t.amount, t.description, t.kind, t.category_id, c.name, c.kind, t.note,"
-            " t.rule_id, t.bill_id, t.user_id, u.display_name, u.username, t.merged, t.merchant, t.category_by"
-            " FROM transactions t"
+            " t.rule_id, t.bill_id, t.user_id, u.display_name, u.username, t.merged, t.merchant, t.category_by,"
+            " t.excluded FROM transactions t"
             " LEFT JOIN categories c ON c.id = t.category_id LEFT JOIN users u ON u.id = t.user_id WHERE 1 = 1"
         )
         args: list[Any] = []
@@ -316,6 +361,7 @@ class SpendingService:
         args.append(limit)
         with self.db.reading() as conn:
             rows = conn.execute(sql, args).fetchall()
+            parts = _splits(conn, [r[0] for r in rows if r[17] == "split"])
         return [
             {
                 "id": r[0],
@@ -337,6 +383,8 @@ class SpendingService:
                 # What choosing "always" would remember it by.
                 "remember_as": merchants.learn_pattern(r[16], None, None, r[4]) if r[16] else "",
                 "category_by": r[17],
+                "excluded": bool(r[18]),
+                "splits": parts.get(r[0], []),
             }
             for r in rows
         ]
@@ -351,6 +399,7 @@ class SpendingService:
             if "category_id" in body:
                 category = body["category_id"]
                 category = int(category) if category not in (None, "") else None
+                conn.execute("DELETE FROM splits WHERE transaction_id = ?", (tx_id,))
                 conn.execute(
                     "UPDATE transactions SET category_id = ?, category_by = ? WHERE id = ?",
                     (category, "you" if category is not None else None, tx_id),
@@ -361,6 +410,10 @@ class SpendingService:
                 conn.execute(
                     "UPDATE transactions SET note = ? WHERE id = ?", (str(body["note"] or "")[:MAX_NOTE], tx_id)
                 )
+            if "excluded" in body:
+                conn.execute("UPDATE transactions SET excluded = ? WHERE id = ?", (int(bool(body["excluded"])), tx_id))
+            if "splits" in body:
+                _save_splits(conn, tx_id, body["splits"])
             if "description" in body and row[1] in ("manual", "cash"):
                 text = " ".join(str(body["description"] or "").split())[:120]
                 if text:
@@ -490,31 +543,47 @@ class SpendingService:
         remaining = max(days - elapsed, 0)
         cats = self.categories()
         spending_ids = {c["id"] for c in cats if c["kind"] == "spending"}
-        rows: list[tuple[str, int, int | None, int | None, int | None]] = []
+        rows: list[tuple[int, str, int, int | None, int | None, int | None, str | None, int]] = []
+        parts: dict[int, list[dict[str, Any]]] = {}
         if accounts:
             with self.db.reading() as conn:
                 rows = conn.execute(
-                    f"SELECT date, amount, category_id, rule_id, user_id FROM transactions WHERE account_id IN"
-                    f" ({','.join('?' * len(accounts))}) AND date BETWEEN ? AND ? AND kind IN ('statement', 'manual',"
-                    " 'cash')",
+                    "SELECT id, date, amount, category_id, rule_id, user_id, category_by, excluded FROM transactions"
+                    f" WHERE account_id IN ({','.join('?' * len(accounts))}) AND date BETWEEN ? AND ?"
+                    " AND kind IN ('statement', 'manual', 'cash')",
                     [*accounts, start.isoformat(), end.isoformat()],
                 ).fetchall()
+                parts = _splits(conn, [r[0] for r in rows if r[6] == "split"])
         daily = [0] * days
         by_category: dict[int | None, int] = {}
         by_person: dict[int | None, int] = {}
         spent = 0
-        for day, amount, category, rule_id, user_id in rows:
-            if rule_id is not None or (category is not None and category not in spending_ids):
+        # Spent on someone's behalf (less what they've paid back): it's coming back, so it counts as still there.
+        owed_back = 0
+        for tx_id, day, amount, category, rule_id, user_id, _by, excluded in rows:
+            if excluded:
+                owed_back -= amount
                 continue
-            if category is None and amount > 0:
-                continue  # money in that isn't sorted yet isn't a refund we can be sure of
-            out = -amount
-            spent += out
-            i = (dates.parse(day) - start).days
-            if 0 <= i < days:
-                daily[i] += out
-            by_category[category] = by_category.get(category, 0) + out
-            by_person[user_id] = by_person.get(user_id, 0) + out
+            if rule_id is not None:
+                continue
+            pieces = (
+                [(p["category_id"], -p["amount"] if amount < 0 else p["amount"]) for p in parts[tx_id]]
+                if tx_id in parts
+                else [(category, amount)]
+            )
+            for cat, part in pieces:
+                if cat is not None and cat not in spending_ids:
+                    continue
+                if cat is None and part > 0:
+                    continue  # money in that isn't sorted yet isn't a refund we can be sure of
+                out = -part
+                spent += out
+                i = (dates.parse(day) - start).days
+                if 0 <= i < days:
+                    daily[i] += out
+                by_category[cat] = by_category.get(cat, 0) + out
+                by_person[user_id] = by_person.get(user_id, 0) + out
+        left += max(owed_back, 0)
         pace = elapsed / days
         budgets = [
             {
@@ -548,4 +617,5 @@ class SpendingService:
             "unsorted": unsorted,
             "unbudgeted": max(allowance - budgeted, 0),
             "by_person": [{"user_id": k, "spent": v} for k, v in by_person.items()],
+            "owed_back": max(owed_back, 0),
         }
