@@ -42,6 +42,10 @@ export type Goal = {
   saved: number;
   icon: string | null;
   by_date: string | null;
+  /** What to call its transfers in uBank so imports match them. */
+  ref: string;
+  /** Top-ups planned but not moved yet (not counted in saved). */
+  planned: { id: number; amount: number; date: string }[];
 };
 
 export type AccountsOverview = {

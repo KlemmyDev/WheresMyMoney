@@ -260,6 +260,16 @@ def _super_fees(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE funds ADD COLUMN fee_pct REAL")
 
 
+def _goal_moves(conn: sqlite3.Connection) -> None:
+    """goal_moves: money moved (or to be moved) into a goal. `status` planned (not moved yet: not counted), moved
+    (counted when the household said so) or matched (counted from a statement's transfer). `transaction_id` is the
+    statement row it was matched to, so a transfer is never counted twice."""
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS goal_moves (id INTEGER PRIMARY KEY, goal_id INTEGER NOT NULL, amount INTEGER NOT"
+        " NULL, date TEXT NOT NULL, status TEXT NOT NULL, transaction_id INTEGER UNIQUE, created_at INTEGER NOT NULL)"
+    )
+
+
 MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _baseline,
     _money,
@@ -272,4 +282,5 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _retirement,
     _assets,
     _super_fees,
+    _goal_moves,
 ]

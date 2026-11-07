@@ -14,6 +14,7 @@ Everything here blocks on SQLite, so call it through asyncio.to_thread from asyn
 from __future__ import annotations
 
 import datetime as dt
+import re
 import sqlite3
 import time
 from typing import Any
@@ -127,6 +128,17 @@ def _clean(body: dict[str, Any], kind: str) -> dict[str, Any]:
 
 
 GOAL_ICONS = ("plane", "car", "shield", "home", "kids", "play")
+
+
+def goal_ref(name: str) -> str:
+    """The description to give a goal's transfers so imports can match them: GOAL and the first ten letters and
+    numbers of its name (the app shows the same)."""
+    cut = re.sub(r"[^A-Z0-9 ]", "", name.upper())[:10].strip()
+    return f"GOAL {cut or 'NEW'}"
+
+
+def _plain(text: str) -> str:
+    return " ".join(re.sub(r"[^A-Z0-9]+", " ", text.upper()).split())
 
 
 class AccountsService:
@@ -321,6 +333,11 @@ class AccountsService:
             goals = conn.execute(
                 "SELECT id, account_id, name, target, saved, icon, by_date FROM goals ORDER BY sort, id"
             ).fetchall()
+            planned: dict[int, list[dict[str, Any]]] = {}
+            for move_id, goal_id, amount, day in conn.execute(
+                "SELECT id, goal_id, amount, date FROM goal_moves WHERE status = 'planned' ORDER BY date, id"
+            ):
+                planned.setdefault(goal_id, []).append({"id": move_id, "amount": amount, "date": day})
         offsetting = sum(a["balance"] for a in out if a["offsets_loan"])
         loan_balance = loan_row["balance"] if loan_row else 0
         for a in out:
@@ -339,6 +356,8 @@ class AccountsService:
                     "saved": g[4],
                     "icon": g[5],
                     "by_date": g[6],
+                    "ref": goal_ref(g[2]),
+                    "planned": planned.get(g[0], []),
                 }
                 for g in goals
             ],
@@ -515,12 +534,86 @@ class AccountsService:
                 )
         return next(g for g in self.overview()["goals"] if g["id"] == goal_id)
 
-    def top_up_goal(self, goal_id: int, amount: int) -> dict[str, Any]:
-        """Add to what a goal has saved (or take from it, with a negative amount; it won't go below nothing)."""
+    def top_up_goal(self, goal_id: int, amount: int, moved: bool = True) -> dict[str, Any]:
+        """Money into a goal: moved now (counted straight away) or planned (counted once it's moved, or once a
+        statement shows it). A negative amount takes money out (it won't go below nothing)."""
+        today = dates.today().isoformat()
         with self.db.writing() as conn:
-            if not conn.execute("UPDATE goals SET saved = MAX(saved + ?, 0) WHERE id = ?", (amount, goal_id)).rowcount:
+            if not conn.execute("SELECT 1 FROM goals WHERE id = ?", (goal_id,)).fetchone():
                 raise LookupError("That goal has gone.")
+            if moved:
+                conn.execute("UPDATE goals SET saved = MAX(saved + ?, 0) WHERE id = ?", (amount, goal_id))
+            if amount > 0:
+                conn.execute(
+                    "INSERT INTO goal_moves (goal_id, amount, date, status, created_at) VALUES (?, ?, ?, ?, ?)",
+                    (goal_id, amount, today, "moved" if moved else "planned", int(time.time())),
+                )
         return next(g for g in self.overview()["goals"] if g["id"] == goal_id)
+
+    def settle_move(self, move_id: int, moved: bool) -> dict[str, Any]:
+        """A planned move: done (counted now) or not happening (forgotten)."""
+        with self.db.writing() as conn:
+            row = conn.execute(
+                "SELECT goal_id, amount FROM goal_moves WHERE id = ? AND status = 'planned'", (move_id,)
+            ).fetchone()
+            if row is None:
+                raise LookupError("That planned top-up has gone.")
+            if moved:
+                conn.execute(
+                    "UPDATE goal_moves SET status = 'moved', date = ? WHERE id = ?",
+                    (dates.today().isoformat(), move_id),
+                )
+                conn.execute("UPDATE goals SET saved = saved + ? WHERE id = ?", (row[1], row[0]))
+            else:
+                conn.execute("DELETE FROM goal_moves WHERE id = ?", (move_id,))
+        return next(g for g in self.overview()["goals"] if g["id"] == row[0])
+
+    def match_goal_transfers(self) -> int:
+        """Statement rows into a goal's account whose description names the goal (GOAL KITCHEN): each counts toward
+        it once. One the household already said it moved (same amount, within three weeks) is linked rather than
+        counted again; a planned one is counted now. Returns how many were matched."""
+        matched = 0
+        with self.db.writing() as conn:
+            goals = conn.execute("SELECT id, account_id, name FROM goals").fetchall()
+            if not goals:
+                return 0
+            since = (dates.today() - dt.timedelta(days=400)).isoformat()
+            rows = conn.execute(
+                "SELECT id, account_id, date, amount, description FROM transactions WHERE kind = 'statement'"
+                " AND amount > 0 AND date >= ? AND upper(description) LIKE '%GOAL%'"
+                " AND id NOT IN (SELECT transaction_id FROM goal_moves WHERE transaction_id IS NOT NULL)"
+                " ORDER BY date, id",
+                (since,),
+            ).fetchall()
+            for tx_id, account_id, day, amount, description in rows:
+                said = _plain(description)
+                goal = next(
+                    (g for g in goals if g[1] == account_id and f" {_plain(goal_ref(g[2]))} " in f" {said} "), None
+                )
+                if goal is None:
+                    continue
+                lo = (dates.parse(day) - dt.timedelta(days=21)).isoformat()
+                hi = (dates.parse(day) + dt.timedelta(days=21)).isoformat()
+                move = conn.execute(
+                    "SELECT id, status FROM goal_moves WHERE goal_id = ? AND amount = ? AND transaction_id IS NULL"
+                    " AND status IN ('moved', 'planned') AND date BETWEEN ? AND ? ORDER BY status = 'moved' DESC,"
+                    " date LIMIT 1",
+                    (goal[0], amount, lo, hi),
+                ).fetchone()
+                if move is None:
+                    conn.execute(
+                        "INSERT INTO goal_moves (goal_id, amount, date, status, transaction_id, created_at)"
+                        " VALUES (?, ?, ?, 'matched', ?, ?)",
+                        (goal[0], amount, day, tx_id, int(time.time())),
+                    )
+                    conn.execute("UPDATE goals SET saved = saved + ? WHERE id = ?", (amount, goal[0]))
+                else:
+                    conn.execute("UPDATE goal_moves SET transaction_id = ? WHERE id = ?", (tx_id, move[0]))
+                    if move[1] == "planned":
+                        conn.execute("UPDATE goal_moves SET status = 'moved', date = ? WHERE id = ?", (day, move[0]))
+                        conn.execute("UPDATE goals SET saved = saved + ? WHERE id = ?", (amount, goal[0]))
+                matched += 1
+        return matched
 
     def remove_goal(self, goal_id: int) -> bool:
         with self.db.writing() as conn:
