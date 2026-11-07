@@ -60,26 +60,48 @@ export function AppShell({ children }: { children: ReactNode }) {
     <ActionsContext.Provider value={{ checkin: () => setCheckin(true), addSpending: () => setAdding(true) }}>
       <div className="min-h-screen pb-[84px] sm:pb-0">
         <header className="sticky top-0 z-30 border-b border-line bg-tile">
-          <div className="mx-auto flex min-h-[60px] max-w-[1360px] flex-wrap items-center gap-6 px-4 sm:px-7">
-            <Link to="/" className="flex items-center gap-2.5 text-ink no-underline">
-              <Logo />
+          <div className="mx-auto flex h-14 max-w-[1360px] items-center gap-5 px-4 sm:h-[60px] sm:px-7">
+            <Link
+              to="/"
+              className="flex flex-none items-center text-ink no-underline"
+              aria-label="WheresMyMoney, dashboard"
+            >
+              <Logo compact />
             </Link>
             <TabNav active={active} />
-            <div className="ml-auto flex items-center gap-3">
-              <span className="mono hidden text-xs text-ink-3 lg:inline">
+            <div className="ml-auto flex flex-none items-center gap-2">
+              <span className="mono mr-2 hidden text-[11px] tracking-[0.04em] whitespace-nowrap text-ink-3 xl:inline">
                 {dayDate(iso).toUpperCase()} · {time}
               </span>
               <Link
                 to="/settings"
-                className="press hidden rounded-lg px-2 py-1.5 text-[13px] text-ink-3 no-underline hover:text-ink sm:inline"
+                title="Settings"
                 aria-label="Settings"
+                className={cn(
+                  "press hidden size-10 items-center justify-center rounded-lg no-underline hover:bg-raised hover:text-ink sm:inline-flex",
+                  path.startsWith("/settings") ? "text-teal" : "text-ink-3",
+                )}
               >
-                Settings
+                <svg
+                  viewBox="0 0 24 24"
+                  width="18"
+                  height="18"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <path d="M4 7h10M18 7h2M4 17h4M12 17h8" />
+                  <circle cx="16" cy="7" r="2" />
+                  <circle cx="10" cy="17" r="2" />
+                </svg>
               </Link>
-              <Button className="hidden sm:inline-flex" onClick={() => navigate({ to: "/import" })}>
+              <Button className="hidden whitespace-nowrap sm:inline-flex" onClick={() => navigate({ to: "/import" })}>
                 Import CSV
               </Button>
-              <Button primary className="hidden sm:inline-flex" onClick={() => setCheckin(true)}>
+              <Button primary className="hidden whitespace-nowrap sm:inline-flex" onClick={() => setCheckin(true)}>
                 Check in
               </Button>
               <button
@@ -153,43 +175,167 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 }
 
-/** The tabs, with an underline that slides to the one that's on. */
+const TAB_CLASS =
+  "inline-flex h-full items-center px-2.5 text-[13.5px] font-medium tracking-[-0.005em] whitespace-nowrap no-underline transition-[color] duration-150";
+
+/**
+ * The tabs, with an underline that slides to the one that's on. They stay on one line: the tabs that don't fit go,
+ * last first, into a "More" menu at the end (which takes the underline when the page you're on is in it).
+ */
 function TabNav({ active }: { active: string | null }) {
   const nav = useRef<HTMLElement>(null);
+  const ruler = useRef<HTMLDivElement>(null);
+  const [shown, setShown] = useState<number>(TABS.length);
+  const [open, setOpen] = useState(false);
   const [bar, setBar] = useState<{ left: number; width: number } | null>(null);
+
+  // How many tabs fit, from the widths of an invisible copy of the row (so a hidden tab can still be measured). The
+  // ruler holds each tab, then the More button with each label it can show: "More", or the page you're on when it's
+  // one of the hidden ones, so a long name ("Investments") still has room.
+  useLayoutEffect(() => {
+    const el = nav.current;
+    const r = ruler.current;
+    if (!el || !r) return;
+    const fit = () => {
+      const widths = [...r.children].map((c) => (c as HTMLElement).offsetWidth);
+      const tabs = widths.slice(0, TABS.length);
+      const mores = widths.slice(TABS.length);
+      const at = TABS.findIndex((t) => t.to === active);
+      const room = el.clientWidth;
+      if (tabs.reduce((a, b) => a + b, 0) <= room) return setShown(TABS.length);
+      let n = TABS.length - 1;
+      const needs = (k: number) =>
+        tabs.slice(0, k).reduce((a, b) => a + b, 0) + Math.max(mores[0], at >= k ? mores[at + 1] : 0);
+      while (n > 0 && needs(n) > room) n--;
+      setShown(n);
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    document.fonts?.ready.then(fit);
+    return () => ro.disconnect();
+  }, [active]);
+
+  const hidden = TABS.slice(shown);
+  const inMore = hidden.some((t) => t.to === active);
+
   useLayoutEffect(() => {
     const measure = () => {
-      const el = nav.current?.querySelector<HTMLElement>(`[data-to="${active}"]`);
-      setBar(el ? { left: el.offsetLeft + 12, width: el.offsetWidth - 24 } : null);
+      const el = nav.current?.querySelector<HTMLElement>(`[data-to="${inMore ? "more" : active}"]`);
+      const box = nav.current?.getBoundingClientRect();
+      const r = el?.getBoundingClientRect();
+      setBar(box && r ? { left: r.left - box.left + 10, width: r.width - 20 } : null);
     };
     measure();
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, [active]);
+    document.fonts?.ready.then(measure);
+  }, [active, inMore, shown]);
+
+  // The menu closes on a click elsewhere, Escape, or going to a page.
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: Event) => {
+      if (e instanceof KeyboardEvent ? e.key === "Escape" : !nav.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", close);
+    return () => {
+      document.removeEventListener("pointerdown", close);
+      document.removeEventListener("keydown", close);
+    };
+  }, [open]);
   return (
-    <nav ref={nav} aria-label="Main" className="relative hidden flex-wrap self-stretch md:flex md:items-end">
-      {TABS.map((t) => (
+    <nav ref={nav} aria-label="Main" className="relative hidden h-full min-w-0 flex-1 sm:flex">
+      <div ref={ruler} aria-hidden className="pointer-events-none invisible absolute flex h-0 overflow-hidden">
+        {TABS.map((t) => (
+          <span key={t.to} className={TAB_CLASS}>
+            {t.label}
+          </span>
+        ))}
+        {["More", ...TABS.map((t) => t.label)].map((label) => (
+          <span key={label} className={cn(TAB_CLASS, "gap-1")}>
+            {label} <Chevron />
+          </span>
+        ))}
+      </div>
+      {TABS.slice(0, shown).map((t) => (
         <Link
           key={t.to}
           to={t.to}
           data-to={t.to}
           aria-current={active === t.to ? "page" : undefined}
-          className={cn(
-            "inline-flex min-h-[60px] items-center px-3.5 font-medium no-underline transition-colors duration-150",
-            active === t.to ? "text-ink" : "text-ink-3 hover:text-ink-2",
-          )}
+          className={cn(TAB_CLASS, active === t.to ? "text-ink" : "text-ink-3 hover:text-ink-2")}
         >
           {t.label}
         </Link>
       ))}
+      {hidden.length > 0 && (
+        <div className="relative h-full">
+          <button
+            type="button"
+            data-to="more"
+            aria-haspopup="menu"
+            aria-expanded={open}
+            onClick={() => setOpen((o) => !o)}
+            className={cn(
+              TAB_CLASS,
+              "cursor-pointer gap-1 border-0 bg-transparent",
+              inMore || open ? "text-ink" : "text-ink-3 hover:text-ink-2",
+            )}
+          >
+            {inMore ? hidden.find((t) => t.to === active)?.label : "More"}
+            <Chevron open={open} />
+          </button>
+          {open && (
+            <div
+              role="menu"
+              className="absolute top-[calc(100%-6px)] left-0 z-40 flex min-w-44 animate-fade flex-col rounded-[10px] border border-line bg-tile p-1 shadow-[0_12px_32px_rgb(0_0_0/0.45)]"
+            >
+              {hidden.map((t) => (
+                <Link
+                  key={t.to}
+                  to={t.to}
+                  role="menuitem"
+                  aria-current={active === t.to ? "page" : undefined}
+                  onClick={() => setOpen(false)}
+                  className={cn(
+                    "press rounded-md px-3 py-2 text-[13.5px] font-medium no-underline hover:bg-raised",
+                    active === t.to ? "text-teal" : "text-ink-2 hover:text-ink",
+                  )}
+                >
+                  {t.label}
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       {bar && (
         <span
           aria-hidden
-          className="absolute bottom-0 h-0.5 bg-teal transition-[left,width] duration-[240ms] ease-[var(--ease-move)]"
+          className="absolute bottom-0 h-0.5 rounded-full bg-teal transition-[left,width] duration-[240ms] ease-[var(--ease-move)]"
           style={{ left: bar.left, width: bar.width }}
         />
       )}
     </nav>
+  );
+}
+
+function Chevron({ open = false }: { open?: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className={cn("transition-transform duration-150", open && "rotate-180")}
+    >
+      <path d="M6 9l6 6 6-6" />
+    </svg>
   );
 }
 

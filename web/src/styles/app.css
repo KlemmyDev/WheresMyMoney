@@ -24,6 +24,7 @@
   --breakpoint-sm: 640px;
   --breakpoint-md: 900px;
   --breakpoint-lg: 1180px;
+  --breakpoint-xl: 1400px;
 
   --color-page: #0d1117;
   --color-tile: #151b23;
@@ -100,15 +101,36 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/*
+ * Display sizes. Plex Mono's fixed-width advance reads loose once a figure is 20px and up, so big figures are pulled in;
+ * big sans headings get a lighter touch. Matched on the size classes the pages use (text-xl and up, and the arbitrary
+ * text-[20px] to text-[49px]) so no page has to opt in.
+ */
+:is(.mono, .num):is(
+  .text-xl,
+  .text-2xl,
+  .text-3xl,
+  .text-4xl,
+  [class*="text-[2"],
+  [class*="text-[3"],
+  [class*="text-[4"]
+) {
+  letter-spacing: -0.03em;
+}
+:is(h1, h2, h3):is([class*="text-[2"], [class*="text-[3"]) {
+  letter-spacing: -0.015em;
+}
+
 /* A tile's title: small capitals in the faintest ink. */
 .tt {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 600;
-  letter-spacing: 0.08em;
+  line-height: 16px;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
   color: var(--color-ink-3);
 }
