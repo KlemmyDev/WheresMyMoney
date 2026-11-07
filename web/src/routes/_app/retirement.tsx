@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { SoonPage } from "~/features/soon/SoonPage";
+import { RetirementPage } from "~/features/retirement/RetirementPage";
 
 export const Route = createFileRoute("/_app/retirement")({
-  component: () => <SoonPage page="retirement" />,
+  head: () => ({ meta: [{ title: "Retirement · WheresMyMoney" }] }),
+  component: RetirementPage,
 });
