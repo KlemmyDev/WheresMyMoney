@@ -242,3 +242,38 @@ export const investmentHistoryQuery = (range: string) =>
     queryFn: ({ signal }) =>
       apiGet<{ date: string; value: number; cost: number }[]>("investments/history", { range }, { signal }),
   });
+
+export type SuperAccount = {
+  id: number;
+  person: string;
+  born: number;
+  age: number;
+  fund: string;
+  balance: number;
+  as_of: string | null;
+  salary: number;
+  rate: number;
+  opens: number;
+};
+
+export type RetirementSettings = {
+  retire_age: number;
+  spending: number;
+  extra: number;
+  count_etfs: boolean;
+  growth: number;
+  plan_to: number;
+};
+
+export type RetirementData = {
+  people: SuperAccount[];
+  settings: RetirementSettings;
+  spending_now: number;
+  preservation: number;
+  year: number;
+};
+
+export const retirementQuery = queryOptions({
+  queryKey: ["retirement"],
+  queryFn: ({ signal }) => apiGet<RetirementData>("retirement", undefined, { signal }),
+});

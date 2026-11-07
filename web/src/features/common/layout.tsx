@@ -55,7 +55,7 @@ export const SECTIONS: readonly Section[] = [
     g: I.invest,
     pages: [
       { to: "/investments", label: "Investments", sub: "ETFs and shares", g: I.invest, tone: "invest" },
-      { to: "/retirement", label: "Retirement", sub: "When you could stop", g: I.retire, tone: "savings", soon: true },
+      { to: "/retirement", label: "Retirement", sub: "When you could stop", g: I.retire, tone: "savings" },
     ],
   },
   {

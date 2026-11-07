@@ -16,6 +16,7 @@ export function ScrubChart({
   marks = [],
   floor,
   axis,
+  axisAt,
 }: {
   lines: Line[];
   /** What a screen reader calls it. */
@@ -29,6 +30,8 @@ export function ScrubChart({
   floor?: number;
   /** Labels along the bottom, at these points. */
   axis?: number[];
+  /** A shorter label for the bottom (defaults to `at`). */
+  axisAt?: (i: number) => string;
 }) {
   const id = useId();
   const [pt, setPt] = useState<number | null>(null);
@@ -187,7 +190,7 @@ export function ScrubChart({
                 transform: k === 0 ? "none" : k === axis.length - 1 ? "translateX(-100%)" : "translateX(-50%)",
               }}
             >
-              {at(i)}
+              {(axisAt ?? at)(i)}
             </span>
           ))}
         </div>

@@ -25,6 +25,7 @@ from app.features.investments.service import InvestmentsService
 from app.features.keys.service import ApiKeyService
 from app.features.notifications.rules import Facts
 from app.features.notifications.service import Notifier
+from app.features.retirement.service import RetirementService
 from app.features.rules.service import RulesService
 from app.features.settings.store import SettingsStore
 from app.features.spending.service import SpendingService
@@ -46,6 +47,7 @@ class Services:
     imports: ImportService
     dashboard: DashboardService
     investments: InvestmentsService
+    retirement: RetirementService
     notifications: Notifier
     updates: UpdateService
     backups: BackupService
@@ -94,6 +96,7 @@ def build_services(config: Config) -> Services:
         imports=ImportService(db, accounts, rules, bills),
         dashboard=dashboard,
         investments=InvestmentsService(db),
+        retirement=RetirementService(db),
         notifications=Notifier(db, facts),
         updates=UpdateService(settings, Path(config.db_path).parent / "update"),
         backups=BackupService(config.db_path),

@@ -221,6 +221,16 @@ def _investments(conn: sqlite3.Connection) -> None:
     )
 
 
+def _retirement(conn: sqlite3.Connection) -> None:
+    """super_accounts: each person's super, for the retirement estimate: `born` (year), the `fund`, its `balance`
+    in cents as of `as_of`, their `salary` (cents a year) and the employer's `rate` (0.12 is 12%)."""
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS super_accounts (id INTEGER PRIMARY KEY, person TEXT NOT NULL, born INTEGER NOT NULL,"
+        " fund TEXT NOT NULL DEFAULT '', balance INTEGER NOT NULL DEFAULT 0, as_of TEXT, salary INTEGER NOT NULL"
+        " DEFAULT 0, rate REAL NOT NULL DEFAULT 0.12, sort INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)"
+    )
+
+
 MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _baseline,
     _money,
@@ -230,4 +240,5 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _goal_details,
     _splits_and_paid_back,
     _investments,
+    _retirement,
 ]

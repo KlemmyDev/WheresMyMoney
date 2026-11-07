@@ -246,6 +246,17 @@ def seed(db: Database, today: dt.date | None = None) -> bool:
             rough = round(figure, -3)
             ledger.add_known(conn, acct, last_pay.isoformat(), rough, "checkin", False, now - 3600, checkin_id)
         _investments(conn, today, rng, now)
+        for n, (person, age, fund, balance, salary) in enumerate(
+            (
+                ("Alex", 38, "AustralianSuper · Balanced", 11260000, 12000000),
+                ("Sam", 36, "Hostplus · Balanced", 7380000, 8500000),
+            )
+        ):
+            conn.execute(
+                "INSERT INTO super_accounts (person, born, fund, balance, as_of, salary, rate, sort, created_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, 0.12, ?, ?)",
+                (person, today.year - age, fund, balance, dates.add_months(today, -1).isoformat(), salary, n, now),
+            )
         conn.execute("INSERT OR REPLACE INTO kv (key, value) VALUES ('setting:setup_done', 'true')")
         conn.execute("INSERT OR REPLACE INTO kv (key, value) VALUES ('setting:household', '\"Demo household\"')")
     return True
