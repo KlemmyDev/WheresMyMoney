@@ -119,14 +119,20 @@ async def remove_goal(svc: ServicesDep, goal_id: int):
 
 @router.post("/goals/{goal_id}/top_up")
 async def top_up_goal(svc: ServicesDep, goal_id: int, body: JsonBody):
-    """Add to what a goal has saved: {"amount": 10000}."""
+    """Add to what a goal has saved: {"amount": 10000}; with "moved": false it's planned, counted once moved."""
     try:
         amount = int(body.get("amount"))  # type: ignore[arg-type]
     except (TypeError, ValueError):
         from fastapi import HTTPException
 
         raise HTTPException(status_code=422, detail="Enter how much.") from None
-    return await run(svc.accounts.top_up_goal, goal_id, amount)
+    return await run(svc.accounts.top_up_goal, goal_id, amount, body.get("moved", True) is not False)
+
+
+@router.post("/goals/moves/{move_id}")
+async def settle_move(svc: ServicesDep, move_id: int, body: JsonBody):
+    """A planned top-up: {"moved": true} once it's moved, {"moved": false} if it isn't happening."""
+    return await run(svc.accounts.settle_move, move_id, bool(body.get("moved")))
 
 
 @router.post("/loan/rate")

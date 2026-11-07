@@ -53,4 +53,7 @@ async def commit(svc: ServicesDep, token: str, body: JsonBody):
         account_id = int(body.get("account_id"))  # type: ignore[arg-type]
     except (TypeError, ValueError):
         raise HTTPException(status_code=422, detail="Choose which account the statement is from.") from None
-    return await run(svc.imports.commit, token, account_id, body)
+    result = await run(svc.imports.commit, token, account_id, body)
+    # Transfers that name a goal (GOAL KITCHEN) count toward it.
+    matched = await run(svc.accounts.match_goal_transfers)
+    return {**result, "goals_matched": matched} if isinstance(result, dict) else result

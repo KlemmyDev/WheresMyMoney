@@ -429,6 +429,11 @@ export function GoalsCard({ d }: { d: Dashboard }) {
                   <span className="block text-[13px] text-ink-3">
                     {money(g.saved)} of {money(g.target)}
                   </span>
+                  {g.planned.length > 0 && (
+                    <span className="block text-[12px] text-teal">
+                      +{money(g.planned.reduce((t, m) => t + m.amount, 0))} planned
+                    </span>
+                  )}
                 </span>
               </button>
             );

@@ -8,7 +8,7 @@ import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { apiSend, errorMessage } from "~/features/common/api";
 import { ChoiceChip, EmptyState, Ring, Sheet, useSheetTop, type Role } from "~/features/common/ds";
-import { money, monthYear, parseMoney } from "~/features/common/format";
+import { dayDate, money, monthYear, parseMoney } from "~/features/common/format";
 import { Chip, I, type Glyph, type Tone } from "~/features/common/icons";
 import { accountsQuery, loanQuery, refresh, rulesQuery } from "~/features/common/queries";
 import type { Account, Every, Goal, Rule } from "~/features/common/types";
@@ -377,7 +377,7 @@ function TopUp({ goal, index, onClose }: { goal: Goal; index: number; onClose: (
   const pct = (v: number) => (goal.target ? Math.min(100, (v / goal.target) * 100) : 0);
   const nowP = pct(goal.saved);
   const newP = pct(goal.saved + amt);
-  const ref = goalRef(goal.name);
+  const ref = goal.ref || goalRef(goal.name);
   // How soon it's reached: at the pace its date asks for, plus this every payday if it repeats.
   const left = Math.max(0, goal.target - goal.saved);
   const due = goal.by_date ? monthsUntil(goal.by_date) : null;
@@ -389,7 +389,7 @@ function TopUp({ goal, index, onClose }: { goal: Goal; index: number; onClose: (
 
   const save = useMutation({
     mutationFn: async (moved: boolean) => {
-      if (moved) await apiSend("POST", `goals/${goal.id}/top_up`, { amount: amt });
+      await apiSend("POST", `goals/${goal.id}/top_up`, { amount: amt, moved });
       if (every && from && savings)
         await apiSend("POST", "rules", {
           kind: "transfer",
@@ -444,7 +444,7 @@ function TopUp({ goal, index, onClose }: { goal: Goal; index: number; onClose: (
         </h3>
         <p className="m-0 max-w-[400px] text-[14px] text-ink-2">
           {later
-            ? "Nothing's counted yet. Come back and top it up once you've moved it."
+            ? `It waits as planned, not counted yet. When the transfer shows in an imported statement as ${ref}, it's counted; or tap the goal and choose I've moved it.`
             : `${goal.name} is now ${Math.round(result)}% of the way${resultAfter != null ? `, reached about ${monthYear(firstOfMonthIn(resultAfter))}` : ""}.`}
           {every && " A rule for it each payday is in Rules."}
         </p>
@@ -522,6 +522,7 @@ function TopUp({ goal, index, onClose }: { goal: Goal; index: number; onClose: (
   return (
     <div ref={top} className="flex flex-col gap-5 pb-2">
       {steps}
+      {goal.planned.length > 0 && <Planned goal={goal} />}
       <div className="flex items-center gap-4">
         <Ring
           value={nowP}
@@ -630,6 +631,36 @@ function TopUp({ goal, index, onClose }: { goal: Goal; index: number; onClose: (
           Next: move it in uBank
         </Button>
       </div>
+    </div>
+  );
+}
+
+/** Top-ups planned for a goal but not moved yet: mark one moved, or drop it. */
+function Planned({ goal }: { goal: Goal }) {
+  const qc = useQueryClient();
+  const settle = useMutation({
+    mutationFn: ({ id, moved }: { id: number; moved: boolean }) => apiSend("POST", `goals/moves/${id}`, { moved }),
+    onSuccess: () => refresh(qc),
+  });
+  return (
+    <div className="flex flex-col gap-2 rounded-2xl border border-line bg-tile-2 p-3">
+      <div className="text-[13px] font-semibold">Planned, not moved yet</div>
+      {goal.planned.map((m) => (
+        <div key={m.id} className="flex flex-wrap items-center gap-2">
+          <span className="min-w-0 flex-1 text-[14px]">
+            <span className="num">{money(m.amount)}</span>{" "}
+            <span className="text-[12px] text-ink-3">since {dayDate(m.date)}</span>
+          </span>
+          <Button small onClick={() => settle.mutate({ id: m.id, moved: false })} disabled={settle.isPending}>
+            Not happening
+          </Button>
+          <Button small primary onClick={() => settle.mutate({ id: m.id, moved: true })} disabled={settle.isPending}>
+            I've moved it
+          </Button>
+        </div>
+      ))}
+      <p className="m-0 text-[12px] text-ink-3">An imported transfer described as {goal.ref} counts it too.</p>
+      {settle.isError && <ErrorText>{errorMessage(settle.error)}</ErrorText>}
     </div>
   );
 }
