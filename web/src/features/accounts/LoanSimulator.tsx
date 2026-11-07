@@ -10,7 +10,7 @@ import { Pill, Segmented } from "~/features/common/ui";
 
 type Run = { months: number; interest: number; loan: number[]; off: number[]; end: number };
 
-function simulate(balance: number, offset: number, rateBp: number, pay: number, grow: number): Run {
+export function simulate(balance: number, offset: number, rateBp: number, pay: number, grow: number): Run {
   const r = rateBp / 10000 / 12;
   let B = balance;
   let O = offset;

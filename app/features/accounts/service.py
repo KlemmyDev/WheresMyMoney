@@ -126,6 +126,9 @@ def _clean(body: dict[str, Any], kind: str) -> dict[str, Any]:
     return out
 
 
+GOAL_ICONS = ("plane", "car", "shield", "home", "kids", "play")
+
+
 class AccountsService:
     def __init__(self, db: Database, bills: BillsService):
         self.db = db
@@ -315,7 +318,9 @@ class AccountsService:
                     loan_row = item
                     continue
                 out.append(item)
-            goals = conn.execute("SELECT id, account_id, name, target, saved FROM goals ORDER BY sort, id").fetchall()
+            goals = conn.execute(
+                "SELECT id, account_id, name, target, saved, icon, by_date FROM goals ORDER BY sort, id"
+            ).fetchall()
         offsetting = sum(a["balance"] for a in out if a["offsets_loan"])
         loan_balance = loan_row["balance"] if loan_row else 0
         for a in out:
@@ -325,7 +330,18 @@ class AccountsService:
             "loan": loan_row,
             "offsetting": offsetting,
             "total": sum(a["balance"] for a in out),
-            "goals": [{"id": g[0], "account_id": g[1], "name": g[2], "target": g[3], "saved": g[4]} for g in goals],
+            "goals": [
+                {
+                    "id": g[0],
+                    "account_id": g[1],
+                    "name": g[2],
+                    "target": g[3],
+                    "saved": g[4],
+                    "icon": g[5],
+                    "by_date": g[6],
+                }
+                for g in goals
+            ],
         }
 
     def _target(
@@ -455,27 +471,54 @@ class AccountsService:
     # -- savings goals --------------------------------------------------------------------
 
     def save_goal(self, body: dict[str, Any], goal_id: int | None = None) -> dict[str, Any]:
-        name = " ".join(str(body.get("name") or "").split())[:40]
-        if not name:
-            raise ValueError("Give the goal a name, like Japan trip.")
-        target = money(body, "target")
-        if not target or target <= 0:
-            raise ValueError("Enter how much the goal needs.")
-        saved = money(body, "saved") or 0
-        account_id = body.get("account_id")
+        """Add a goal, or change one (what's left out of `body` stays as it was)."""
         with self.db.writing() as conn:
+            was: dict[str, Any] = {}
+            if goal_id is not None:
+                row = conn.execute(
+                    "SELECT name, target, saved, icon, by_date FROM goals WHERE id = ?", (goal_id,)
+                ).fetchone()
+                if row is None:
+                    raise LookupError("That goal has gone.")
+                was = dict(zip(("name", "target", "saved", "icon", "by_date"), row, strict=True))
+            body = {**was, **body}
+            name = " ".join(str(body.get("name") or "").split())[:40]
+            if not name:
+                raise ValueError("Give the goal a name, like Japan trip.")
+            target = money(body, "target")
+            if not target or target <= 0:
+                raise ValueError("Enter how much the goal needs.")
+            saved = max(money(body, "saved") or 0, 0)
+            icon = body.get("icon") or None
+            if icon is not None and icon not in GOAL_ICONS:
+                raise ValueError("Choose one of the goal icons.")
+            by_date = body.get("by_date") or None
+            if by_date is not None:
+                try:
+                    by_date = dates.parse(str(by_date)).isoformat()
+                except ValueError:
+                    raise ValueError("Choose when the goal should be reached by.") from None
             if goal_id is None:
+                account_id = body.get("account_id")
                 if account_id in (None, ""):
                     raise ValueError("Choose the savings account the goal is in.")
                 cur = conn.execute(
-                    "INSERT INTO goals (account_id, name, target, saved, sort) VALUES (?, ?, ?, ?,"
+                    "INSERT INTO goals (account_id, name, target, saved, icon, by_date, sort) VALUES (?, ?, ?, ?, ?, ?,"
                     " (SELECT COALESCE(MAX(sort), 0) + 1 FROM goals))",
-                    (int(account_id), name, target, saved),
+                    (int(account_id), name, target, saved, icon, by_date),
                 )
                 goal_id = int(cur.lastrowid or 0)
-            elif not conn.execute(
-                "UPDATE goals SET name = ?, target = ?, saved = ? WHERE id = ?", (name, target, saved, goal_id)
-            ).rowcount:
+            else:
+                conn.execute(
+                    "UPDATE goals SET name = ?, target = ?, saved = ?, icon = ?, by_date = ? WHERE id = ?",
+                    (name, target, saved, icon, by_date, goal_id),
+                )
+        return next(g for g in self.overview()["goals"] if g["id"] == goal_id)
+
+    def top_up_goal(self, goal_id: int, amount: int) -> dict[str, Any]:
+        """Add to what a goal has saved (or take from it, with a negative amount; it won't go below nothing)."""
+        with self.db.writing() as conn:
+            if not conn.execute("UPDATE goals SET saved = MAX(saved + ?, 0) WHERE id = ?", (amount, goal_id)).rowcount:
                 raise LookupError("That goal has gone.")
         return next(g for g in self.overview()["goals"] if g["id"] == goal_id)
 
@@ -509,6 +552,7 @@ class AccountsService:
             "principal_per_month": repayment - max(owed - offsetting, 0) * rate / 10000 / 12,
             "monthly_growth": monthly_growth,
             "planned_growth": planned_growth,
+            "changes": self.loan_changes(lo["id"])[:6],
             "recent": {"date": recent.date, "months": recent.months, "points": recent.points},
             "planned": {"date": planned.date, "months": planned.months, "points": planned.points},
             "scenarios": loan.scenarios(owed, offsetting, rate, repayment, monthly_growth, (0, 20000, 50000, 100000)),
@@ -524,6 +568,36 @@ class AccountsService:
                 if a["offsets_loan"]
             ],
         }
+
+    def change_rate(self, rate_bp: int, repayment: int | None, since: str) -> dict[str, Any]:
+        """The rate changed: set the loan's rate (and repayment, if it changed too) and record both as changes from
+        `since`, so the loan's history shows them."""
+        if not 0 < rate_bp <= 3000:
+            raise ValueError("Enter the new rate, like 6.37.")
+        if repayment is not None and repayment <= 0:
+            raise ValueError("Enter the repayment.")
+        try:
+            day = dates.parse(since).isoformat()
+        except ValueError:
+            raise ValueError("Choose when the new rate starts.") from None
+        lo = self.loan()
+        if lo is None:
+            raise LookupError("There's no home loan yet.")
+        now = int(time.time())
+        with self.db.writing() as conn:
+            for field, value, was in (("rate", rate_bp, lo["rate_bp"]), ("repayment", repayment, lo["repayment"])):
+                if value is None or value == was:
+                    continue
+                conn.execute(
+                    "INSERT OR IGNORE INTO loan_changes (account_id, date, field, value, was, description, created_at)"
+                    " VALUES (?, ?, ?, ?, ?, 'Changed in the app', ?)",
+                    (lo["id"], day, field, value, was, now),
+                )
+            conn.execute(
+                "UPDATE accounts SET rate_bp = ?, repayment = COALESCE(?, repayment) WHERE id = ?",
+                (rate_bp, repayment, lo["id"]),
+            )
+        return self.view(lo["id"])
 
     def offsetting_growth(self, days: int = 90) -> int:
         """How fast the offsetting accounts have grown lately, in cents a month (from their balances `days` ago)."""

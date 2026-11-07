@@ -173,10 +173,20 @@ def _more_categories(conn: sqlite3.Connection) -> None:
     add_missing_categories(conn)
 
 
+def _goal_details(conn: sqlite3.Connection) -> None:
+    """goals: an `icon` (plane, car, shield, home, kids, play) and `by_date`, the month it should be reached by."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(goals)")}
+    if "icon" not in cols:
+        conn.execute("ALTER TABLE goals ADD COLUMN icon TEXT")
+    if "by_date" not in cols:
+        conn.execute("ALTER TABLE goals ADD COLUMN by_date TEXT")
+
+
 MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _baseline,
     _money,
     _loan_changes,
     _sorting,
     _more_categories,
+    _goal_details,
 ]

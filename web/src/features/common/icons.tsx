@@ -50,6 +50,13 @@ export const I = {
   list: { a: "M5 5h14v14H5z", b: "M8 9h8M8 12h8M8 15h5" },
   sort: { b: "M4 6h16M7 12h10M10 18h4" },
   plus: { b: "M12 5v14M5 12h14" },
+  plane: { a: "M2.5 12.5L21 5l-4.5 15-4.5-6.5z", b: "M12 13.5L21 5" },
+  car: {
+    a: "M4 14l2-5.5A2 2 0 0 1 7.9 7h8.2a2 2 0 0 1 1.9 1.5L20 14v4.5h-2V17H6v1.5H4z",
+    b: "M6.3 14.5a1.2 1.2 0 1 0 2.4 0a1.2 1.2 0 1 0-2.4 0M15.3 14.5a1.2 1.2 0 1 0 2.4 0a1.2 1.2 0 1 0-2.4 0",
+  },
+  kids: { a: "M3 9l9-4.5L21 9l-9 4.5z", b: "M7 11v4.5c0 1.5 2.2 3 5 3s5-1.5 5-3V11M21 9v5" },
+  play: { a: "M6 5h12a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V8a3 3 0 0 1 3-3z", c: "M10 9.5v5l4.5-2.5z" },
 } satisfies Record<string, Glyph>;
 
 export type Tone = "" | "offset" | "loan" | "bills" | "spending" | "savings" | "invest" | "neutral" | "bad" | "grad";

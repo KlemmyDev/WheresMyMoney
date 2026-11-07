@@ -23,7 +23,8 @@ import { Chip, I, type Glyph, type Tone } from "~/features/common/icons";
 import { useActions } from "~/features/common/layout";
 import { useStoredFlag } from "~/features/common/theme";
 import type { Dashboard, Role } from "~/features/common/types";
-import { Pill, Segmented, cn } from "~/features/common/ui";
+import { Button, Pill, Segmented, cn } from "~/features/common/ui";
+import { TopUpSheet, goalLook } from "~/features/goals/GoalFlows";
 
 const ROLE_DS: Record<Role, DsRole> = {
   offset: "offset",
@@ -379,10 +380,11 @@ export function AccountsCard({ d }: { d: Dashboard }) {
   );
 }
 
-const GOAL_ROLES: DsRole[] = ["offset", "spending", "savings", "invest", "bills"];
-
 export function GoalsCard({ d }: { d: Dashboard }) {
   const goals = d.savings?.goals ?? [];
+  const { newGoal } = useActions();
+  const [open, setOpen] = useState<number | null>(null);
+  const openGoal = goals.find((g) => g.id === open) ?? null;
   return (
     <Card aria-labelledby="ov-goals">
       <CardHead
@@ -391,33 +393,57 @@ export function GoalsCard({ d }: { d: Dashboard }) {
         right={goals.length ? <Pill tone="mute">{money(d.savings?.balance ?? 0)} saved</Pill> : undefined}
       />
       {goals.length === 0 ? (
-        <EmptyState g={I.savings} tone="savings" title="No goals yet">
-          Add goals to the savings account on the Accounts page, and they show up here as rings.
+        <EmptyState
+          g={I.savings}
+          tone="savings"
+          title="No goals yet"
+          action={
+            <Button primary onClick={newGoal}>
+              New goal
+            </Button>
+          }
+        >
+          Split savings into goals, like a trip or a new car, and see each one fill up here.
         </EmptyState>
       ) : (
         <div className="no-scrollbar -mx-1 flex gap-2.5 overflow-x-auto px-1 pb-1">
           {goals.map((g, i) => {
             const p = g.target ? Math.min(100, (g.saved / g.target) * 100) : 0;
+            const look = goalLook(g, i);
             return (
-              <Link
+              <button
+                type="button"
                 key={g.id}
-                to="/accounts"
-                className="chip-host press flex w-[150px] flex-none flex-col gap-2.5 rounded-[22px] border border-line bg-tile-2 p-3.5 text-ink no-underline"
+                onClick={() => setOpen(g.id)}
+                aria-label={`${g.name}: ${money(g.saved)} of ${money(g.target)}. Top up`}
+                className="chip-host press flex w-[150px] flex-none cursor-pointer flex-col gap-2.5 rounded-[22px] border border-line bg-tile-2 p-3.5 text-left text-ink"
               >
-                <Ring value={p} role={GOAL_ROLES[i % GOAL_ROLES.length]} label={`${g.name} ${Math.round(p)}%`}>
-                  <span className="num text-[14px]">{Math.round(p)}%</span>
-                </Ring>
+                <span className="flex items-start justify-between">
+                  <Ring value={p} role={look.role} label={`${g.name} ${Math.round(p)}%`}>
+                    <span className="num text-[14px]">{Math.round(p)}%</span>
+                  </Ring>
+                  <Chip g={look.g} tone={look.tone} size="sm" />
+                </span>
                 <span>
                   <span className="block font-semibold">{g.name}</span>
                   <span className="block text-[13px] text-ink-3">
                     {money(g.saved)} of {money(g.target)}
                   </span>
                 </span>
-              </Link>
+              </button>
             );
           })}
+          <button
+            type="button"
+            onClick={newGoal}
+            className="chip-host press flex w-[150px] flex-none cursor-pointer flex-col items-center justify-center gap-2 rounded-[22px] border border-dashed border-line-2 bg-transparent p-3.5 text-ink-2"
+          >
+            <Chip g={I.plus} tone="neutral" size="lg" />
+            <span className="font-semibold">New goal</span>
+          </button>
         </div>
       )}
+      <TopUpSheet goal={openGoal} index={goals.findIndex((g) => g.id === open)} onClose={() => setOpen(null)} />
     </Card>
   );
 }
