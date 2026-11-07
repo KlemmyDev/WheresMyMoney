@@ -28,7 +28,13 @@ import {
 import { useActions } from "~/features/common/layout";
 import { Dialog, useToast } from "~/features/common/overlay";
 import { JOB, JobArt, JobPicker, StepDots, StepFlow, useStep } from "~/features/common/steps";
-import { accountQuery, accountsQuery, refresh, transactionsQuery } from "~/features/common/queries";
+import {
+  accountQuery,
+  accountsQuery,
+  archivedAccountsQuery,
+  refresh,
+  transactionsQuery,
+} from "~/features/common/queries";
 import type { Account, Goal, Role } from "~/features/common/types";
 import {
   Button,
@@ -179,6 +185,7 @@ export function AccountsPage({ selected }: { selected?: number }) {
               </button>
             );
           })}
+          <RemovedAccounts />
         </section>
         {sel &&
           (sel.kind === "loan" ? (
@@ -244,9 +251,12 @@ function Detail({ account, goals }: { account: Account; goals: Goal[] }) {
             <Dot c={a.colour} />
             <span>{a.last4 ? `Acct ••${a.last4}` : ROLE_LABEL[a.role]}</span>
           </div>
-          <h2 id="ac-detail" className="mt-1 mb-0 text-[22px] font-semibold">
-            {a.name}
-          </h2>
+          <div className="mt-1 flex items-center gap-2">
+            <h2 id="ac-detail" className="m-0 text-[22px] font-semibold">
+              {a.name}
+            </h2>
+            <EditButton account={a} />
+          </div>
         </div>
         <div className="text-right">
           <div className="mono text-[28px] font-semibold">
@@ -440,6 +450,232 @@ function Detail({ account, goals }: { account: Account; goals: Goal[] }) {
   );
 }
 
+/** The pencil by an account's name: opens Edit account. */
+function EditButton({ account }: { account: Account }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button small aria-label={`Edit ${account.name}`} title="Rename or remove" onClick={() => setOpen(true)}>
+        <svg
+          viewBox="0 0 24 24"
+          width="14"
+          height="14"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+        >
+          <path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4" />
+        </svg>
+        Edit
+      </Button>
+      <Dialog open={open} onClose={() => setOpen(false)} labelledBy="edit-acct-h">
+        <EditAccount key={String(open)} account={account} onClose={() => setOpen(false)} />
+      </Dialog>
+    </>
+  );
+}
+
+const SWATCHES = ["offset", "bills", "spending", "savings", "track", "teal", "rose", "sky"];
+
+/** Rename an account, change its number or colour, or remove it (its history is kept, and it can come back). */
+function EditAccount({ account, onClose }: { account: Account; onClose: () => void }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const navigate = useNavigate();
+  const loan = account.kind === "loan";
+  const [name, setName] = useState(account.name);
+  const [last4, setLast4] = useState(account.last4 ?? "");
+  const [tone, setTone] = useState(account.colour);
+  const [removing, setRemoving] = useState(false);
+  const save = useMutation({
+    mutationFn: () =>
+      apiSend<Account>("PUT", `accounts/${account.id}`, { name, last4, ...(loan ? {} : { colour: tone }) }),
+    onSuccess: () => (refresh(qc), toast("Account saved"), onClose()),
+  });
+  const restore = useMutation({
+    mutationFn: () => apiSend<Account>("POST", `accounts/${account.id}/restore`),
+    onSuccess: () => (refresh(qc), navigate({ to: "/accounts", search: { id: account.id }, replace: true })),
+    onError: (e) => toast(errorMessage(e)),
+  });
+  const remove = useMutation({
+    mutationFn: () => apiSend("DELETE", `accounts/${account.id}`),
+    onSuccess: () => {
+      onClose();
+      navigate({ to: "/accounts", search: {}, replace: true });
+      refresh(qc);
+      toast(`${account.name} removed`, () => restore.mutate());
+    },
+  });
+  const what = loan ? "the loan" : "this account";
+  return (
+    <form
+      className="flex flex-col gap-5 overflow-y-auto p-6"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!removing && name.trim()) save.mutate();
+      }}
+    >
+      <h2 id="edit-acct-h" key={String(removing)} className="fade-in m-0 text-xl font-semibold">
+        {removing ? `Remove ${account.name}?` : loan ? "Edit the loan" : "Edit account"}
+      </h2>
+      {removing ? (
+        <div className="fade-in flex flex-col gap-3 text-[14px] text-ink-2">
+          <p className="m-0">
+            It'll go from your accounts{loan ? ", and the dashboard won't show the loan" : " and totals"}
+            {account.offsets_loan && !loan ? ", and stop counting against the loan" : ""}.
+          </p>
+          <p className="m-0">
+            {account.transactions > 0
+              ? `Its ${account.transactions} transactions are kept, so past spending still adds up.`
+              : "Nothing's been imported into it."}{" "}
+            You can bring it back under Removed accounts.
+          </p>
+          {remove.isError && <ErrorText>{errorMessage(remove.error)}</ErrorText>}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-4">
+          <div className="grid gap-3 sm:grid-cols-[1fr_120px]">
+            <div>
+              <Label htmlFor="ea-name">Name, as in your banking app</Label>
+              <Input
+                id="ea-name"
+                className="font-sans"
+                autoComplete="off"
+                maxLength={40}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="ea-last4">Last four digits</Label>
+              <Input
+                id="ea-last4"
+                inputMode="numeric"
+                maxLength={4}
+                value={last4}
+                onChange={(e) => setLast4(e.target.value.replace(/\D/g, ""))}
+                placeholder="2210"
+              />
+            </div>
+          </div>
+          {!loan && (
+            <div>
+              <Label>Colour</Label>
+              <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Colour">
+                {SWATCHES.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    role="radio"
+                    aria-checked={tone === c}
+                    aria-label={c}
+                    onClick={() => setTone(c)}
+                    className={cn(
+                      "press size-8 cursor-pointer rounded-full border-2",
+                      tone === c ? "border-ink" : "border-transparent",
+                    )}
+                    style={{ background: colour(c) }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+          <p className="m-0 text-xs text-ink-3">Imports match statements to {what} by its last four digits.</p>
+          {save.isError && <ErrorText>{errorMessage(save.error)}</ErrorText>}
+        </div>
+      )}
+      <div className="flex flex-wrap justify-between gap-2">
+        {removing ? (
+          <>
+            <Button onClick={() => setRemoving(false)}>Keep it</Button>
+            <Button
+              className="border-warn bg-warn font-semibold text-page enabled:hover:bg-warn/85"
+              disabled={remove.isPending}
+              onClick={() => remove.mutate()}
+            >
+              {remove.isPending ? "Removing…" : `Remove ${account.name}`}
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button className="text-warn" onClick={() => setRemoving(true)}>
+              Remove {loan ? "the loan" : "account"}
+            </Button>
+            <span className="flex gap-2">
+              <Button onClick={onClose}>Cancel</Button>
+              <Button primary type="submit" disabled={!name.trim() || save.isPending}>
+                {save.isPending ? "Saving…" : "Save"}
+              </Button>
+            </span>
+          </>
+        )}
+      </div>
+    </form>
+  );
+}
+
+/** Accounts that were removed, folded away under the list, each with Bring back. */
+function RemovedAccounts() {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const navigate = useNavigate();
+  const q = useQuery(archivedAccountsQuery);
+  const [open, setOpen] = useState(false);
+  const restore = useMutation({
+    mutationFn: (id: number) => apiSend<Account>("POST", `accounts/${id}/restore`),
+    onSuccess: (a) => {
+      refresh(qc);
+      toast(`${a.name} is back`);
+      navigate({ to: "/accounts", search: { id: a.id }, replace: true });
+    },
+    onError: (e) => toast(errorMessage(e)),
+  });
+  const removed = q.data ?? [];
+  if (!removed.length) return null;
+  return (
+    <div className="mt-1">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        className="tt w-full cursor-pointer justify-start gap-2 border-0 bg-transparent p-1 text-left"
+      >
+        <span>
+          <span aria-hidden className={cn("mr-2 inline-block transition-transform", open && "rotate-90")}>
+            ›
+          </span>
+          Removed accounts · {removed.length}
+        </span>
+      </button>
+      {open && (
+        <div className="reveal mt-1.5 flex flex-col rounded-tile border border-dashed border-line">
+          {removed.map((a) => (
+            <div
+              key={a.id}
+              className="flex items-center gap-3 border-t border-line px-[18px] py-3 text-[13px] first:border-t-0"
+            >
+              <Dot c={a.colour} />
+              <span className="min-w-0 flex-1">
+                <b className="font-semibold">{a.name}</b>
+                <span className="mono block text-xs text-ink-3">
+                  {a.kind === "loan" ? "Home loan" : a.last4 ? `Acct ••${a.last4}` : ROLE_LABEL[a.role]} ·{" "}
+                  {a.transactions} transactions kept
+                </span>
+              </span>
+              <Button small disabled={restore.isPending} onClick={() => restore.mutate(a.id)}>
+                Bring back
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function dayBefore(iso: string): string {
   const d = new Date(`${iso}T12:00:00`);
   d.setDate(d.getDate() - 1);
@@ -513,6 +749,8 @@ function Goals({ account, goals }: { account: Account; goals: Goal[] }) {
 function LoanDetail({ account, accounts }: { account: Account; accounts: Account[] }) {
   const qc = useQueryClient();
   const toast = useToast();
+  const detail = useQuery(accountQuery(account.id));
+  const changes = detail.data?.changes ?? [];
   const [form, setForm] = useState({
     rate: ((account.rate_bp ?? 0) / 100).toFixed(2),
     repayment: editable(account.repayment),
@@ -537,9 +775,12 @@ function LoanDetail({ account, accounts }: { account: Account; accounts: Account
   return (
     <Tile i={2} className="flex-[1.4_1_520px]" aria-labelledby="loan-h">
       <div className="tt justify-start">{account.last4 ? `Acct ••${account.last4}` : "Home loan"}</div>
-      <h2 id="loan-h" className="m-0 text-[22px] font-semibold">
-        {account.name}
-      </h2>
+      <div className="flex items-center gap-2">
+        <h2 id="loan-h" className="m-0 text-[22px] font-semibold">
+          {account.name}
+        </h2>
+        <EditButton account={account} />
+      </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <Label htmlFor="l-bal">Loan balance</Label>
@@ -595,6 +836,30 @@ function LoanDetail({ account, accounts }: { account: Account; accounts: Account
         </div>
       </div>
       {save.isError && <ErrorText>{errorMessage(save.error)}</ErrorText>}
+      {changes.length > 0 && (
+        <div>
+          <div className="tt mt-1">
+            <span>Rate and repayment, from statements</span>
+          </div>
+          {changes.map((c) => (
+            <div
+              key={`${c.date}-${c.field}-${c.value}`}
+              className="grid grid-cols-[64px_1fr_auto] items-center gap-2.5 border-t border-line py-[9px] text-[13px] first:border-t-0"
+            >
+              <span className="mono text-ink-3">{capsDate(c.date)}</span>
+              <span>{c.field === "rate" ? "Interest rate" : "Repayment"}</span>
+              <span className="mono">
+                {c.was != null && (
+                  <span className="text-ink-3">
+                    {c.field === "rate" ? `${(c.was / 100).toFixed(2)}%` : money(c.was, { cents: true })} →{" "}
+                  </span>
+                )}
+                {c.field === "rate" ? `${(c.value / 100).toFixed(2)}%` : money(c.value, { cents: true })}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="flex justify-between gap-2">
         <Link to="/loan" className="self-center text-teal no-underline">
           See the loan and offset

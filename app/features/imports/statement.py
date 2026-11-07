@@ -17,7 +17,7 @@ import csv
 import datetime as dt
 import io
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 MAX_BYTES = 5_000_000
 MAX_ROWS = 20_000
@@ -98,6 +98,13 @@ class Statement:
         if not self.rows or self.rows[0].balance is None:
             return None
         return self.rows[0].balance - self.rows[0].amount
+
+    def owed(self) -> Statement:
+        """The statement as a loan sees it: what's owed positive (a loan's export shows it as a negative balance)."""
+        rows = [
+            replace(r, amount=-r.amount or 0, balance=-r.balance if r.balance is not None else None) for r in self.rows
+        ]
+        return replace(self, rows=rows, balance_problems=list(self.balance_problems))
 
     def end_of_day(self) -> dict[str, int]:
         """Each day's closing balance (the last row of the day)."""

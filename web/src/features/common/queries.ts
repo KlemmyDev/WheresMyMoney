@@ -2,6 +2,7 @@
 import { queryOptions, type QueryClient } from "@tanstack/react-query";
 import { apiGet } from "~/features/common/api";
 import type {
+  Account,
   AccountsOverview,
   BillsOverview,
   Category,
@@ -23,11 +24,28 @@ export const accountsQuery = queryOptions({
   queryFn: ({ signal }) => apiGet<AccountsOverview>("accounts", undefined, { signal }),
 });
 
+/** Accounts that were removed, to bring back. */
+export const archivedAccountsQuery = queryOptions({
+  queryKey: ["accounts", "archived"],
+  queryFn: ({ signal }) =>
+    apiGet<Pick<Account, "id" | "name" | "kind" | "role" | "last4" | "colour" | "balance" | "transactions">[]>(
+      "accounts/archived",
+      undefined,
+      { signal },
+    ),
+});
+
 export const accountQuery = (id: number) =>
   queryOptions({
     queryKey: ["accounts", id],
     queryFn: ({ signal }) =>
-      apiGet<AccountsOverview["accounts"][number] & { history: [string, number][] }>(`accounts/${id}`, undefined, {
+      apiGet<
+        AccountsOverview["accounts"][number] & {
+          history: [string, number][];
+          /** The loan's rate and repayment over time, newest first (the loan only). */
+          changes?: { date: string; field: "rate" | "repayment"; value: number; was: number | null }[];
+        }
+      >(`accounts/${id}`, undefined, {
         signal,
       }),
   });

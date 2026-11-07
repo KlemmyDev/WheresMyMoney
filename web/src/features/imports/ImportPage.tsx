@@ -63,7 +63,9 @@ type ImportRow = {
   description: string;
   amount: number;
   balance: number | null;
-  status: "duplicate" | "new" | "merge";
+  status: "duplicate" | "new" | "merge" | "note";
+  /** A row of the home loan's statement: what's owed went up (interest, a drawdown) or down (a repayment). */
+  loan?: boolean;
   merchant?: string;
   merge_id?: number;
   note?: string;
@@ -71,7 +73,20 @@ type ImportRow = {
   hand_date?: string;
   category_id?: number | null;
   category?: string | null;
-  why?: "merged" | "transfer" | "pay" | "interest" | "bill" | "rule" | "suggest" | "unknown";
+  why?:
+    | "merged"
+    | "transfer"
+    | "pay"
+    | "interest"
+    | "bill"
+    | "rule"
+    | "suggest"
+    | "unknown"
+    | "note"
+    | "drawdown"
+    | "repayment"
+    | "fee"
+    | "loan";
   sure?: boolean;
   suggest?: string;
   suggest_id?: number;
@@ -100,6 +115,17 @@ type Analysis = {
   kept_cash: { id: number; date: string; amount: number; description: string }[];
   by_category: [string, number][];
   earliest: boolean;
+  loan: LoanFound | null;
+};
+
+/** The rate and repayment changes a loan's statement shows, and what the loan's will be once it's in. */
+type LoanChange = { date: string; field: "rate" | "repayment"; value: number; was: number | null; new: boolean };
+type LoanFound = {
+  changes: LoanChange[];
+  rate_bp: number | null;
+  repayment: number | null;
+  was_rate_bp: number | null;
+  was_repayment: number | null;
 };
 
 type Done = {
@@ -114,6 +140,7 @@ type Done = {
   ledger_at_close: number;
   closing: number | null;
   gap: number | null;
+  loan: { rate_bp: number | null; repayment: number | null; changes: number } | null;
 };
 
 /** One chosen file, from reading it to importing it. */
@@ -256,7 +283,8 @@ export function ImportPage() {
 
   const remove = (id: number) => setItems((xs) => xs.filter((x) => x.id !== id));
 
-  const banks = (accounts.data?.accounts ?? []).filter((a) => a.kind === "bank");
+  // Every account a statement can be from, the home loan last.
+  const banks = [...(accounts.data?.accounts ?? []), ...(accounts.data?.loan ? [accounts.data.loan] : [])];
   const bank = (id: number | null | undefined) => banks.find((a) => a.id === id);
   const categories = cats.data?.categories ?? [];
   const multi = items.length > 1;
@@ -275,7 +303,7 @@ export function ImportPage() {
     .flatMap((x) =>
       x.analysis
         ? x.analysis.rows
-            .filter((r) => r.status !== "duplicate" && !shared.has(keyOf(x.id, r.index)))
+            .filter((r) => r.status !== "duplicate" && r.status !== "note" && !shared.has(keyOf(x.id, r.index)))
             .map((r) => ({ ...r, key: keyOf(x.id, r.index), item: x.id, account: x.analysis!.account_id }))
         : [],
     )
@@ -558,6 +586,7 @@ export function ImportPage() {
           bank={inAccounts.length > 1 ? bank : null}
           replaced={replaced}
           keptCash={keptCash}
+          loanFound={analysed.map((x) => x.analysis.loan).filter((l): l is LoanFound => !!l)}
           categories={categories}
           choices={choices}
           setChoice={(k, c) => {
@@ -832,6 +861,7 @@ function Review({
   bank,
   replaced,
   keptCash,
+  loanFound,
   categories,
   choices,
   setChoice,
@@ -850,6 +880,7 @@ function Review({
   bank: ((id: number) => Account | undefined) | null;
   replaced: (Analysis["replaced"][number] & { account: number })[];
   keptCash: (Analysis["kept_cash"][number] & { account: number })[];
+  loanFound: LoanFound[];
   categories: Category[];
   choices: Record<string, number | null>;
   setChoice: (key: string, c: number | null) => void;
@@ -876,7 +907,7 @@ function Review({
   const byCategory = (() => {
     const t = new Map<string, number>();
     for (const r of rows) {
-      if (r.why === "transfer" || r.why === "pay" || r.amount >= 0) continue;
+      if (r.why === "transfer" || r.why === "pay" || r.loan || r.amount >= 0) continue;
       const c = choices[r.key] !== undefined ? choices[r.key] : (r.category_id ?? r.suggest_id ?? null);
       const n = name(c) ?? "Not sorted yet";
       t.set(n, (t.get(n) ?? 0) - r.amount);
@@ -967,9 +998,11 @@ function Review({
                       : "BETWEEN YOUR ACCOUNTS"
                     : r.why === "bill"
                       ? `MATCHED BILL · ${r.bill?.toUpperCase()}`
-                      : r.status === "merge"
-                        ? `${r.why === "merged" ? "" : WHY[r.why ?? "unknown"] + " · "}MERGED WITH YOUR ENTRY`
-                        : WHY[r.why ?? "unknown"];
+                      : r.loan
+                        ? `HOME LOAN · ${r.amount > 0 ? "OWED MORE" : "OWED LESS"}`
+                        : r.status === "merge"
+                          ? `${r.why === "merged" ? "" : WHY[r.why ?? "unknown"] + " · "}MERGED WITH YOUR ENTRY`
+                          : WHY[r.why ?? "unknown"];
               return (
                 <div
                   key={r.key}
@@ -994,12 +1027,19 @@ function Review({
                       <span className="truncate">{why}</span>
                     </span>
                   </span>
-                  <span className="mono text-right" style={{ color: r.amount > 0 ? "var(--color-good)" : undefined }}>
+                  <span
+                    className="mono text-right"
+                    style={{ color: r.amount > 0 && !r.loan ? "var(--color-good)" : undefined }}
+                  >
                     {amount(r.amount, { cents: true, sign: true })}
                   </span>
                   {r.why === "transfer" ? (
                     <span className="inline-flex min-h-8 items-center rounded-md border border-offset/40 bg-offset/10 px-2.5 text-xs">
                       Transfer
+                    </span>
+                  ) : r.loan ? (
+                    <span className="inline-flex min-h-8 items-center rounded-md border border-track/40 bg-track/10 px-2.5 text-xs">
+                      {LOAN_WHY[r.why ?? "loan"] ?? "Loan"}
                     </span>
                   ) : (
                     <select
@@ -1035,6 +1075,7 @@ function Review({
           </div>
         </Tile>
         <div className="flex min-w-0 flex-[1_1_320px] flex-col gap-4">
+          {loanFound.length > 0 && <LoanChanges found={loanFound} />}
           <Tile as="aside" i={5} aria-labelledby="rv-rec">
             <div className="tt">
               <span id="rv-rec">Reconcile with what you entered</span>
@@ -1121,6 +1162,61 @@ function Review({
   );
 }
 
+const LOAN_WHY: Record<string, string> = {
+  interest: "Interest",
+  drawdown: "Drawdown",
+  repayment: "Repayment",
+  fee: "Fee",
+  loan: "Loan",
+};
+
+const ratePct = (bp: number | null | undefined) => (bp == null ? "—" : `${(bp / 100).toFixed(2)}%`);
+
+/** The rate and repayment changes read from the loan's statements, and what the loan will say once they're in. */
+function LoanChanges({ found }: { found: LoanFound[] }) {
+  const changes = found.flatMap((f) => f.changes).sort((a, b) => a.date.localeCompare(b.date));
+  const latest = found[found.length - 1];
+  // The latest of each across the statements (an older one chosen last doesn't turn them back).
+  const rate = found.map((f) => f.rate_bp).reduce((a, b) => b ?? a, null as number | null);
+  const repayment = found.map((f) => f.repayment).reduce((a, b) => b ?? a, null as number | null);
+  const value = (field: LoanChange["field"], v: number | null) =>
+    field === "rate" ? ratePct(v) : money(v, { cents: true });
+  return (
+    <Tile as="aside" i={5} aria-labelledby="rv-loan">
+      <div className="tt">
+        <span id="rv-loan">Rate and repayment</span>
+      </div>
+      {changes.map((c) => (
+        <Rec
+          key={`${c.date}-${c.field}-${c.value}`}
+          title={`${c.field === "rate" ? (c.was == null ? "Rate" : "Rate change") : c.was == null ? "Repayment" : "Repayment change"}, ${capsDate(c.date).replace(/^0/, "")}`}
+          value={
+            <>
+              {c.was != null && <span className="text-ink-3">{value(c.field, c.was)} → </span>}
+              {value(c.field, c.value)}
+            </>
+          }
+        >
+          {c.new ? "From the statement" : "Already noted from an earlier statement"}
+        </Rec>
+      ))}
+      {!changes.length && <div className="text-ink-3">The statement doesn't show the rate or the repayment.</div>}
+      {(rate !== latest.was_rate_bp || repayment !== latest.was_repayment) && (
+        <div className="rounded-lg bg-raised px-3 py-2.5 text-[13px]">
+          The loan will be set to <b className="mono">{ratePct(rate)}</b>
+          {repayment != null && (
+            <>
+              {" "}
+              with repayments of <b className="mono">{money(repayment, { cents: true })}</b>
+            </>
+          )}
+          , so its projections use them.
+        </div>
+      )}
+    </Tile>
+  );
+}
+
 function Rec({ title, value, children }: { title: string; value: ReactNode; children: ReactNode }) {
   return (
     <div className="border-t border-line py-2 first:border-t-0">
@@ -1204,6 +1300,23 @@ function DoneView({
             ) : (
               <div className="text-[13px] text-good">
                 {accounts.length > 1 ? "Adds" : "The transactions add"} up to the statement's closing balance.
+              </div>
+            )}
+            {last.done.loan && (
+              <div className="mt-1 text-[13px] text-ink-2">
+                The loan's rate is now <b className="mono">{ratePct(last.done.loan.rate_bp)}</b>
+                {last.done.loan.repayment != null && (
+                  <>
+                    {" "}
+                    and its repayment <b className="mono">{money(last.done.loan.repayment, { cents: true })}</b>
+                  </>
+                )}
+                {mine.reduce((s, x) => s + (x.done.loan?.changes ?? 0), 0)
+                  ? ` (${plural(
+                      mine.reduce((s, x) => s + (x.done.loan?.changes ?? 0), 0),
+                      "change",
+                    )} noted).`
+                  : "."}
               </div>
             )}
             {opening && (
