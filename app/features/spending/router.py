@@ -75,3 +75,15 @@ async def update(svc: ServicesDep, tx_id: int, body: JsonBody):
 @router.delete("/transactions/{tx_id}")
 async def remove(svc: ServicesDep, tx_id: int):
     return {"removed": await run(svc.spending.remove_transaction, tx_id)}
+
+
+@router.get("/merchants")
+async def merchants(svc: ServicesDep, all: bool = False, limit: int = 200):
+    """Transactions grouped by merchant, the ones with something to sort first (all=true for every merchant)."""
+    return await run(svc.spending.merchant_groups, not all, min(max(limit, 1), 1000))
+
+
+@router.post("/merchants/sort")
+async def sort_merchant(svc: ServicesDep, body: JsonBody):
+    """Remember a merchant's category and sort its transactions: {"transaction_id": 12, "category_id": 3}."""
+    return await run(svc.spending.sort_merchant, body.get("transaction_id"), body.get("category_id"))

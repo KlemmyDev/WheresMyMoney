@@ -21,6 +21,7 @@ import { apiSend, apiUpload, errorMessage } from "~/features/common/api";
 import { amount, capsDate, longDate, money, monthYear } from "~/features/common/format";
 import { accountsQuery, categoriesQuery, refresh } from "~/features/common/queries";
 import type { Account, Category } from "~/features/common/types";
+import { CategoryPicker } from "~/features/common/CategoryPicker";
 import {
   Button,
   Choice,
@@ -144,6 +145,8 @@ type Done = {
   closing: number | null;
   gap: number | null;
   loan: { rate_bp: number | null; repayment: number | null; changes: number } | null;
+  /** Bills the ledger now suggests, and bills whose price moved, after this import. */
+  spotted?: { suggestions: number; updates: number };
 };
 
 /** One chosen file, from reading it to importing it. */
@@ -593,7 +596,19 @@ export function ImportPage() {
           categories={categories}
           choices={choices}
           setChoice={(k, c) => {
-            setChoices((s) => ({ ...s, [k]: c }));
+            // The same merchant's other rows that still need sorting get the same category, and it's remembered
+            // (the switch beside the list turns that off).
+            const row = rows.find((r) => r.key === k);
+            const same = row?.merchant
+              ? rows.filter(
+                  (r) => r.key !== k && !r.sure && r.merchant === row.merchant && choices[r.key] === undefined,
+                )
+              : [];
+            setChoices((s) => ({ ...s, [k]: c, ...Object.fromEntries(same.map((r) => [r.key, c])) }));
+            const a = new Set(always);
+            if (c != null) a.add(k);
+            else a.delete(k);
+            setAlways(a);
             setLastChosen(k);
           }}
           always={always}
@@ -1071,31 +1086,13 @@ function Review({
                       {LOAN_WHY[r.why ?? "loan"] ?? "Loan"}
                     </span>
                   ) : (
-                    <select
-                      aria-label={`Category for ${r.description}`}
-                      value={current ?? (r.suggest_id != null ? `s${r.suggest_id}` : "")}
-                      onChange={(e) =>
-                        setChoice(r.key, e.target.value === "" ? null : Number(e.target.value.replace(/^s/, "")))
-                      }
-                      className={cn(
-                        "min-h-8 w-full cursor-pointer rounded-md border bg-raised px-2 text-xs text-ink",
-                        current == null && r.suggest_id == null
-                          ? "border-warn bg-warn/10"
-                          : current == null
-                            ? "border-line"
-                            : "border-good/40 bg-good/8",
-                      )}
-                    >
-                      <option value="">Choose</option>
-                      {r.suggest_id != null && current == null && (
-                        <option value={`s${r.suggest_id}`}>Suggest: {r.suggest}</option>
-                      )}
-                      {categories.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
+                    <CategoryPicker
+                      label={`Category for ${r.description}`}
+                      value={current}
+                      suggested={r.suggest_id}
+                      categories={categories}
+                      onChange={(c) => setChoice(r.key, c)}
+                    />
                   )}
                 </div>
               );
@@ -1258,6 +1255,35 @@ function Rec({ title, value, children }: { title: string; value: ReactNode; chil
   );
 }
 
+/** What to do next: the bills the import spotted, and sorting what's left a merchant at a time. */
+function Followups({ spotted }: { spotted?: { suggestions: number; updates: number } }) {
+  const n = (spotted?.suggestions ?? 0) + (spotted?.updates ?? 0);
+  return (
+    <div className="reveal flex w-full flex-col gap-2" style={{ "--i": 2 } as CSSProperties}>
+      {n > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-raised px-3.5 py-3 text-[13px]">
+          <span>
+            {spotted?.suggestions
+              ? `${plural(spotted.suggestions, "regular payment")} look${spotted.suggestions === 1 ? "s" : ""} like ${spotted.suggestions === 1 ? "a bill" : "bills"}`
+              : ""}
+            {spotted?.suggestions && spotted?.updates ? ", and " : ""}
+            {spotted?.updates ? `${plural(spotted.updates, "bill")} changed price` : ""}.
+          </span>
+          <Link to="/bills" className="font-medium text-teal no-underline">
+            Review on Bills
+          </Link>
+        </div>
+      )}
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-raised px-3.5 py-3 text-[13px]">
+        <span>Sort what&apos;s left a merchant at a time, so it&apos;s remembered for next time.</span>
+        <Link to="/sort" className="font-medium text-teal no-underline">
+          Sort by merchant
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 /** What came in altogether, then each account against its latest statement's closing balance. */
 function DoneView({
   items,
@@ -1289,6 +1315,7 @@ function DoneView({
         {kept ? `${kept} with no match were kept as cash. ` : ""}
         {learned ? `${learned} earlier transactions were sorted by what you chose to remember.` : ""}
       </div>
+      <Followups spotted={items[items.length - 1]?.done.spotted} />
       {accounts.map((id, i) => {
         const mine = items.filter((x) => x.analysis.account_id === id);
         const first = mine[0];

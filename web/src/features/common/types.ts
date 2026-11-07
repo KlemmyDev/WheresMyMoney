@@ -60,6 +60,12 @@ export type Transaction = {
   user_id: number | null;
   who: string | null;
   merged: boolean;
+  /** The description cut down to the merchant, for remembering a category. */
+  merchant: string;
+  /** What choosing a category "always" remembers it by: "KMART" for "KMART YAMANTO". */
+  remember_as: string;
+  /** How its category was chosen: you, rule, suggest, bill, auto, or null. */
+  category_by: string | null;
 };
 
 export type Category = { id: number; name: string; kind: string; budget: number | null; icon: string | null };
@@ -76,6 +82,67 @@ export type Bill = {
   category_id: number | null;
   per_year: number;
   share?: number;
+};
+
+/** A bill spotted in the imported statements: regular payments to one merchant. */
+export type SpottedBill = {
+  key: string;
+  name: string;
+  match: string;
+  amount: number;
+  every: Every;
+  per_year: number;
+  next_due: string;
+  account_id: number;
+  how: "auto" | "estimate";
+  variable: boolean;
+  category_id: number | null;
+  category: string | null;
+  seen: number;
+  first: string;
+  last: string;
+  regular: number;
+  min: number;
+  max: number;
+  changes: PriceChange[];
+  rise: { was: number; now: number; pct: number } | null;
+  history: { date: string; amount: number }[];
+  example: string;
+};
+
+export type PriceChange = { date: string; was: number; now: number; pct: number };
+
+/** A bill whose latest payment was a different amount from what the bill says. */
+export type BillUpdate = {
+  key: string;
+  bill_id: number;
+  name: string;
+  was: number;
+  now: number;
+  pct: number;
+  since: string;
+  every: Every;
+  per_year_change: number;
+  history: { date: string; amount: number }[];
+};
+
+/** Transactions grouped by the merchant they'd be remembered by. */
+export type MerchantGroup = {
+  pattern: string;
+  example: string;
+  transaction_id: number;
+  count: number;
+  spent: number;
+  received: number;
+  first: string;
+  last: string;
+  unsorted: number;
+  suggested: number;
+  category_id: number | null;
+  category: string | null;
+  remembered: boolean;
+  suggest_id: number | null;
+  categories: { id: number; name: string; count: number }[];
 };
 
 export type Due = { bill_id: number; name: string; date: string; amount: number; how: string };

@@ -199,13 +199,18 @@ export function SpendingPage() {
           <TileTitle
             id="s-tx"
             right={
-              <Link
-                to="/transactions"
-                search={{ account: m.account_id }}
-                className="font-medium text-teal no-underline"
-              >
-                All transactions
-              </Link>
+              <span className="flex gap-4">
+                <Link to="/sort" className="font-medium text-teal no-underline">
+                  Sort by merchant
+                </Link>
+                <Link
+                  to="/transactions"
+                  search={{ account: m.account_id }}
+                  className="font-medium text-teal no-underline"
+                >
+                  All transactions
+                </Link>
+              </span>
             }
           >
             Recent

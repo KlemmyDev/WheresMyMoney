@@ -85,3 +85,63 @@ def test_spending_cant_be_in_the_future(client: TestClient, household: dict) -> 
         json={"account_id": household["Spending"], "amount": -100, "description": "X", "date": "2026-12-01"},
     )
     assert r.status_code == 422
+
+
+def test_sorting_a_merchant_remembers_its_brand_and_resorts_suggestions_but_not_your_choices(
+    client: TestClient, household: dict
+) -> None:
+    acct = household["Spending"]
+    shopping, groceries, fun = cat(client, "Shopping"), cat(client, "Groceries"), cat(client, "Fun")
+    made = [
+        ok(client.post("/api/transactions", json={"amount": -1000 * (i + 1), "description": d, "account_id": acct}))
+        for i, d in enumerate(["KMART 1283 YAMANTO", "KMART 1108 REDBANK", "KMART 1108 REDBANK", "SPOTLIGHT IPSWICH"])
+    ]
+    # One chosen by hand stays as it is.
+    ok(client.put(f"/api/transactions/{made[2]['id']}", json={"category_id": fun}))
+    groups = {g["pattern"]: g for g in ok(client.get("/api/merchants"))}
+    assert groups["KMART"]["count"] == 3 and groups["KMART"]["unsorted"] == 2
+    done = ok(client.post("/api/merchants/sort", json={"transaction_id": made[0]["id"], "category_id": shopping}))
+    assert done == {"changed": 2, "pattern": "KMART"}
+    cats = {t["id"]: t["category_id"] for t in ok(client.get("/api/transactions"))}
+    txs = ok(client.get("/api/transactions"))
+    assert {t["remember_as"] for t in txs if t["description"].startswith("KMART")} == {"KMART"}
+    assert cats[made[0]["id"]] == shopping and cats[made[1]["id"]] == shopping and cats[made[2]["id"]] == fun
+    # A new Kmart store is sorted by the brand.
+    t = ok(
+        client.post(
+            "/api/transactions", json={"amount": -500, "description": "KMART 9999 SPRINGFIELD", "account_id": acct}
+        )
+    )
+    assert t["category_id"] == shopping
+    # A merchant that starts the same but is sorted differently is told apart.
+    ok(client.post("/api/merchants/sort", json={"transaction_id": made[3]["id"], "category_id": groceries}))
+    rules = {r["pattern"] for r in ok(client.get("/api/categories"))["merchant_rules"]}
+    assert {"KMART", "SPOTLIGHT"} <= rules
+
+
+def test_an_older_household_gets_the_new_categories_once(tmp_path) -> None:
+    import sqlite3
+
+    from app.core.schema import MIGRATIONS
+
+    conn = sqlite3.connect(tmp_path / "old.db")
+    for step in MIGRATIONS[:3]:
+        step(conn)
+    conn.execute(
+        "INSERT INTO categories (name, kind, sort) VALUES ('Groceries', 'spending', 0), ('Dog', 'spending', 1)"
+    )
+    conn.execute(
+        "INSERT INTO transactions (account_id, date, amount, description, merchant, kind, category_id, created_at)"
+        " VALUES (1, '2026-01-01', -100, 'Direct Debit Danger Close', 'DIRECT DEBIT DANGER CLOSE', 'statement', 1, 0)"
+    )
+    MIGRATIONS[3](conn)
+    names = [r[0] for r in conn.execute("SELECT name FROM categories ORDER BY sort")]
+    assert names[0] == "Groceries" and "Insurance" in names and "Dog" in names
+    assert names.index("Dog") < names.index("Bills")  # the household's own spending sits with spending
+    assert conn.execute("SELECT merchant, category_by FROM transactions").fetchone() == ("DANGER CLOSE", None)
+    # The next round of starting categories comes in the same way, once.
+    MIGRATIONS[4](conn)
+    names = [r[0] for r in conn.execute("SELECT name FROM categories ORDER BY sort")]
+    assert {"Coffee", "Childcare", "Rent", "Side income", "Savings"} <= set(names)
+    assert len(names) == len(set(n.lower() for n in names))
+    assert names.index("Coffee") < names.index("Bills") < names.index("Rent") < names.index("Pay")

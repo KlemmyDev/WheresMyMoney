@@ -4,11 +4,14 @@ import { apiGet } from "~/features/common/api";
 import type {
   Account,
   AccountsOverview,
+  BillUpdate,
   BillsOverview,
   Category,
+  MerchantGroup,
   Dashboard,
   RulesOverview,
   SpendingMonth,
+  SpottedBill,
   Transaction,
 } from "~/features/common/types";
 
@@ -87,6 +90,18 @@ export const spendingQuery = queryOptions({
       signal,
     }),
 });
+
+export const spottedBillsQuery = queryOptions({
+  queryKey: ["bills", "spotted"],
+  queryFn: ({ signal }) =>
+    apiGet<{ suggestions: SpottedBill[]; updates: BillUpdate[] }>("bills/spotted", undefined, { signal }),
+});
+
+export const merchantsQuery = (all: boolean) =>
+  queryOptions({
+    queryKey: ["merchants", all],
+    queryFn: ({ signal }) => apiGet<MerchantGroup[]>("merchants", all ? { all: true } : undefined, { signal }),
+  });
 
 export const categoriesQuery = queryOptions({
   queryKey: ["categories"],

@@ -49,8 +49,8 @@ export const SECTIONS: readonly Section[] = [
       { to: "/accounts", label: "Accounts" },
       { to: "/loan", label: "Loan" },
       { to: "/bills", label: "Bills" },
-      // "All transactions" is reached from Spending, so it keeps Spending lit.
-      { to: "/spending", label: "Spending", also: ["/transactions"] },
+      // "All transactions" and "Sort by merchant" are reached from Spending, so they keep Spending lit.
+      { to: "/spending", label: "Spending", also: ["/transactions", "/sort"] },
     ],
   },
   {
