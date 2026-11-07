@@ -1,8 +1,12 @@
 """
 Investments: the ETFs the household holds, entered by hand when they buy or sell, valued at each fund's close.
 
-- Holdings are worked out from the trades: units held, and what they cost (average cost: a sale takes its share of
-  the cost at the average so far, and the rest is a realised gain or loss).
+- Holdings are worked out from the trades as parcels, first in first out (the ATO's default for shares): a sale
+  uses up the oldest parcels first, and the difference from what they cost is a realised gain or loss. Each fund
+  says where it's held (a broker, a micro-investing app, an exchange) and whether it's an ETF, a share or crypto.
+- Capital gains a financial year at a time (July to June): each sale's gain or loss by parcel, whether the parcel
+  was held over twelve months (so half the gain is discounted), losses taken from gains, and the parcels still held
+  with when each reaches twelve months. An estimate to take to a tax return, not tax advice.
 - Prices are each fund's close for the day, looked up once a day after the market shuts (Yahoo Finance's public
   chart data, no account). It's the only thing about the household's money that leaves the house, and all it says is
   which tickers. Until a price is known, the last trade's price stands in.
@@ -37,6 +41,7 @@ GROUPS = {
     "bonds": "Bonds",
     "property": "Property",
     "cash": "Cash",
+    "crypto": "Crypto",
     "other": "Other",
 }
 RANGES = {"1m": 31, "6m": 183, "1y": 366, "5y": 1827}
@@ -46,42 +51,91 @@ AFTER_CLOSE = 17  # the hour (local) from which today's close is looked for
 EVERY = 3600  # how often the background loop wakes to see whether a look-up is due
 
 
-def symbol(ticker: str) -> str:
-    """What to look a ticker up as: an ASX code unless it names its own market (VTI.US, or with a dot already)."""
+KINDS = ("etf", "share", "crypto")
+
+
+def symbol(ticker: str, kind: str = "etf") -> str:
+    """What to look a ticker up as: crypto in Australian dollars (BTC-AUD), otherwise an ASX code unless it names its
+    own market (VTI.US, or with a dot or dash already)."""
     t = ticker.strip().upper()
-    return t if "." in t else f"{t}.AX"
+    if kind == "crypto":
+        return t if "-" in t else f"{t}-AUD"
+    return t if "." in t or "-" in t else f"{t}.AX"
+
+
+@dataclass
+class Parcel:
+    date: str
+    units: float
+    cost: float  # cents, brokerage included
+
+
+@dataclass
+class Sale:
+    date: str
+    units: float
+    proceeds: float  # cents, brokerage taken off
+    cost: float
+    bought: str  # the parcel's date
+    long: bool  # held over twelve months
 
 
 @dataclass
 class Holding:
     units: float = 0.0
-    cost: float = 0.0  # what the units held cost, in cents (average cost)
+    cost: float = 0.0  # what the units held cost, in cents (their parcels' cost)
     realised: float = 0.0
     first: str | None = None
     put_in: float = 0.0  # cash put in less cash taken out, in cents
-    trades: list[tuple[str, str, float, float, int]] = field(default_factory=list)
+    parcels: list[Parcel] = field(default_factory=list)
+    sales: list[Sale] = field(default_factory=list)
+
+
+def _held_over_a_year(bought: str, sold: str) -> bool:
+    """Held for at least twelve months, not counting the days bought and sold (as the ATO counts it)."""
+    b = dt.date.fromisoformat(bought)
+    try:
+        anniversary = b.replace(year=b.year + 1)
+    except ValueError:  # bought on 29 February
+        anniversary = dt.date(b.year + 1, 3, 1)
+    return dt.date.fromisoformat(sold) > anniversary
 
 
 def _walk(trades: list[tuple[str, str, float, float, int]], until: str | None = None) -> Holding:
-    """A fund's holding from its trades (date, side, units, price, fee), up to and including `until`."""
+    """A fund's holding from its trades (date, side, units, price, fee), up to and including `until`: its parcels,
+    first in first out, and each sale's gain by the parcels it used up."""
     h = Holding()
     for day, side, units, price, fee in trades:
         if until is not None and day > until:
             break
         h.first = h.first or day
         if side == "buy":
-            h.units += units
-            h.cost += units * price + fee
+            h.parcels.append(Parcel(day, units, units * price + fee))
             h.put_in += units * price + fee
-        else:
-            share = h.cost * (units / h.units) if h.units else 0.0
-            h.cost -= share
-            h.units -= units
-            h.realised += units * price - fee - share
-            h.put_in -= units * price - fee
-        if h.units < 1e-9:
-            h.units, h.cost = 0.0, 0.0
+            continue
+        h.put_in -= units * price - fee
+        left = units
+        while left > 1e-9 and h.parcels:
+            p = h.parcels[0]
+            take = min(left, p.units)
+            cost = p.cost * (take / p.units)
+            proceeds = (units * price - fee) * (take / units)
+            h.sales.append(Sale(day, take, proceeds, cost, p.date, _held_over_a_year(p.date, day)))
+            h.realised += proceeds - cost
+            p.units -= take
+            p.cost -= cost
+            left -= take
+            if p.units < 1e-9:
+                h.parcels.pop(0)
+    h.units = sum(p.units for p in h.parcels)
+    h.cost = sum(p.cost for p in h.parcels)
     return h
+
+
+def tax_year(day: str) -> int:
+    """The financial year a day is in, by the year it ends (1 July 2025 to 30 June 2026 is 2026)."""
+    d = dt.date.fromisoformat(day)
+    return d.year + 1 if d.month >= 7 else d.year
 
 
 class InvestmentsService:
@@ -92,9 +146,21 @@ class InvestmentsService:
     # -- funds and trades -------------------------------------------------------------------------
 
     def _funds(self, conn: sqlite3.Connection) -> list[dict[str, Any]]:
-        rows = conn.execute("SELECT id, ticker, name, grp, target, fee_pct FROM funds ORDER BY sort, id").fetchall()
+        rows = conn.execute(
+            "SELECT id, ticker, name, grp, target, fee_pct, platform, kind FROM funds ORDER BY sort, id"
+        ).fetchall()
         return [
-            {"id": r[0], "ticker": r[1], "name": r[2], "group": r[3], "target": r[4], "fee_pct": r[5]} for r in rows
+            {
+                "id": r[0],
+                "ticker": r[1],
+                "name": r[2],
+                "group": r[3],
+                "target": r[4],
+                "fee_pct": r[5],
+                "platform": r[6],
+                "kind": r[7],
+            }
+            for r in rows
         ]
 
     def _trades(self, conn: sqlite3.Connection) -> dict[int, list[tuple[str, str, float, float, int]]]:
@@ -111,14 +177,14 @@ class InvestmentsService:
             was: dict[str, Any] = {}
             if fund_id is not None:
                 row = conn.execute(
-                    "SELECT ticker, name, grp, target, fee_pct FROM funds WHERE id = ?", (fund_id,)
+                    "SELECT ticker, name, grp, target, fee_pct, platform, kind FROM funds WHERE id = ?", (fund_id,)
                 ).fetchone()
                 if row is None:
                     raise LookupError("That fund has gone.")
-                was = dict(zip(("ticker", "name", "group", "target", "fee_pct"), row, strict=True))
+                was = dict(zip(("ticker", "name", "group", "target", "fee_pct", "platform", "kind"), row, strict=True))
             body = {**was, **body}
             ticker = str(body.get("ticker") or "").strip().upper()[:12]
-            if not ticker or not all(c.isalnum() or c == "." for c in ticker):
+            if not ticker or not all(c.isalnum() or c in ".-" for c in ticker):
                 raise ValueError("Enter the fund's code, like VAS.")
             name = " ".join(str(body.get("name") or "").split())[:60] or ticker
             group = str(body.get("group") or "other")
@@ -138,20 +204,27 @@ class InvestmentsService:
                 raise ValueError("The management fee is a share a year, like 0.0007 for 0.07%.") from None
             if fee is not None and not 0 <= fee <= 0.03:
                 raise ValueError("The management fee is between 0% and 3% a year.")
+            kind = str(body.get("kind") or "etf")
+            if kind not in KINDS:
+                raise ValueError("Is it an ETF, a share or crypto?")
+            platform = " ".join(str(body.get("platform") or "").split())[:40]
+            if kind == "crypto" and group == "other":
+                group = "crypto"
             taken = conn.execute("SELECT 1 FROM funds WHERE ticker = ? AND id != ?", (ticker, fund_id or 0)).fetchone()
             if taken:
                 raise ValueError(f"{ticker} is already here.")
             if fund_id is None:
                 cur = conn.execute(
-                    "INSERT INTO funds (ticker, name, grp, target, fee_pct, sort, created_at) VALUES (?, ?, ?, ?, ?,"
-                    " (SELECT COALESCE(MAX(sort), 0) + 1 FROM funds), ?)",
-                    (ticker, name, group, target, fee, int(time.time())),
+                    "INSERT INTO funds (ticker, name, grp, target, fee_pct, platform, kind, sort, created_at) VALUES"
+                    " (?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(sort), 0) + 1 FROM funds), ?)",
+                    (ticker, name, group, target, fee, platform, kind, int(time.time())),
                 )
                 fund_id = int(cur.lastrowid or 0)
             else:
                 conn.execute(
-                    "UPDATE funds SET ticker = ?, name = ?, grp = ?, target = ?, fee_pct = ? WHERE id = ?",
-                    (ticker, name, group, target, fee, fund_id),
+                    "UPDATE funds SET ticker = ?, name = ?, grp = ?, target = ?, fee_pct = ?, platform = ?, kind = ?"
+                    " WHERE id = ?",
+                    (ticker, name, group, target, fee, platform, kind, fund_id),
                 )
         return next(f for f in self.overview()["funds"] if f["id"] == fund_id)
 
@@ -219,9 +292,9 @@ class InvestmentsService:
             )
         return len(closes)
 
-    def fetch_closes(self, ticker: str, span: str) -> dict[str, float]:
+    def fetch_closes(self, ticker: str, span: str, kind: str = "etf") -> dict[str, float]:
         """A fund's daily closes from Yahoo Finance's chart data, by the exchange's own date, in cents."""
-        url = CHART.format(symbol=urllib.parse.quote(symbol(ticker)), range=span)
+        url = CHART.format(symbol=urllib.parse.quote(symbol(ticker, kind)), range=span)
         data = get_json(url, timeout=20)
         result = ((data or {}).get("chart") or {}).get("result") or []
         if not result:
@@ -247,7 +320,7 @@ class InvestmentsService:
         failed: list[str] = []
         for f in funds:
             try:
-                closes = self.fetch_closes(f["ticker"], "1mo" if known.get(f["id"]) else "5y")
+                closes = self.fetch_closes(f["ticker"], "1mo" if known.get(f["id"]) else "5y", f["kind"])
                 self.save_prices(f["id"], closes)
                 done.append(f["ticker"])
             except Exception as e:  # one fund failing mustn't stop the rest
@@ -425,6 +498,81 @@ class InvestmentsService:
                 }
             )
         return {"year_total": year_total, "quarters": out}
+
+    def capital_gains(self, year: int | None = None) -> dict[str, Any]:
+        """A financial year's capital gains (by the year it ends): each sale by the parcels it used up, the gains
+        held over and under twelve months, losses (taken from short gains first, as that leaves the most to
+        discount), half of what's left of the long gains discounted, and the parcels still held."""
+        today = dates.today().isoformat()
+        year = year or tax_year(today)
+        with self.db.reading() as conn:
+            funds = self._funds(conn)
+            trades = self._trades(conn)
+            prices = {f["id"]: self._price_on(conn, f["id"], today) for f in funds}
+        sales = []
+        parcels = []
+        years: set[int] = {tax_year(today)}
+        for f in funds:
+            h = _walk(trades.get(f["id"], []))
+            for s in h.sales:
+                years.add(tax_year(s.date))
+                if tax_year(s.date) != year:
+                    continue
+                sales.append(
+                    {
+                        "fund_id": f["id"],
+                        "ticker": f["ticker"],
+                        "date": s.date,
+                        "bought": s.bought,
+                        "units": round(s.units, 6),
+                        "proceeds": round(s.proceeds),
+                        "cost": round(s.cost),
+                        "gain": round(s.proceeds - s.cost),
+                        "long": s.long,
+                    }
+                )
+            price = prices[f["id"]][1] if prices[f["id"]] else None
+            for p in h.parcels:
+                b = dt.date.fromisoformat(p.date)
+                try:
+                    year_on = b.replace(year=b.year + 1) + dt.timedelta(days=1)
+                except ValueError:
+                    year_on = dt.date(b.year + 1, 3, 2)
+                value = p.units * price if price is not None else None
+                parcels.append(
+                    {
+                        "fund_id": f["id"],
+                        "ticker": f["ticker"],
+                        "bought": p.date,
+                        "units": round(p.units, 6),
+                        "cost": round(p.cost),
+                        "value": round(value) if value is not None else None,
+                        "gain": round(value - p.cost) if value is not None else None,
+                        "discount_from": year_on.isoformat(),
+                        "long": year_on.isoformat() <= today,
+                    }
+                )
+        sales.sort(key=lambda s: (s["date"], s["ticker"]))
+        parcels.sort(key=lambda p: p["discount_from"])
+        short = sum(s["gain"] for s in sales if s["gain"] > 0 and not s["long"])
+        long = sum(s["gain"] for s in sales if s["gain"] > 0 and s["long"])
+        losses = -sum(s["gain"] for s in sales if s["gain"] < 0)
+        from_short = min(losses, short)
+        from_long = min(losses - from_short, long)
+        carried = losses - from_short - from_long
+        net = (short - from_short) + (long - from_long) / 2
+        return {
+            "year": year,
+            "years": sorted(years, reverse=True),
+            "sales": sales,
+            "short": short,
+            "long": long,
+            "losses": losses,
+            "discount": round((long - from_long) / 2),
+            "net": round(net),
+            "carried": carried,
+            "parcels": parcels,
+        }
 
     def history(self, span: str) -> list[dict[str, Any]]:
         """The portfolio's value and what had been put in (its cost), sampled across the span: daily for a month,

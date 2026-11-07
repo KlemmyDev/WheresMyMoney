@@ -186,6 +186,8 @@ export type Fund = {
   group_name: string;
   target: number | null;
   fee_pct: number | null;
+  platform: string;
+  kind: "etf" | "share" | "crypto";
   units: number;
   price: number | null;
   price_date: string | null;
@@ -326,4 +328,43 @@ export const netWorthQuery = (range: string) =>
   queryOptions({
     queryKey: ["networth", range],
     queryFn: ({ signal }) => apiGet<NetWorth>("networth", { range }, { signal }),
+  });
+
+export type CapitalGains = {
+  year: number;
+  years: number[];
+  sales: {
+    fund_id: number;
+    ticker: string;
+    date: string;
+    bought: string;
+    units: number;
+    proceeds: number;
+    cost: number;
+    gain: number;
+    long: boolean;
+  }[];
+  short: number;
+  long: number;
+  losses: number;
+  discount: number;
+  net: number;
+  carried: number;
+  parcels: {
+    fund_id: number;
+    ticker: string;
+    bought: string;
+    units: number;
+    cost: number;
+    value: number | null;
+    gain: number | null;
+    discount_from: string;
+    long: boolean;
+  }[];
+};
+
+export const capitalGainsQuery = (year: number | null) =>
+  queryOptions({
+    queryKey: ["investments", "tax", year],
+    queryFn: ({ signal }) => apiGet<CapitalGains>("investments/tax", year ? { year } : undefined, { signal }),
   });

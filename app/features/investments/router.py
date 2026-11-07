@@ -26,6 +26,12 @@ async def history(svc: ServicesDep, range: str = "1y"):
     return await run(svc.investments.history, range)
 
 
+@router.get("/tax")
+async def capital_gains(svc: ServicesDep, year: int | None = None):
+    """A financial year's capital gains, by the year it ends (2026 is July 2025 to June 2026), and the parcels held."""
+    return await run(svc.investments.capital_gains, year)
+
+
 @router.post("/funds")
 async def add_fund(svc: ServicesDep, body: JsonBody):
     """{"ticker": "VAS", "name": "Australian shares", "group": "aus", "target": 0.5}"""

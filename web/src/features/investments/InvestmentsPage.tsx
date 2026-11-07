@@ -24,6 +24,7 @@ import {
 import { longDate, money, monthYear, parseMoney, todayIso } from "~/features/common/format";
 import { Chip, I, type Tone } from "~/features/common/icons";
 import {
+  capitalGainsQuery,
   investmentHistoryQuery,
   investmentsQuery,
   refresh,
@@ -39,6 +40,7 @@ const GROUP_ROLE: Record<string, Role> = {
   bonds: "bills",
   property: "savings",
   cash: "offset",
+  crypto: "spending",
   other: "ink",
 };
 const GROUP_TONE: Record<string, Tone> = {
@@ -47,11 +49,38 @@ const GROUP_TONE: Record<string, Tone> = {
   bonds: "bills",
   property: "savings",
   cash: "offset",
+  crypto: "spending",
   other: "neutral",
 };
+const PLATFORMS = [
+  "Vanguard Personal Investor",
+  "CommSec",
+  "Pearler",
+  "SelfWealth",
+  "Stake",
+  "Superhero",
+  "Betashares Direct",
+  "Raiz",
+  "Spaceship",
+  "CoinSpot",
+  "Swyftx",
+  "Independent Reserve",
+];
+
+/** Funds by where they're held, the biggest platform first. */
+function byPlatform(funds: Fund[]): [string, Fund[]][] {
+  const out = new Map<string, Fund[]>();
+  for (const f of funds) out.set(f.platform, [...(out.get(f.platform) ?? []), f]);
+  return [...out.entries()].sort(
+    (a, b) => b[1].reduce((t, f) => t + f.value, 0) - a[1].reduce((t, f) => t + f.value, 0),
+  );
+}
+
 const colourOf = (f: Fund) => ROLE[GROUP_ROLE[f.group] ?? "ink"];
 const price = (c: number | null) =>
   c == null ? "—" : `$${(c / 100).toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 3 })}`;
+/** Units held: whole for most, up to six decimals for crypto and fractional shares. */
+const units = (u: number) => u.toLocaleString("en-AU", { maximumFractionDigits: 6 });
 const signed = (c: number) => `${c >= 0 ? "+" : "−"}${money(Math.abs(c))}`;
 
 type Range = "1m" | "6m" | "1y" | "5y";
@@ -95,6 +124,7 @@ export function InvestmentsPage() {
             <Distributions p={p} />
             <OffsetOrShares p={p} />
           </div>
+          <CapitalGainsCard />
           <Trades p={p} />
         </div>
       )}
@@ -280,45 +310,64 @@ function Holdings({ p, onFund }: { p: Portfolio; onFund: (f: Fund | "new") => vo
         <span className="text-right">Gain</span>
       </div>
       <div className="flex flex-col">
-        {p.funds.map((f) => (
-          <button
-            key={f.id}
-            type="button"
-            onClick={() => onFund(f)}
-            aria-label={`${f.ticker}, ${f.name}: ${f.units} units worth ${money(f.value)}, ${signed(f.gain)} since bought. Edit the fund`}
-            className="chip-host press grid cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-2xl border-0 border-t border-line bg-transparent px-2 py-3 text-left text-ink first:border-t-0 hover:bg-tile-2 md:grid-cols-[minmax(0,1.6fr)_repeat(5,minmax(0,1fr))]"
-          >
-            <span className="flex min-w-0 items-center gap-3">
-              <Chip g={I.invest} tone={GROUP_TONE[f.group] ?? "neutral"} size="lg" />
-              <span className="min-w-0">
-                <span className="block font-semibold">
-                  {f.ticker} <span className="font-normal text-ink-3">· {f.group_name}</span>
-                </span>
-                <span className="block truncate text-[13px] text-ink-3">
-                  {f.name}
-                  <span className="md:hidden">
-                    {" "}
-                    · {f.units.toLocaleString("en-AU")} units at {price(f.price)}
+        {byPlatform(p.funds).flatMap(([platform, funds], gi, all) => [
+          ...(all.length > 1
+            ? [
+                <div
+                  key={`h-${platform}`}
+                  className="flex items-baseline justify-between px-2 pt-3 pb-1 text-[12px] font-semibold tracking-[0.06em] text-ink-3 uppercase"
+                  style={gi === 0 ? { paddingTop: 0 } : undefined}
+                >
+                  <span>{platform || "No platform given"}</span>
+                  <span className="num normal-case">{money(funds.reduce((t, f) => t + f.value, 0))}</span>
+                </div>,
+              ]
+            : []),
+          ...funds.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() => onFund(f)}
+              aria-label={`${f.ticker}, ${f.name}: ${f.units} units worth ${money(f.value)}, ${signed(f.gain)} since bought. Edit the fund`}
+              className="chip-host press grid cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-2xl border-0 border-t border-line bg-transparent px-2 py-3 text-left text-ink first:border-t-0 hover:bg-tile-2 md:grid-cols-[minmax(0,1.6fr)_repeat(5,minmax(0,1fr))]"
+            >
+              <span className="flex min-w-0 items-center gap-3">
+                <Chip g={I.invest} tone={GROUP_TONE[f.group] ?? "neutral"} size="lg" />
+                <span className="min-w-0">
+                  <span className="block font-semibold">
+                    {f.ticker} <span className="font-normal text-ink-3">· {f.group_name}</span>
+                  </span>
+                  <span className="block truncate text-[13px] text-ink-3">
+                    {f.name}
+                    {f.kind !== "etf" ? ` · ${f.kind === "crypto" ? "Crypto" : "Share"}` : ""}
+                    <span className="md:hidden">
+                      {" "}
+                      · {units(f.units)} units at {price(f.price)}
+                    </span>
                   </span>
                 </span>
               </span>
-            </span>
-            <span className="num hidden text-right text-[14px] md:block">{f.units.toLocaleString("en-AU")}</span>
-            <span className="num hidden text-right text-[14px] md:block">{price(f.price)}</span>
-            <span className={`num hidden text-right text-[14px] md:block ${f.day >= 0 ? "text-savings" : "text-bad"}`}>
-              {signed(f.day)}
-            </span>
-            <span className="text-right">
-              <span className="num block text-[15px]">{money(f.value)}</span>
-              <span className={`num block text-[12px] md:hidden ${f.gain >= 0 ? "text-savings" : "text-bad"}`}>
+              <span className="num hidden text-right text-[14px] md:block">{units(f.units)}</span>
+              <span className="num hidden text-right text-[14px] md:block">{price(f.price)}</span>
+              <span
+                className={`num hidden text-right text-[14px] md:block ${f.day >= 0 ? "text-savings" : "text-bad"}`}
+              >
+                {signed(f.day)}
+              </span>
+              <span className="text-right">
+                <span className="num block text-[15px]">{money(f.value)}</span>
+                <span className={`num block text-[12px] md:hidden ${f.gain >= 0 ? "text-savings" : "text-bad"}`}>
+                  {signed(f.gain)}
+                </span>
+              </span>
+              <span
+                className={`num hidden text-right text-[14px] md:block ${f.gain >= 0 ? "text-savings" : "text-bad"}`}
+              >
                 {signed(f.gain)}
               </span>
-            </span>
-            <span className={`num hidden text-right text-[14px] md:block ${f.gain >= 0 ? "text-savings" : "text-bad"}`}>
-              {signed(f.gain)}
-            </span>
-          </button>
-        ))}
+            </button>
+          )),
+        ])}
       </div>
     </Card>
   );
@@ -523,7 +572,7 @@ function Trades({ p }: { p: Portfolio }) {
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[14px]">
-                  {t.side === "buy" ? "Bought" : "Sold"} {t.units.toLocaleString("en-AU")} units at {price(t.price)}
+                  {t.side === "buy" ? "Bought" : "Sold"} {units(t.units)} units at {price(t.price)}
                 </span>
                 <span className="block text-[12px] text-ink-3">{longDate(t.date)}</span>
               </span>
@@ -594,6 +643,8 @@ function FundForm({
   const [ticker, setTicker] = useState(fund?.ticker ?? "");
   const [name, setName] = useState(fund?.name ?? "");
   const [group, setGroup] = useState(fund?.group ?? "aus");
+  const [kind, setKind] = useState<Fund["kind"]>(fund?.kind ?? "etf");
+  const [platform, setPlatform] = useState(fund?.platform ?? "");
   const [target, setTarget] = useState(fund?.target != null ? String(Math.round(fund.target * 100)) : "");
   const [fee, setFee] = useState(fund?.fee_pct != null ? String(Math.round(fund.fee_pct * 100000) / 1000) : "");
   const save = useMutation({
@@ -602,6 +653,8 @@ function FundForm({
         ticker,
         name,
         group,
+        kind,
+        platform,
         target: target === "" ? null : Number(target) / 100,
         fee_pct: fee === "" ? null : Number(fee) / 100,
       }),
@@ -636,8 +689,45 @@ function FundForm({
         </label>
       </div>
       <p className="m-0 -mt-2 text-[12px] text-ink-3">
-        An ASX code, or add the market for others (VTI.US). Prices are looked up by this code.
+        {kind === "crypto"
+          ? "The coin's code, like BTC or ETH. It's priced in Australian dollars."
+          : "An ASX code, or add the market for others (VTI.US). Prices are looked up by this code."}
       </p>
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Kind">
+        {(
+          [
+            ["etf", "ETF"],
+            ["share", "Share"],
+            ["crypto", "Crypto"],
+          ] as const
+        ).map(([k, l]) => (
+          <ChoiceChip
+            key={k}
+            pressed={kind === k}
+            onClick={() => {
+              setKind(k);
+              if (k === "crypto") setGroup("crypto");
+              else if (group === "crypto") setGroup("other");
+            }}
+          >
+            {l}
+          </ChoiceChip>
+        ))}
+      </div>
+      <label className="flex flex-col gap-1.5">
+        <span className="eyebrow">Held on</span>
+        <Input
+          list="platforms"
+          value={platform}
+          placeholder="Vanguard Personal Investor, CommSec, Raiz, CoinSpot…"
+          onChange={(e) => setPlatform(e.target.value)}
+        />
+        <datalist id="platforms">
+          {PLATFORMS.map((x) => (
+            <option key={x} value={x} />
+          ))}
+        </datalist>
+      </label>
       <fieldset className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
         <legend className="eyebrow mb-2">What it holds</legend>
         <div className="flex flex-wrap gap-2">
@@ -682,5 +772,96 @@ function FundForm({
         </Button>
       </div>
     </form>
+  );
+}
+
+const fy = (y: number) => `${y - 1}–${String(y).slice(2)}`;
+
+/** Capital gains a financial year at a time, and the parcels still held with when each gets the discount. */
+function CapitalGainsCard() {
+  const [year, setYear] = useState<number | null>(null);
+  const q = useQuery({ ...capitalGainsQuery(year), placeholderData: keepPreviousData });
+  const t = q.data;
+  if (!t) return null;
+  const soon = t.parcels.filter((p) => !p.long);
+  return (
+    <Card aria-labelledby="inv-cgt" className="flex flex-col gap-4 md:col-span-12">
+      <CardHead
+        id="inv-cgt"
+        title="Capital gains"
+        right={
+          <div className="no-scrollbar flex gap-1.5 overflow-x-auto" role="group" aria-label="Financial year">
+            {t.years.map((y) => (
+              <ChoiceChip key={y} pressed={t.year === y} onClick={() => setYear(y)} role="invest">
+                {fy(y)}
+              </ChoiceChip>
+            ))}
+          </div>
+        }
+      />
+      <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4">
+        <Stat label="Held over a year" value={money(t.long)} note="gains, before the discount" role="savings" />
+        <Stat label="Held under a year" value={money(t.short)} note="gains" role="bills" />
+        <Stat
+          label="Losses"
+          value={money(t.losses)}
+          note={t.carried ? `${money(t.carried)} carried forward` : "taken off the gains"}
+          role="bad"
+        />
+        <Stat
+          label="Net capital gain"
+          value={money(t.net)}
+          note={t.discount ? `after the ${money(t.discount)} discount` : "to declare"}
+          role="invest"
+        />
+      </div>
+      <div className="grid gap-6 md:grid-cols-2">
+        <div className="flex flex-col">
+          <div className="eyebrow mb-1">Sales in {fy(t.year)}</div>
+          {t.sales.length === 0 && <p className="m-0 text-[13px] text-ink-3">Nothing sold this financial year.</p>}
+          {t.sales.map((s, i) => (
+            <div key={i} className="flex items-center gap-3 border-t border-line py-2.5 first:border-t-0">
+              <span className="mono w-11 text-[13px] font-semibold">{s.ticker}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[14px]">
+                  {units(s.units)} units, {longDate(s.date)}
+                </span>
+                <span className="block text-[12px] text-ink-3">
+                  Bought {longDate(s.bought)} · cost {money(s.cost)} · sold for {money(s.proceeds)}
+                </span>
+              </span>
+              <span className="flex flex-col items-end gap-1">
+                <span className={`num text-[14px] ${s.gain >= 0 ? "text-savings" : "text-bad"}`}>{signed(s.gain)}</span>
+                <Pill tone={s.long ? "good" : "mute"}>{s.long ? "Over a year" : "Under a year"}</Pill>
+              </span>
+            </div>
+          ))}
+        </div>
+        <div className="flex flex-col">
+          <div className="eyebrow mb-1">Parcels still held, under a year</div>
+          {soon.length === 0 && (
+            <p className="m-0 text-[13px] text-ink-3">Every parcel held has been held over a year.</p>
+          )}
+          {soon.slice(0, 8).map((p, i) => (
+            <div key={i} className="flex items-center gap-3 border-t border-line py-2.5 first:border-t-0">
+              <span className="mono w-11 text-[13px] font-semibold">{p.ticker}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[14px]">
+                  {units(p.units)} units, bought {longDate(p.bought)}
+                </span>
+                <span className="block text-[12px] text-ink-3">Discount from {longDate(p.discount_from)}</span>
+              </span>
+              {p.gain != null && (
+                <span className={`num text-[14px] ${p.gain >= 0 ? "text-savings" : "text-bad"}`}>{signed(p.gain)}</span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+      <p className="m-0 text-[12px] text-ink-3">
+        Parcels are used up oldest first, the ATO's default; you can choose other parcels in your return. Losses come
+        off gains held under a year first. An estimate to take to your tax return, not tax advice.
+      </p>
+    </Card>
   );
 }

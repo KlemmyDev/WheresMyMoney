@@ -283,6 +283,16 @@ def _super_values(conn: sqlite3.Connection) -> None:
     )
 
 
+def _fund_platforms(conn: sqlite3.Connection) -> None:
+    """funds.`platform`: where it's held (a broker, a micro-investing app, an exchange); funds.`kind`: etf, share or
+    crypto (a crypto ticker is looked up in Australian dollars)."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(funds)")}
+    if "platform" not in cols:
+        conn.execute("ALTER TABLE funds ADD COLUMN platform TEXT NOT NULL DEFAULT ''")
+    if "kind" not in cols:
+        conn.execute("ALTER TABLE funds ADD COLUMN kind TEXT NOT NULL DEFAULT 'etf'")
+
+
 MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _baseline,
     _money,
@@ -297,4 +307,5 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _super_fees,
     _goal_moves,
     _super_values,
+    _fund_platforms,
 ]
