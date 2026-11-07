@@ -11,6 +11,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState, type CSSProperties, type KeyboardEvent } from "react";
 import { apiSend, errorMessage } from "~/features/common/api";
+import { CategoryPicker } from "~/features/common/CategoryPicker";
 import { amount, capsDate, colour, dayDate, money, shortDate } from "~/features/common/format";
 import { useToast } from "~/features/common/overlay";
 import { accountActivityQuery, categoriesQuery, refresh, transactionsQuery } from "~/features/common/queries";
@@ -382,7 +383,8 @@ const PAGE = 60;
 
 /**
  * The account's transactions in the chart's range (or just the bar picked on it), newest first, each with its
- * category: change one here (and remember it for the merchant), or show only what's not sorted yet.
+ * category (the shared category picker: change one here, and remember it for the merchant), or show only what's not
+ * sorted yet.
  */
 export function AccountTransactions({
   account,
@@ -408,12 +410,18 @@ export function AccountTransactions({
   const toast = useToast();
   const [unsorted, setUnsorted] = useState(false);
   const [q, setQ] = useState("");
-  const [remember, setRemember] = useState(true);
   const [shown, setShown] = useState(PAGE);
   const update = useMutation({
-    mutationFn: ({ id, category_id }: { id: number; category_id: number | null }) =>
+    mutationFn: ({ id, category_id, remember }: { id: number; category_id: number | null; remember: boolean }) =>
       apiSend<Transaction>("PUT", `transactions/${id}`, { category_id, always: remember }),
-    onSuccess: (t) => (refresh(qc), toast(`${t.description} is ${t.category ?? "not sorted"}`)),
+    onSuccess: (t, { remember }) => (
+      refresh(qc),
+      toast(
+        t.category && remember && t.remember_as
+          ? `${t.remember_as} is ${t.category} from now on`
+          : `${t.description} is ${t.category ?? "not sorted"}`,
+      )
+    ),
     onError: (e) => toast(errorMessage(e)),
   });
   const all = txs.data ?? [];
@@ -467,10 +475,6 @@ export function AccountTransactions({
             value={q}
             onChange={(e) => (setQ(e.target.value), setShown(PAGE))}
           />
-          <label className="flex items-center gap-2 text-[13px] text-ink-2">
-            <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
-            Remember a category for its merchant
-          </label>
         </div>
       )}
       {txs.isError && <ErrorText>{errorMessage(txs.error)}</ErrorText>}
@@ -496,24 +500,14 @@ export function AccountTransactions({
                 ) : null}
               </span>
               {sortable(t) && !loan ? (
-                <select
-                  aria-label={`Category for ${t.description}`}
-                  className={cn(
-                    "min-h-8 rounded-md border bg-raised px-2 text-xs",
-                    t.category_id == null ? "border-warn/50 text-warn" : "border-line text-ink",
-                  )}
-                  value={t.category_id ?? ""}
-                  onChange={(e) =>
-                    update.mutate({ id: t.id, category_id: e.target.value ? Number(e.target.value) : null })
-                  }
-                >
-                  <option value="">Not sorted</option>
-                  {(cats.data?.categories ?? []).map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+                <CategoryPicker
+                  label={`Category for ${t.description}`}
+                  value={t.category_id}
+                  categories={cats.data?.categories ?? []}
+                  merchant={t.remember_as || null}
+                  placeholder="Not sorted"
+                  onChange={(category_id, { remember }) => update.mutate({ id: t.id, category_id, remember })}
+                />
               ) : (
                 <span className="text-xs text-ink-3">{t.category ?? ""}</span>
               )}
