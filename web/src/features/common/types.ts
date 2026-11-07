@@ -60,6 +60,12 @@ export type Transaction = {
   user_id: number | null;
   who: string | null;
   merged: boolean;
+  /** The description cut down to the merchant, for remembering a category. */
+  merchant: string;
+  /** What choosing a category "always" remembers it by: "KMART" for "KMART YAMANTO". */
+  remember_as: string;
+  /** How its category was chosen: you, rule, suggest, bill, auto, or null. */
+  category_by: string | null;
 };
 
 export type Category = { id: number; name: string; kind: string; budget: number | null; icon: string | null };

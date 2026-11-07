@@ -12,6 +12,7 @@ import { Dialog, useToast } from "~/features/common/overlay";
 import { accountsQuery, billsQuery, categoriesQuery, refresh } from "~/features/common/queries";
 import type { Account, Bill, Every, SpottedBill } from "~/features/common/types";
 import { SpottedBills } from "~/features/bills/Spotted";
+import { CategoryPicker } from "~/features/common/CategoryPicker";
 import {
   Button,
   Dot,
@@ -382,15 +383,15 @@ function BillForm({
           </Select>
         </div>
         <div>
-          <Label htmlFor="b-cat">Category</Label>
-          <Select id="b-cat" value={f.category_id} onChange={(e) => setF({ ...f, category_id: e.target.value })}>
-            <option value="">Bills</option>
-            {(cats.data?.categories ?? []).map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </Select>
+          <Label>Category</Label>
+          <CategoryPicker
+            label="Category"
+            value={f.category_id ? Number(f.category_id) : null}
+            categories={cats.data?.categories ?? []}
+            placeholder="Bills"
+            onChange={(c) => setF({ ...f, category_id: c != null ? String(c) : "" })}
+            className="min-h-10 text-[13px]"
+          />
         </div>
         <div>
           <Label htmlFor="b-match">On the statement as (optional)</Label>

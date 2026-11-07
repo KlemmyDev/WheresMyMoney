@@ -103,6 +103,8 @@ def test_sorting_a_merchant_remembers_its_brand_and_resorts_suggestions_but_not_
     done = ok(client.post("/api/merchants/sort", json={"transaction_id": made[0]["id"], "category_id": shopping}))
     assert done == {"changed": 2, "pattern": "KMART"}
     cats = {t["id"]: t["category_id"] for t in ok(client.get("/api/transactions"))}
+    txs = ok(client.get("/api/transactions"))
+    assert {t["remember_as"] for t in txs if t["description"].startswith("KMART")} == {"KMART"}
     assert cats[made[0]["id"]] == shopping and cats[made[1]["id"]] == shopping and cats[made[2]["id"]] == fun
     # A new Kmart store is sorted by the brand.
     t = ok(
@@ -137,3 +139,9 @@ def test_an_older_household_gets_the_new_categories_once(tmp_path) -> None:
     assert names[0] == "Groceries" and "Insurance" in names and "Dog" in names
     assert names.index("Dog") < names.index("Bills")  # the household's own spending sits with spending
     assert conn.execute("SELECT merchant, category_by FROM transactions").fetchone() == ("DANGER CLOSE", None)
+    # The next round of starting categories comes in the same way, once.
+    MIGRATIONS[4](conn)
+    names = [r[0] for r in conn.execute("SELECT name FROM categories ORDER BY sort")]
+    assert {"Coffee", "Childcare", "Rent", "Side income", "Savings"} <= set(names)
+    assert len(names) == len(set(n.lower() for n in names))
+    assert names.index("Coffee") < names.index("Bills") < names.index("Rent") < names.index("Pay")
