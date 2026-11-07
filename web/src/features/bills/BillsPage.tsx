@@ -147,12 +147,12 @@ export function BillsPage() {
               return (
                 <div
                   key={m.month}
-                  className="rise flex min-h-[72px] flex-col justify-between rounded-md px-1.5 py-2.5 text-center"
+                  className="rise flex min-h-[72px] flex-col justify-between rounded-xl px-1.5 py-2.5 text-center"
                   style={
                     {
                       "--i": i,
                       background: strong
-                        ? "var(--color-bills)"
+                        ? "var(--color-bills-fill)"
                         : `color-mix(in srgb, var(--color-bills-fill) ${Math.round((0.12 + r * 0.3) * 100)}%, transparent)`,
                       color: strong ? "var(--color-page)" : undefined,
                     } as CSSProperties
@@ -206,7 +206,7 @@ export function BillsPage() {
                   <td className="border-b border-line px-2.5 py-2.5">
                     <span className="relative inline-block h-1.5 w-20 rounded-[3px] bg-raised align-middle">
                       <i
-                        className="grow-x absolute inset-y-0 left-0 rounded-[3px] bg-bills"
+                        className="striped grow-x absolute inset-y-0 left-0 rounded-full bg-bills-fill"
                         style={{ width: `${(bill.share ?? 0) * 100}%` }}
                       />
                     </span>

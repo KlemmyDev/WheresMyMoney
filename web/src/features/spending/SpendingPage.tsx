@@ -150,13 +150,13 @@ export function SpendingPage() {
               return (
                 <div key={c.id} className="grid grid-cols-[110px_1fr_120px] items-center gap-3 text-[13px]">
                   <span>{c.name}</span>
-                  <span className="relative h-2.5 rounded-[3px] bg-raised">
+                  <span className="relative h-2.5 rounded-full bg-raised">
                     <i
-                      className="grow-x absolute inset-y-0 left-0 rounded-[3px]"
+                      className="striped grow-x absolute inset-y-0 left-0 rounded-full"
                       style={
                         {
                           width: `${Math.min(ratio, 1) * 100}%`,
-                          background: over ? "var(--color-warn)" : "var(--color-spending)",
+                          backgroundColor: over ? "var(--color-bills-fill)" : "var(--color-spending-fill)",
                           "--i": i,
                         } as CSSProperties
                       }

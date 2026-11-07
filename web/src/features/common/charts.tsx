@@ -328,9 +328,18 @@ export function DayBars({
               <div key={i} className="relative flex h-full flex-1 items-end">
                 {i === today - 1 && <div className="absolute inset-y-0 -right-[2px] w-px bg-teal" />}
                 <div
-                  className={past ? "w-full grow rounded-t-[2px] bg-spending" : "w-full rounded-t-[2px] bg-raised"}
+                  className={
+                    past ? "striped w-full grow rounded-t-[4px] bg-spending-fill" : "hatched w-full rounded-t-[4px]"
+                  }
                   style={
-                    { height: past ? `max(2px, ${(v / top) * 100}%)` : "2px", ["--i" as string]: i } as CSSProperties
+                    {
+                      // What's ahead is likely, not known: a hatched bar at the even pace.
+                      height: past
+                        ? `max(2px, ${(v / top) * 100}%)`
+                        : `max(2px, ${(Math.min(pace, top) / top) * 100}%)`,
+                      ["--i" as string]: i,
+                      ["--c" as string]: "var(--color-spending-fill)",
+                    } as CSSProperties
                   }
                 />
               </div>
