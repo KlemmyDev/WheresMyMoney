@@ -14,6 +14,8 @@ dependencies = [
     "uvicorn[standard]==0.39.0",
     # Web push: encrypting each notification for the browser, and signing it (VAPID).
     "pycryptodomex==3.23.0",
+    # Reading super statements (PDF) on the server, so they never leave the house.
+    "pypdf==6.1.1",
 ]
 
 [dependency-groups]
