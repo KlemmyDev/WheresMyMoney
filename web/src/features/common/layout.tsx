@@ -145,6 +145,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           key={page?.to ?? path}
           className="screen mx-auto flex max-w-[1360px] flex-col gap-4 px-4 pt-4 pb-14 sm:px-7 sm:pt-6"
         >
+          {section > 0 && <SectionPages section={SECTIONS[section]} path={path} />}
           {children}
         </main>
 
@@ -449,5 +450,49 @@ function ActionTile({
         <span className="block text-[13px] text-ink-3">{sub}</span>
       </span>
     </button>
+  );
+}
+
+/**
+ * The section's pages, at the top of each page: pills with icon chips on a desktop, a strip of equal tabs on a phone
+ * (so the page you're on is always in view).
+ */
+function SectionPages({ section, path }: { section: Section; path: string }) {
+  const current = (p: Page) => on(path, p.to) || !!p.also?.some((a) => on(path, a));
+  return (
+    <nav aria-label={`${section.label} pages`}>
+      <div className="hidden flex-wrap justify-end gap-2 sm:flex">
+        {section.pages.map((p) => (
+          <Link
+            key={p.to}
+            to={p.to}
+            activeProps={{}}
+            aria-current={current(p) ? "page" : undefined}
+            className="chip-host press inline-flex min-h-12 items-center gap-2.5 rounded-2xl border border-line bg-tile py-1 pr-4 pl-2 text-[14px] font-semibold text-ink-2 no-underline hover:border-line-2 hover:text-ink aria-[current=page]:border-teal/50 aria-[current=page]:bg-teal/10 aria-[current=page]:text-ink"
+          >
+            <Chip g={p.g} tone={p.tone} size="md" />
+            {p.label}
+            {p.soon && <SoonPill />}
+          </Link>
+        ))}
+      </div>
+      <div
+        className="grid gap-1 rounded-[18px] border border-line bg-tile p-1 sm:hidden"
+        style={{ gridTemplateColumns: `repeat(${section.pages.length}, minmax(0, 1fr))` }}
+      >
+        {section.pages.map((p) => (
+          <Link
+            key={p.to}
+            to={p.to}
+            activeProps={{}}
+            aria-current={current(p) ? "page" : undefined}
+            className="chip-host press flex h-14 flex-col items-center justify-center gap-1 rounded-[14px] text-[12px] font-semibold text-ink-3 no-underline aria-[current=page]:bg-teal/12 aria-[current=page]:text-ink"
+          >
+            <Chip g={p.g} tone={p.tone} size="sm" />
+            {p.label === "Loan and offset" ? "Loan" : p.label}
+          </Link>
+        ))}
+      </div>
+    </nav>
   );
 }
