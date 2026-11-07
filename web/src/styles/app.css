@@ -322,6 +322,18 @@ body {
 .slide-l {
   animation: slide-l 300ms var(--ease-enter) both;
 }
+/* A live dot (the dashboard's "safe to spend today"): a soft ring that keeps spreading out from it. */
+@keyframes pulse-ring {
+  from {
+    box-shadow: 0 0 0 0 rgb(45 212 191 / 0.55);
+  }
+  to {
+    box-shadow: 0 0 0 10px rgb(45 212 191 / 0);
+  }
+}
+.pulse-ring {
+  animation: pulse-ring 1600ms ease-out infinite;
+}
 .no-scrollbar {
   scrollbar-width: none;
 }
@@ -399,7 +411,8 @@ body {
   .draw,
   .fill-after,
   .pop,
-  .flash {
+  .flash,
+  .pulse-ring {
     animation: none !important;
   }
   .press:active:not(:disabled) {
