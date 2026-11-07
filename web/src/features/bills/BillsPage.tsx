@@ -3,6 +3,7 @@
  * the months ahead as a heat strip, and every bill with how often, when next, and how it's paid.
  */
 import { Loading } from "~/features/common/brand";
+import { Bar, BigNumber, Card, Eyebrow, Stat } from "~/features/common/ds";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type CSSProperties } from "react";
 import { apiGet, apiSend, errorMessage } from "~/features/common/api";
@@ -13,19 +14,7 @@ import { accountsQuery, billsQuery, categoriesQuery, refresh } from "~/features/
 import type { Account, Bill, Every, SpottedBill } from "~/features/common/types";
 import { SpottedBills } from "~/features/bills/Spotted";
 import { CategoryPicker } from "~/features/common/CategoryPicker";
-import {
-  Button,
-  Dot,
-  ErrorText,
-  Input,
-  Label,
-  PageHead,
-  Pill,
-  Select,
-  Tile,
-  TileTitle,
-  cn,
-} from "~/features/common/ui";
+import { Button, ErrorText, Input, Label, PageHead, Pill, Select, Tile, TileTitle, cn } from "~/features/common/ui";
 
 const HOW = { auto: ["AUTO", "info"], manual: ["BY HAND", "warn"], estimate: ["ESTIMATE", "good"] } as const;
 
@@ -56,48 +45,60 @@ export function BillsPage() {
           </Button>
         }
       />
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(210px,1fr))] gap-4">
-        {acct && (
-          <Tile i={0}>
-            <TileTitle right={<Dot c="bills" />}>Bills account</TileTitle>
-            <div className="mono text-[26px] font-semibold">
-              <Count k="bills:bal" value={acct.balance} format={(v) => money(v)} />
-            </div>
-          </Tile>
-        )}
+      <Card lit tint="bills" aria-labelledby="bl-hero">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <Eyebrow id="bl-hero">{acct ? acct.name : "Bills"}</Eyebrow>
+            <BigNumber className="mt-1">
+              <Count k="bills:bal" value={acct?.balance ?? 0} format={(v) => money(v)} />
+            </BigNumber>
+            {t && (
+              <div className="mt-1 text-[13px] text-ink-3">
+                {held.toFixed(1)} months of bills held · aim {t.months}
+              </div>
+            )}
+          </div>
+          {t && <Pill tone={held >= t.months ? "good" : "warn"}>{held >= t.months ? "On aim" : "Below aim"}</Pill>}
+        </div>
         {t && (
-          <Tile i={1}>
-            <TileTitle
-              right={
-                <Pill tone={held >= t.months ? "good" : "warn"}>{held >= t.months ? "ON TARGET" : "UNDER TARGET"}</Pill>
-              }
-            >
-              Months covered
-            </TileTitle>
-            <div className="mono text-[26px] font-semibold">
-              {held.toFixed(1)} <span className="text-[15px] text-ink-3">/ {t.months.toFixed(1)}</span>
+          <div>
+            <Bar
+              label={`${held.toFixed(1)} months held, aim ${t.months}`}
+              max={Math.max(t.months + 1, held)}
+              marker={t.months}
+              height={14}
+              segments={[{ value: held, role: "bills" }]}
+            />
+            <div className="mt-2 flex justify-between text-[12px] text-ink-3">
+              <span>0</span>
+              <span className="text-ink">aim {t.months} months</span>
+              <span>{Math.max(t.months + 1, Math.ceil(held))} months</span>
             </div>
-            <div className="mono text-xs text-ink-3">
-              {money(Math.abs((acct?.balance ?? 0) - t.amount))} {(acct?.balance ?? 0) >= t.amount ? "above" : "below"}{" "}
-              target
-            </div>
-          </Tile>
+          </div>
         )}
-        <Tile i={2}>
-          <div className="tt">Average month</div>
-          <div className="mono text-[26px] font-semibold">{money(b.per_month)}</div>
-          <div className="mono text-xs text-ink-3">
-            {money(b.per_year)} a year · {b.bills.length} bills
-          </div>
-        </Tile>
-        <Tile i={3}>
-          <div className="tt">Next 30 days</div>
-          <div className="mono text-[26px] font-semibold">{money(b.next30.total)}</div>
-          <div className="mono text-xs text-ink-3">
-            {b.next30.count} bills{b.next30.by_hand ? ` · ${b.next30.by_hand} you pay by hand` : ""}
-          </div>
-        </Tile>
-      </div>
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+          <Stat
+            label="Average month"
+            value={money(b.per_month)}
+            note={`${money(b.per_year)} a year · ${b.bills.length} bills`}
+            role="bills"
+          />
+          <Stat
+            label="Next 30 days"
+            value={money(b.next30.total)}
+            note={`${b.next30.count} bills${b.next30.by_hand ? ` · ${b.next30.by_hand} by hand` : ""}`}
+            role="bills"
+          />
+          {t && (
+            <Stat
+              label={(acct?.balance ?? 0) >= t.amount ? "Above aim" : "Below aim"}
+              value={money(Math.abs((acct?.balance ?? 0) - t.amount))}
+              note={`aim ${money(t.amount)}`}
+              role={(acct?.balance ?? 0) >= t.amount ? "savings" : "bills"}
+            />
+          )}
+        </div>
+      </Card>
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,520px),1fr))] gap-4">
         {acct && t && (
           <Tile i={4} aria-labelledby="bl-bal">

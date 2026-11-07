@@ -12,6 +12,7 @@ import { errorMessage } from "~/features/common/api";
 import { colour, money, monthYear, pct } from "~/features/common/format";
 import { loanQuery } from "~/features/common/queries";
 import { Dot, Empty, ErrorText, PageHead, Segmented, Tile, TileTitle } from "~/features/common/ui";
+import { LoanSimulator } from "~/features/accounts/LoanSimulator";
 
 export function LoanPage() {
   const q = useQuery(loanQuery);
@@ -79,6 +80,15 @@ export function LoanPage() {
         />
         <Fig i={4} title="Repayment" value={money(lo.repayment)} sub="monthly" />
       </div>
+      {lo.rate_bp != null && lo.repayment ? (
+        <LoanSimulator
+          balance={lo.balance}
+          offsetting={v.offsetting}
+          rateBp={lo.rate_bp}
+          repayment={lo.repayment}
+          recentGrowth={v.monthly_growth}
+        />
+      ) : null}
       <Tile i={5} aria-labelledby="ln-proj">
         <TileTitle
           id="ln-proj"

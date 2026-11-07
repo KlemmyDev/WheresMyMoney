@@ -360,8 +360,11 @@ export function PageHead({ over, title, actions }: { over: ReactNode; title: Rea
   return (
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div>
-        <div className="mono text-xs text-ink-3 uppercase">{over}</div>
-        <h1 className="mt-1 mb-0 text-[26px] font-semibold">{title}</h1>
+        <div className="text-[11px] leading-4 font-semibold tracking-[0.09em] text-ink-3 uppercase">{over}</div>
+        {/* On a phone the frame's header already names the page. */}
+        <h1 className="mt-1.5 mb-0 hidden text-[40px] leading-[46px] font-semibold tracking-[-0.03em] sm:block">
+          {title}
+        </h1>
       </div>
       {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
     </div>
