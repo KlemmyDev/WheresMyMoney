@@ -57,3 +57,26 @@ export function useTheme(): [ThemeChoice, (c: ThemeChoice) => void] {
 
 /** Runs in <head> before paint. */
 export const THEME_SCRIPT = `try{var t=localStorage.getItem("${KEY}");var l=t==="light"||(t==="auto"&&matchMedia("(prefers-color-scheme: light)").matches);document.documentElement.dataset.theme=l?"light":"dark"}catch(e){document.documentElement.dataset.theme="dark"}`;
+
+/** A per-browser on/off setting (like "hide balances"), shared live across components. */
+export function useStoredFlag(key: string): [boolean, (v: boolean) => void] {
+  const read = () => {
+    try {
+      return localStorage.getItem(key) === "1";
+    } catch {
+      return false;
+    }
+  };
+  const value = useSyncExternalStore(subscribe, read, () => false);
+  return [
+    value,
+    (v) => {
+      try {
+        localStorage.setItem(key, v ? "1" : "0");
+      } catch {
+        // Private mode: lasts until reload.
+      }
+      window.dispatchEvent(new Event(EVENT));
+    },
+  ];
+}

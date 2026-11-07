@@ -1,5 +1,6 @@
 /**
- * The dashboard: this spending month (design: direction C, "This month", on the dashboard canvas). Three readouts
+ * The Overview (Nightfall, from the uplift canvas): your balances up top with an account filter, quick actions, then
+ * this spending month. Three readouts
  * (safe to spend today, spent so far, bills before the next pay), the month day by day (money left as a line, what was
  * spent each day as bars, pay and bills underneath; hover or arrow through any day to see it on the right), where the
  * money went by category, and what's still to come before the next top-up.
@@ -14,7 +15,10 @@ import { dayDate, money, parseDate, shortDate } from "~/features/common/format";
 import { useActions } from "~/features/common/layout";
 import { dashboardQuery } from "~/features/common/queries";
 import type { Dashboard, SpendingMonth } from "~/features/common/types";
-import { Button, Empty, ErrorText, PageHead, Pill, Tile, TileTitle, cn } from "~/features/common/ui";
+import { Banner, Bar } from "~/features/common/ds";
+import { I } from "~/features/common/icons";
+import { Button, Empty, ErrorText, Pill, Tile, TileTitle, cn } from "~/features/common/ui";
+import { AccountsCard, BalanceHero, GoalsCard, QuickActions } from "~/features/dashboard/OverviewParts";
 
 type Event = { kind: "pay" | "bill" | "topup"; name: string; amount: number | null; how: string };
 
@@ -146,33 +150,26 @@ export function DashboardPage() {
     );
   const s = d.spending;
   const checkinDue = d.checkin.next <= d.today && d.checkin.last?.date !== d.today;
-  const banner = (checkinDue || d.checkin.flags.length > 0) && (
-    <div
-      className="rise flex flex-wrap items-center gap-3 rounded-tile border border-teal/40 bg-teal/8 px-4 py-3"
-      style={{ "--i": 0 } as CSSProperties}
+  const flag = d.checkin.flags[0];
+  const banner = (checkinDue || flag) && (
+    <Banner
+      g={flag ? I.rules : I.shield}
+      tone={flag ? "bills" : "offset"}
+      title={
+        flag
+          ? `${flag.account} was ${money(Math.abs(flag.difference))} ${flag.difference < 0 ? "short" : "over"}`
+          : "Check-in due"
+      }
+      action={
+        <Button primary onClick={actions.checkin}>
+          Check in
+        </Button>
+      }
     >
-      <span className="min-w-0 flex-1">
-        {d.checkin.flags.length ? (
-          <>
-            <b>
-              {d.checkin.flags[0].account} was {money(Math.abs(d.checkin.flags[0].difference))}{" "}
-              {d.checkin.flags[0].difference < 0 ? "short" : "over"}
-            </b>{" "}
-            <span className="text-ink-2">
-              at the last check-in
-              {d.checkin.flags[0].rule ? `: the ${d.checkin.flags[0].rule.label || "transfer"} didn't add up` : ""}.
-            </span>
-          </>
-        ) : (
-          <>
-            <b>Check-in due</b> <span className="text-ink-2">· {d.accounts.length} balances · about 30 seconds</span>
-          </>
-        )}
-      </span>
-      <Button primary onClick={actions.checkin}>
-        Check in
-      </Button>
-    </div>
+      {flag
+        ? `At the last check-in${flag.rule ? `: the ${flag.rule.label || "transfer"} didn't add up` : ""}.`
+        : `${d.accounts.length} balances, about 30 seconds.`}
+    </Banner>
   );
   if (!s)
     return (
@@ -194,12 +191,18 @@ export function DashboardPage() {
   return (
     <>
       {banner}
-      <PageHead
-        over={`Spending month · ${shortDate(s.start)} – ${shortDate(s.end)} · day ${s.day} of ${s.days}`}
-        title="This month"
-      />
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,300px),1fr))] gap-4">
+      <div className="grid gap-4 md:grid-cols-12">
+        <BalanceHero d={d} />
         <SafeToday m={m} />
+      </div>
+      <QuickActions />
+      <div className="mt-2 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="m-0 text-[22px] font-semibold tracking-[-0.02em]">This month</h2>
+        <span className="text-[13px] text-ink-3">
+          {shortDate(s.start)} – {shortDate(s.end)} · day {s.day} of {s.days}
+        </span>
+      </div>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,300px),1fr))] gap-4">
         <SpentSoFar m={m} />
         <BeforePay d={d} m={m} />
       </div>
@@ -207,6 +210,10 @@ export function DashboardPage() {
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,420px),1fr))] gap-4">
         <Categories s={s} />
         <StillToCome m={m} hover={hover} setHover={setHover} />
+      </div>
+      <div className="grid gap-4 md:grid-cols-12">
+        <AccountsCard d={d} />
+        <GoalsCard d={d} />
       </div>
     </>
   );
@@ -218,19 +225,41 @@ function SafeToday({ m }: { m: Month }) {
     <Tile
       i={1}
       aria-labelledby="b-safe"
-      className="border-teal/35 bg-[linear-gradient(160deg,color-mix(in_srgb,var(--color-accent-fill)_14%,transparent),color-mix(in_srgb,var(--color-accent-fill)_3%,transparent)_60%),var(--color-tile)]"
+      className="lit justify-center md:col-span-4"
+      style={{
+        background:
+          "radial-gradient(420px 260px at 0% 0%, color-mix(in srgb, var(--color-accent-fill) 18%, transparent), transparent 70%), var(--color-tile)",
+      }}
     >
       <div className="flex items-center gap-2 text-[13px] text-ink-2">
         <span aria-hidden className="pulse-ring size-2 rounded-full bg-teal" />
         <span id="b-safe">Safe to spend today</span>
       </div>
-      <div className="mono text-[40px] leading-tight font-semibold">
+      <div className="mono text-[44px] leading-[48px] font-semibold tracking-[-0.045em] sm:text-[52px] sm:leading-[56px]">
         <Count k="dash:safe" value={s.safe_per_day} format={(v) => money(v, { cents: true })} />
       </div>
       <div className="text-[12.5px] text-ink-3">
         {s.remaining
           ? `${money(s.left)} left over ${s.remaining} ${s.remaining === 1 ? "day" : "days"}, so the month ends on budget`
           : "The last day of the month: whatever's left is yours"}
+      </div>
+      <div className="mt-2">
+        {/* `projected` is what's likely left on the last day, so the likely spend still to come is left − projected. */}
+        <Bar
+          label={`Spent ${money(s.spent)}, likely ${money(Math.max(0, s.left - s.projected))} more, of ${money(s.allowance)}`}
+          max={Math.max(s.allowance, s.spent + Math.max(0, s.left - s.projected), 1)}
+          segments={[
+            { value: s.spent, role: "spending" },
+            { value: Math.max(0, s.left - s.projected), role: "spending", likely: true },
+          ]}
+        />
+        <div className="mt-2 flex justify-between gap-2 text-[12px] text-ink-3">
+          <span>Spent {money(s.spent)}</span>
+          <span>▨ likely {money(Math.max(0, s.left - s.projected))}</span>
+          <span className={s.projected >= 0 ? "text-good" : "text-warn"}>
+            {s.projected >= 0 ? `~${money(s.projected)} spare` : `~${money(-s.projected)} short`}
+          </span>
+        </div>
       </div>
     </Tile>
   );
