@@ -9,7 +9,7 @@ import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { simulate } from "~/features/accounts/LoanSimulator";
 import { apiSend, errorMessage } from "~/features/common/api";
-import { ChoiceChip, IconButton, Sheet, Stat } from "~/features/common/ds";
+import { ChoiceChip, IconButton, Sheet, Stat, useSheetTop } from "~/features/common/ds";
 import { longDate, money, monthYear } from "~/features/common/format";
 import { Chip, I } from "~/features/common/icons";
 import { accountsQuery, refresh, rulesQuery, type LoanView } from "~/features/common/queries";
@@ -80,6 +80,7 @@ function RateChange({ v, spotted, onClose }: { v: LoanView; spotted: Spotted; on
   const [payMode, setPayMode] = useState<"bank" | "keep">("bank");
   const [raise, setRaise] = useState(true);
   const [done, setDone] = useState<string | null>(null);
+  const top = useSheetTop(!!done);
 
   const owed = lo.balance;
   const charged = Math.max(owed - v.offsetting, 0);
@@ -128,7 +129,7 @@ function RateChange({ v, spotted, onClose }: { v: LoanView; spotted: Spotted; on
 
   if (done)
     return (
-      <div className="flex flex-col items-center gap-3 px-5 pt-2 pb-6 text-center">
+      <div ref={top} className="flex flex-col items-center gap-3 pt-2 pb-2 text-center">
         <Chip g={I.loan} tone="loan" size="xxl" solid />
         <h3 className="m-0 text-[22px] font-semibold">Updated to {pctText(rate)}</h3>
         <p className="m-0 max-w-[420px] text-[14px] text-ink-2">{done}</p>
@@ -149,7 +150,7 @@ function RateChange({ v, spotted, onClose }: { v: LoanView; spotted: Spotted; on
 
   const up = rate > oldBp;
   return (
-    <div className="flex flex-col gap-5 overflow-x-hidden overflow-y-auto px-5 pb-6">
+    <div ref={top} className="flex flex-col gap-5 pb-2">
       {spotted && (
         <p className="m-0 rounded-2xl bg-sunken p-3.5 text-[14px] text-ink-2">
           <b className="text-ink">Spotted in your statement.</b> Interest was charged at {pctText(spotted.value)} from{" "}
