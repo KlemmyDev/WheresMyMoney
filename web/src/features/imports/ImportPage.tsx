@@ -14,6 +14,7 @@
  * month first (read from uBank's file names, so each account's history builds in order), each to its own account.
  * Rows two files share are shown once, and the server checks each file again as it's imported so they aren't doubled.
  */
+import { Chip, I } from "~/features/common/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useRef, useState, type CSSProperties, type ReactNode } from "react";
@@ -404,11 +405,21 @@ export function ImportPage() {
                     e.preventDefault();
                     start(e.dataTransfer.files);
                   }}
-                  className="press flex min-h-[180px] w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-line bg-page text-ink"
+                  className="hatched press flex min-h-[300px] w-full cursor-pointer flex-col items-center justify-center gap-3.5 rounded-[22px] border-2 border-dashed border-line-2 p-7 text-center text-ink transition-colors duration-150 hover:border-teal hover:bg-teal/8"
+                  style={{ ["--c" as string]: "color-mix(in srgb, var(--color-accent-fill) 18%, transparent)" }}
                 >
-                  <b>Drop statement CSVs, or click to choose</b>
-                  <span className="text-ink-3">
-                    One or several at once. uBank files are recognised by name: account and month
+                  <span aria-hidden className="flex items-end gap-2.5">
+                    <Chip g={I.list} tone="spending" size="xl" className="-rotate-8" />
+                    <Chip g={I.import} tone="grad" size="xl" className="-translate-y-2" />
+                    <Chip g={I.list} tone="offset" size="xl" className="rotate-8" />
+                  </span>
+                  <b className="text-[20px] leading-[26px] font-semibold">Drop statement CSVs here</b>
+                  <span className="max-w-[460px] text-[14px] text-ink-3">
+                    One or several at once. uBank files are recognised by their name: the account's last four digits and
+                    the month.
+                  </span>
+                  <span className="btn-primary pointer-events-none inline-flex min-h-[42px] items-center rounded-xl px-4 text-[14px] font-semibold">
+                    Choose files
                   </span>
                 </button>
               ) : (
@@ -848,22 +859,35 @@ function Columns({ info }: { info: FileInfo }) {
 
 function Steps({ step }: { step: number }) {
   return (
-    <div className="flex items-center gap-2 text-[13px]" aria-label="Import progress">
-      {["Upload and match", "Review", "Done"].map((s, i) => (
-        <span key={s} className="flex items-center gap-2" aria-current={step === i + 1 ? "step" : undefined}>
-          {i > 0 && <span className="h-px w-6 bg-line" />}
-          <span
+    <ol className="m-0 flex list-none flex-wrap gap-2 p-0" aria-label="Import progress">
+      {["Upload and match", "Review", "Done"].map((s, i) => {
+        const state = step > i + 1 ? "done" : step === i + 1 ? "now" : "todo";
+        return (
+          <li
+            key={s}
+            aria-current={state === "now" ? "step" : undefined}
             className={cn(
-              "mono flex size-6 items-center justify-center rounded-full border text-xs",
-              step > i ? "border-teal bg-teal text-page" : "border-line text-ink-3",
+              "flex h-9 items-center gap-2 rounded-full border pr-3.5 pl-1.5 text-[13px] font-semibold whitespace-nowrap",
+              state === "now"
+                ? "border-teal text-teal"
+                : state === "done"
+                  ? "border-line text-good"
+                  : "border-line text-ink-3",
             )}
           >
-            {step > i + 1 ? "✓" : i + 1}
-          </span>
-          <span className={step === i + 1 ? "text-ink" : "text-ink-3"}>{s}</span>
-        </span>
-      ))}
-    </div>
+            <span
+              className={cn(
+                "mono flex size-6 items-center justify-center rounded-full text-xs",
+                state === "now" ? "btn-primary" : state === "done" ? "bg-good/15 text-good" : "bg-raised",
+              )}
+            >
+              {state === "done" ? "✓" : i + 1}
+            </span>
+            {s}
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 
@@ -871,11 +895,11 @@ function Check({ label, children, warn }: { label: string; children: ReactNode; 
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-2 rounded-md border px-2.5 py-1.5",
-        warn ? "border-warn/50 bg-warn/10" : "border-line bg-raised",
+        "inline-flex items-center gap-2 rounded-full border px-3 py-1.5",
+        warn ? "border-warn/50 bg-warn/10" : "border-good/30 bg-good/10",
       )}
     >
-      <span className="mono text-xs text-ink-3">{label.toUpperCase()}</span>
+      <span className="text-[11px] font-semibold tracking-[0.06em] text-ink-3 uppercase">{label}</span>
       {children}
     </span>
   );
