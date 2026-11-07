@@ -361,6 +361,97 @@ class AccountsService:
         with self.db.reading() as conn:
             return ledger.series(conn, account_id, end - dt.timedelta(days=days - 1), end)
 
+    def activity(self, account_id: int, days: int = 365) -> dict[str, Any]:
+        """Up to a year of an account, a day at a time: its balance at the end of the day and the money in and out.
+
+        For the loan, money in is what's added to what's owed (interest, drawdowns) and money out is what's repaid. A
+        loan with no statement imported is estimated: interest charged at each month's end on what the offsetting
+        accounts don't cover, and repayments from the account it's paid from (its payments that name the loan's last
+        four digits, as uBank's "HOME LOAN REPAYMENT 9917" does)."""
+        days = min(max(days, 7), 366)
+        end = dates.today()
+        start = end - dt.timedelta(days=days - 1)
+        rows = self.rows()
+        account = next((a for a in rows if a["id"] == account_id), None)
+        if account is None:
+            raise LookupError("That account has gone.")
+        kinds = ",".join("?" * len(ledger.IN_LEDGER))
+        with self.db.reading() as conn:
+            series = ledger.series(conn, account_id, start, end)
+            flows = {
+                d: (int(i or 0), int(o or 0))
+                for d, i, o in conn.execute(
+                    "SELECT date, SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END),"
+                    " SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END) FROM transactions"
+                    f" WHERE account_id = ? AND kind IN ({kinds}) AND date BETWEEN ? AND ? GROUP BY date",
+                    (account_id, *ledger.IN_LEDGER, start.isoformat(), end.isoformat()),
+                )
+            }
+            has_statements = conn.execute(
+                "SELECT 1 FROM transactions WHERE account_id = ? AND kind = 'statement' LIMIT 1", (account_id,)
+            ).fetchone()
+            if account["kind"] == "loan" and not has_statements:
+                return self._estimated_loan(conn, account, rows, start, end, series[-1][1])
+        return {
+            "start": start.isoformat(),
+            "end": end.isoformat(),
+            "estimated": False,
+            "days": [
+                {"date": d, "balance": b, "in": flows.get(d, (0, 0))[0], "out": flows.get(d, (0, 0))[1]}
+                for d, b in series
+            ],
+        }
+
+    def _estimated_loan(
+        self,
+        conn: sqlite3.Connection,
+        account: dict[str, Any],
+        rows: list[dict[str, Any]],
+        start: dt.date,
+        end: dt.date,
+        owed_now: int,
+    ) -> dict[str, Any]:
+        n = (end - start).days + 1
+        days = [start + dt.timedelta(days=i) for i in range(n)]
+        offsetting = [0] * n
+        for a in rows:
+            if a["kind"] == "bank" and a["offsets_loan"]:
+                for i, (_, value) in enumerate(ledger.series(conn, a["id"], start, end)):
+                    offsetting[i] += value
+        repaid = [0] * n
+        if account["repay_from"] and account["last4"]:
+            kinds = ",".join("?" * len(ledger.IN_LEDGER))
+            for d, amount in conn.execute(
+                f"SELECT date, amount FROM transactions WHERE account_id = ? AND kind IN ({kinds}) AND amount < 0"
+                " AND date BETWEEN ? AND ? AND description LIKE ?",
+                (account["repay_from"], *ledger.IN_LEDGER, start.isoformat(), end.isoformat(), f"%{account['last4']}%"),
+            ):
+                repaid[(dates.parse(d) - start).days] += -amount
+        rate = (account["rate_bp"] or 0) / 10000 / 365
+        owed = [owed_now] * n
+        charged = [0] * n
+        # What's owed depends on the interest and the interest on what's owed: two passes settle it closely enough.
+        for _ in range(2):
+            charged = [0] * n
+            accrued = 0.0
+            for i, day in enumerate(days):
+                accrued += max(owed[i] - offsetting[i], 0) * rate
+                if (day + dt.timedelta(days=1)).month != day.month:
+                    charged[i] = round(accrued)
+                    accrued = 0.0
+            balance = owed_now
+            for i in range(n - 1, -1, -1):
+                owed[i] = balance
+                balance -= charged[i] - repaid[i]
+        return {
+            "start": start.isoformat(),
+            "end": end.isoformat(),
+            "estimated": True,
+            "days": [
+                {"date": days[i].isoformat(), "balance": owed[i], "in": charged[i], "out": repaid[i]} for i in range(n)
+            ],
+        }
+
     # -- savings goals --------------------------------------------------------------------
 
     def save_goal(self, body: dict[str, Any], goal_id: int | None = None) -> dict[str, Any]:

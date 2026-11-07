@@ -1,7 +1,8 @@
 /**
- * Accounts (design: CkAccounts, with the desktop prototype's "set exact balance"): everything offsetting the loan as
- * one strip, each account with its job and how it's tracking, and the one chosen in detail: its balance over time
- * against its target, its job and settings, and its transactions.
+ * Accounts (design: direction E on the accounts canvas, in the dashboard's look): three figures across the top (what's
+ * offsetting the loan, the last 30 days, the interest saved), a card for each account and the loan, and the one chosen
+ * in detail: its balance with what moved it, a month to a year (Activity.tsx); its transactions, to sort them; and its
+ * job and settings.
  *
  * When the transactions don't add up to the balance (only about two years are imported), it says so, and setting the
  * exact balance adds a "Balance adjustment" for the difference: as an opening balance before the history starts, so
@@ -11,8 +12,9 @@ import { Loading } from "~/features/common/brand";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState, type CSSProperties } from "react";
+import { AccountTransactions, ActivityChart, type Bucket, type Range } from "~/features/accounts/Activity";
 import { apiSend, errorMessage } from "~/features/common/api";
-import { AreaLine, Count } from "~/features/common/charts";
+import { Count } from "~/features/common/charts";
 import {
   amount,
   capsDate,
@@ -28,14 +30,8 @@ import {
 import { useActions } from "~/features/common/layout";
 import { Dialog, useToast } from "~/features/common/overlay";
 import { JOB, JobArt, JobPicker, StepDots, StepFlow, useStep } from "~/features/common/steps";
-import {
-  accountQuery,
-  accountsQuery,
-  archivedAccountsQuery,
-  refresh,
-  transactionsQuery,
-} from "~/features/common/queries";
-import type { Account, Goal, Role } from "~/features/common/types";
+import { accountQuery, accountsQuery, archivedAccountsQuery, refresh } from "~/features/common/queries";
+import type { Account, AccountsOverview, Goal, Role } from "~/features/common/types";
 import {
   Button,
   Dot,
@@ -53,30 +49,17 @@ import {
   cn,
 } from "~/features/common/ui";
 
+/** An account's job in a word or two, for its card. */
 export function roleBadge(a: Account, goals: Goal[]): string {
-  if (a.kind === "loan") return "LOAN";
-  if (a.role === "offset") return "GOAL · 100% OF LOAN";
-  if (a.role === "bills") return `BUFFER · ${a.target_months ?? 3} MONTHS`;
-  if (a.role === "spending") return "ALLOWANCE · 1 MONTH";
-  if (a.role === "savings") return `GOALS · ${goals.filter((g) => g.account_id === a.id).length}`;
-  return "JUST TRACK IT";
-}
-
-function status(a: Account): { text: string; colour: string } {
-  const t = a.target;
-  if (!t) return { text: amount(a.change_30d, { sign: true }) + " / 30d", colour: "var(--color-ink-2)" };
-  if (t.kind === "months") {
-    const held = t.held ?? 0;
-    return {
-      text: `${held.toFixed(1)} mo ${held >= t.months ? "✓" : "⚑"}`,
-      colour: held >= t.months ? "var(--color-good)" : "var(--color-warn)",
-    };
+  if (a.kind === "loan") return `LOAN · ${((a.rate_bp ?? 0) / 100).toFixed(2)}%`;
+  if (a.role === "offset") return "OFFSET";
+  if (a.role === "bills") return `${a.target_months ?? 3} MONTHS`;
+  if (a.role === "spending") return "ALLOWANCE";
+  if (a.role === "savings") {
+    const n = goals.filter((g) => g.account_id === a.id).length;
+    return `${n} ${n === 1 ? "GOAL" : "GOALS"}`;
   }
-  if (t.kind === "allowance") return { text: `${pct(t.progress, 0)} left`, colour: "var(--color-ink-2)" };
-  return {
-    text: `${amount(a.change_30d, { sign: true })} / 30d`,
-    colour: a.change_30d >= 0 ? "var(--color-good)" : "var(--color-warn)",
-  };
+  return "TRACKED";
 }
 
 export function AccountsPage({ selected }: { selected?: number }) {
@@ -84,12 +67,13 @@ export function AccountsPage({ selected }: { selected?: number }) {
   const navigate = useNavigate();
   const actions = useActions();
   const [adding, setAdding] = useState(false);
+  const [range, setRange] = useState<Range>("1m");
+  const [picked, setPicked] = useState<Bucket | null>(null);
   const data = q.data;
   const all = data ? [...data.accounts, ...(data.loan ? [data.loan] : [])] : [];
   const sel = all.find((a) => a.id === selected) ?? data?.accounts[0];
   if (q.isError) return <ErrorText>{errorMessage(q.error)}</ErrorText>;
   if (!data) return <Loading />;
-  const offsetting = data.accounts.filter((a) => a.offsets_loan);
   const last = data.accounts
     .map((a) => a.known?.date)
     .filter(Boolean)
@@ -110,90 +94,47 @@ export function AccountsPage({ selected }: { selected?: number }) {
           </>
         }
       />
-      {offsetting.length > 0 && (
-        <Tile i={0} aria-labelledby="ac-total">
-          <TileTitle id="ac-total" right={<span className="mono text-ink">{money(data.offsetting)}</span>}>
-            Everything offsetting the loan
-          </TileTitle>
-          <div
-            className="flex h-3.5 gap-0.5 overflow-hidden rounded-[3px]"
-            role="img"
-            aria-label={offsetting.map((a) => `${a.name} ${money(a.balance)}`).join(", ")}
-          >
-            {offsetting.map((a, i) => (
-              <i
-                key={a.id}
-                className="grow-x block"
-                style={
-                  { flex: `${Math.max(a.balance, 0)} 1 0`, background: colour(a.colour), "--i": i } as CSSProperties
-                }
-              />
-            ))}
-          </div>
-          <div className="mono flex flex-wrap gap-[18px] text-xs text-ink-3">
-            {offsetting.map((a) => (
-              <span key={a.id}>
-                {a.name.toUpperCase()} {pct(data.offsetting ? a.balance / data.offsetting : 0, 0)}
-              </span>
-            ))}
-          </div>
-        </Tile>
+      <Readouts data={data} />
+      <section aria-label="Accounts" className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,220px),1fr))] gap-3">
+        {all.map((a, i) => (
+          <AccountCard
+            key={a.id}
+            a={a}
+            i={i}
+            on={sel?.id === a.id}
+            offsetting={data.offsetting}
+            goals={data.goals}
+            onPick={() => {
+              setPicked(null);
+              navigate({ to: "/accounts", search: { id: a.id }, replace: true });
+            }}
+          />
+        ))}
+      </section>
+      <RemovedAccounts />
+      {sel && (
+        <ActivityChart key={sel.id} account={sel} range={range} onRange={setRange} picked={picked} onPick={setPicked} />
       )}
-      <div className="flex flex-wrap items-start gap-4">
-        <section aria-label="Accounts" className="flex min-w-0 flex-[1_1_380px] flex-col gap-2.5">
-          {all.map((a, i) => {
-            const s = status(a);
-            const on = sel?.id === a.id;
-            return (
-              <button
-                key={a.id}
-                type="button"
-                aria-pressed={on}
-                onClick={() => navigate({ to: "/accounts", search: { id: a.id }, replace: true })}
-                className={cn(
-                  "press rise grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 rounded-tile border bg-tile px-[18px] py-4 text-left text-ink",
-                  a.kind === "loan" && "border-dashed",
-                  on ? "border-[var(--c)] shadow-[inset_3px_0_0_var(--c)]" : "border-line",
-                )}
-                style={{ "--i": i + 1, "--c": colour(a.colour) } as CSSProperties}
-              >
-                <span className="flex flex-wrap items-center gap-2.5">
-                  {a.kind === "loan" ? <span className="text-ink-2">⌂</span> : <Dot c={a.colour} />}
-                  <b className="font-semibold">{a.name}</b>
-                  <Pill tone="role">
-                    {a.kind === "loan"
-                      ? `LOAN · ${data.accounts.filter((x) => x.offsets_loan).length} OFFSETS LINKED`
-                      : roleBadge(a, data.goals)}
-                  </Pill>
-                </span>
-                <span className="mono text-lg font-semibold">
-                  {a.kind === "loan" ? money(-a.balance) : money(a.balance)}
-                </span>
-                <span className="mono text-xs text-ink-3">
-                  {a.last4 ? `Acct ••${a.last4}` : "No account number"}
-                  {a.kind === "loan" && a.rate_bp != null ? ` · ${(a.rate_bp / 100).toFixed(2)}%` : ""}
-                  {a.known && a.kind === "bank"
-                    ? ` · ${a.known.exact ? "exact" : "rough"} ${capsDate(a.known.date).replace(/^0/, "")}`
-                    : ""}
-                </span>
-                <span
-                  className="mono text-right text-xs"
-                  style={{ color: a.kind === "loan" ? "var(--color-ink-2)" : s.colour }}
-                >
-                  {a.kind === "loan" ? `net ${money(data.offsetting - a.balance)}` : s.text}
-                </span>
-              </button>
-            );
-          })}
-          <RemovedAccounts />
-        </section>
-        {sel &&
-          (sel.kind === "loan" ? (
-            <LoanDetail key={`${sel.id}-${sel.balance}`} account={sel} accounts={data.accounts} />
-          ) : (
-            <Detail key={sel.id} account={sel} goals={data.goals} />
-          ))}
-      </div>
+      {sel && (
+        <div className="flex flex-wrap items-start gap-4">
+          <div className="flex min-w-0 flex-[1.4_1_560px] flex-col">
+            <AccountTransactions
+              key={sel.id}
+              account={sel}
+              range={range}
+              picked={picked}
+              onClearPick={() => setPicked(null)}
+            />
+          </div>
+          <div className="flex min-w-0 flex-[1_1_380px] flex-col">
+            {sel.kind === "loan" ? (
+              <LoanDetail key={`${sel.id}-${sel.balance}`} account={sel} accounts={data.accounts} />
+            ) : (
+              <Detail key={sel.id} account={sel} goals={data.goals} />
+            )}
+          </div>
+        </div>
+      )}
       <AddAccount
         open={adding}
         onClose={() => setAdding(false)}
@@ -205,15 +146,183 @@ export function AccountsPage({ selected }: { selected?: number }) {
   );
 }
 
+/**
+ * The three figures across the top: what's offsetting the loan (and how much of it that covers), how the accounts
+ * moved in 30 days and who moved them, and the interest the offsets save a day.
+ */
+function Readouts({ data }: { data: AccountsOverview }) {
+  const loan = data.loan;
+  const banks = data.accounts;
+  const moved = banks.reduce((s, a) => s + a.change_30d, 0);
+  const share = banks.filter((a) => a.change_30d !== 0).sort((a, b) => b.change_30d - a.change_30d);
+  const perDay = loan
+    ? (Math.min(Math.max(data.offsetting, 0), Math.max(loan.balance, 0)) * (loan.rate_bp ?? 0)) / 10000 / 365
+    : 0;
+  return (
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,300px),1fr))] gap-4">
+      <Tile
+        i={0}
+        aria-labelledby="ac-off"
+        className="border-teal/35 bg-[linear-gradient(160deg,rgb(45_212_191/0.14),rgb(45_212_191/0.03)_60%),var(--color-tile)]"
+      >
+        <div className="flex items-center gap-2 text-[13px] text-ink-2">
+          <span aria-hidden className="pulse-ring size-2 rounded-full bg-teal" />
+          <span id="ac-off">{loan ? "Offsetting the loan" : "In your accounts"}</span>
+        </div>
+        <div className="mono text-[40px] leading-tight font-semibold">
+          <Count k="acct:off" value={loan ? data.offsetting : data.total} format={(v) => money(v)} />
+        </div>
+        <div className="text-[12.5px] text-ink-3">
+          {loan
+            ? `Covers ${pct(loan.balance ? data.offsetting / loan.balance : 0)} of the ${money(loan.balance)} ${loan.name.toLowerCase()}`
+            : `${banks.length} ${banks.length === 1 ? "account" : "accounts"}`}
+        </div>
+      </Tile>
+      <Tile i={1} aria-labelledby="ac-30">
+        <TileTitle
+          id="ac-30"
+          right={<Pill tone={moved >= 0 ? "good" : "warn"}>{moved >= 0 ? "GROWING" : "DOWN"}</Pill>}
+        >
+          Last 30 days
+        </TileTitle>
+        <div className="mono text-[30px] font-semibold">{money(moved, { sign: true })}</div>
+        <div
+          className="flex h-2 gap-0.5 overflow-hidden rounded-full"
+          role="img"
+          aria-label={share.map((a) => `${a.name} ${money(a.change_30d, { sign: true })}`).join(", ")}
+        >
+          {share.map((a, i) => (
+            <i
+              key={a.id}
+              className="grow-x block"
+              style={
+                {
+                  flex: `${Math.abs(a.change_30d)} 1 0`,
+                  background: a.change_30d >= 0 ? colour(a.colour) : "var(--color-out)",
+                  "--i": i,
+                } as CSSProperties
+              }
+            />
+          ))}
+        </div>
+        <div className="mono flex flex-wrap gap-x-3.5 gap-y-1 text-[11px] text-ink-3">
+          {share.map((a) => (
+            <span key={a.id}>
+              {a.name.toUpperCase()} {money(a.change_30d, { sign: true })}
+            </span>
+          ))}
+        </div>
+      </Tile>
+      {loan && (
+        <Tile i={2} aria-labelledby="ac-int">
+          <TileTitle
+            id="ac-int"
+            right={<span className="mono text-teal">{((loan.rate_bp ?? 0) / 100).toFixed(2)}%</span>}
+          >
+            Interest it saves
+          </TileTitle>
+          <div className="flex items-baseline gap-2">
+            <span className="mono text-[30px] font-semibold">
+              <Count k="acct:int" value={perDay} format={(v) => money(v, { cents: true })} />
+            </span>
+            <span className="text-[13px] text-ink-3">a day</span>
+          </div>
+          <div className="text-[12.5px] text-ink-3">
+            About <span className="mono text-ink">{money(perDay * 365)}</span> a year, while staying yours to spend
+          </div>
+        </Tile>
+      )}
+    </div>
+  );
+}
+
+/** What an account's job comes to now, as a line and a share for its bar. */
+function job(a: Account, offsetting: number): { text: string; share: number } {
+  if (a.kind === "loan")
+    return {
+      text: `Offsets cover ${pct(a.balance ? offsetting / a.balance : 0)}`,
+      share: a.balance ? offsetting / a.balance : 0,
+    };
+  const t = a.target;
+  if (!t) return { text: "Just tracking it", share: 0 };
+  if (t.kind === "loan") return { text: `Covers ${pct(t.progress)} of the loan`, share: t.progress };
+  if (t.kind === "months") {
+    const held = t.held ?? 0;
+    return { text: `${held.toFixed(1)} months held · target ${t.months}`, share: t.months ? held / t.months : 0 };
+  }
+  if (t.kind === "allowance") return { text: `${money(a.balance)} of ${money(t.amount)} left`, share: t.progress };
+  return t.amount
+    ? { text: `${pct(t.progress, 0)} of ${money(t.amount)} in goals`, share: t.progress }
+    : { text: "No goals yet", share: 0 };
+}
+
+/** An account as a card: its job and how it's doing. Choosing one shows it in the chart and lists below. */
+function AccountCard({
+  a,
+  i,
+  on,
+  offsetting,
+  goals,
+  onPick,
+}: {
+  a: Account;
+  i: number;
+  on: boolean;
+  offsetting: number;
+  goals: Goal[];
+  onPick: () => void;
+}) {
+  const loan = a.kind === "loan";
+  const j = job(a, offsetting);
+  const better = loan ? a.change_30d <= 0 : a.change_30d >= 0;
+  const c = colour(a.colour);
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      onClick={onPick}
+      className={cn(
+        "press rise flex w-full cursor-pointer flex-col gap-2.5 rounded-tile border bg-tile p-4 text-left text-ink transition-[border-color,box-shadow,transform,background-color] duration-200 hover:-translate-y-0.5",
+        loan && "border-dashed",
+        on
+          ? "border-[var(--c)] bg-[#18202a] shadow-[0_0_0_3px_color-mix(in_srgb,var(--c)_16%,transparent)]"
+          : loan
+            ? "border-[#36414e]"
+            : "border-line",
+      )}
+      style={{ "--i": i + 3, "--c": c } as CSSProperties}
+    >
+      <span className="flex w-full items-center gap-2">
+        <i className="size-2.5 flex-none rounded-[3px]" style={{ background: c }} />
+        <b className="min-w-0 truncate text-sm font-semibold">{a.name}</b>
+        <span className="mono ml-auto rounded-full bg-raised px-2 py-0.5 text-[10.5px] font-semibold tracking-[0.05em] whitespace-nowrap text-ink-2">
+          {roleBadge(a, goals)}
+        </span>
+      </span>
+      <span className="flex w-full items-baseline gap-2">
+        <span className="mono text-[22px] font-semibold">{loan ? money(-a.balance) : money(a.balance)}</span>
+        <span className={cn("mono ml-auto text-xs whitespace-nowrap", better ? "text-good" : "text-ink-3")}>
+          {money(a.change_30d, { sign: true })} 30D
+        </span>
+      </span>
+      <span className="block h-1.5 w-full overflow-hidden rounded-full bg-raised">
+        <i
+          className="grow-x block h-full rounded-full"
+          style={{ width: `${Math.min(Math.max(j.share, 0), 1) * 100}%`, background: c }}
+        />
+      </span>
+      <span className="w-full truncate text-xs text-ink-3">{j.text}</span>
+    </button>
+  );
+}
+
 function Detail({ account, goals }: { account: Account; goals: Goal[] }) {
   const qc = useQueryClient();
   const toast = useToast();
   const detail = useQuery(accountQuery(account.id));
-  const txs = useQuery(transactionsQuery({ account_id: account.id, limit: 8 }));
   const [upd, setUpd] = useState(false);
   const [value, setValue] = useState(editable(account.balance));
   const [when, setWhen] = useState<"opening" | "today">("opening");
-  const [flashId, setFlashId] = useState<number | null>(null);
   const a = detail.data ?? account;
   const real = parseMoney(value);
   const adj = real == null ? 0 : real - a.ledger;
@@ -231,7 +340,6 @@ function Detail({ account, goals }: { account: Account; goals: Goal[] }) {
       }),
     onSuccess: (r) => {
       setUpd(false);
-      if (r.adjustment) setFlashId(r.adjustment.id);
       refresh(qc);
       toast(
         r.adjustment
@@ -241,10 +349,9 @@ function Detail({ account, goals }: { account: Account; goals: Goal[] }) {
     },
   });
   const t = a.target;
-  const history = detail.data?.history.map(([, v]) => v) ?? [];
   const gapShown = !upd && a.transactions > 0 && Math.abs(a.balance - a.ledger) >= 1;
   return (
-    <Tile i={2} aria-labelledby="ac-detail" className="flex-[1.4_1_520px]">
+    <Tile i={9} aria-labelledby="ac-detail">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="tt justify-start">
@@ -274,12 +381,6 @@ function Detail({ account, goals }: { account: Account; goals: Goal[] }) {
           {t?.kind === "allowance" && <Pill tone="mute">{pct(t.progress, 0)} OF THE MONTH LEFT</Pill>}
         </div>
       </div>
-      <AreaLine
-        values={history}
-        colour={colour(a.colour)}
-        target={t && t.kind !== "allowance" && t.kind !== "loan" ? t.amount : null}
-        label={`${a.name}'s balance over 6 months`}
-      />
       {gapShown && (
         <div className="reveal flex flex-wrap items-center gap-3 rounded-lg border border-line bg-raised px-3.5 py-3 text-[13px]">
           <span className="min-w-0 flex-1">
@@ -406,46 +507,6 @@ function Detail({ account, goals }: { account: Account; goals: Goal[] }) {
         )}
       </div>
       {a.role === "savings" && <Goals account={a} goals={goals.filter((g) => g.account_id === a.id)} />}
-      <div className="tt mt-1.5">
-        <span>Recent activity</span>
-        <Link
-          to="/transactions"
-          search={{ account: a.id }}
-          className="font-medium tracking-normal text-teal normal-case no-underline"
-        >
-          All
-        </Link>
-      </div>
-      <div>
-        {(txs.data ?? []).map((tx) => (
-          <div
-            key={tx.id}
-            className={cn(
-              "grid grid-cols-[60px_1fr_auto_90px] items-center gap-2.5 border-t border-line py-[9px] text-[13px] first:border-t-0",
-              tx.id === flashId && "flash",
-            )}
-          >
-            <span className="mono text-ink-3">{capsDate(tx.date)}</span>
-            <span className="min-w-0 truncate">
-              {tx.description}
-              {tx.category && <span className="text-ink-3"> · {tx.category}</span>}
-            </span>
-            <span>
-              {tx.kind === "adjustment" ? (
-                <Pill tone="teal">ADJUSTMENT</Pill>
-              ) : tx.kind === "cash" ? (
-                <Pill>CASH</Pill>
-              ) : null}
-            </span>
-            <span className="mono text-right" style={{ color: tx.amount > 0 ? "var(--color-good)" : undefined }}>
-              {amount(tx.amount, { cents: true, sign: true })}
-            </span>
-          </div>
-        ))}
-        {txs.data && !txs.data.length && (
-          <div className="text-ink-3">No transactions yet. Import a statement to fill in the history.</div>
-        )}
-      </div>
     </Tile>
   );
 }
@@ -773,7 +834,7 @@ function LoanDetail({ account, accounts }: { account: Account; accounts: Account
     onSuccess: () => (refresh(qc), toast("Loan saved")),
   });
   return (
-    <Tile i={2} className="flex-[1.4_1_520px]" aria-labelledby="loan-h">
+    <Tile i={9} aria-labelledby="loan-h">
       <div className="tt justify-start">{account.last4 ? `Acct ••${account.last4}` : "Home loan"}</div>
       <div className="flex items-center gap-2">
         <h2 id="loan-h" className="m-0 text-[22px] font-semibold">

@@ -50,6 +50,20 @@ export const accountQuery = (id: number) =>
       }),
   });
 
+/** Up to a year of an account a day at a time: the balance and the money in and out (the loan: added and repaid). */
+export const accountActivityQuery = (id: number) =>
+  queryOptions({
+    queryKey: ["accounts", id, "activity"],
+    queryFn: ({ signal }) =>
+      apiGet<{
+        start: string;
+        end: string;
+        /** The loan with no statement imported: interest and repayments worked out, not read. */
+        estimated: boolean;
+        days: { date: string; balance: number; in: number; out: number }[];
+      }>(`accounts/${id}/activity`, { days: 365 }, { signal }),
+  });
+
 export const transactionsQuery = (params: { account_id?: number; start?: string; q?: string; limit?: number }) =>
   queryOptions({
     queryKey: ["transactions", params],
