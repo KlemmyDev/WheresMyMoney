@@ -246,6 +246,13 @@ def seed(db: Database, today: dt.date | None = None) -> bool:
             rough = round(figure, -3)
             ledger.add_known(conn, acct, last_pay.isoformat(), rough, "checkin", False, now - 3600, checkin_id)
         _investments(conn, today, rng, now)
+        cur = conn.execute("INSERT INTO assets (name, kind, sort, created_at) VALUES ('Home', 'home', 0, ?)", (now,))
+        home = int(cur.lastrowid or 0)
+        for months_back, value in ((26, 69000000), (14, 72500000), (3, 76000000)):
+            conn.execute(
+                "INSERT INTO asset_values (asset_id, date, value) VALUES (?, ?, ?)",
+                (home, dates.add_months(today, -months_back).isoformat(), value),
+            )
         for n, (person, age, fund, balance, salary) in enumerate(
             (
                 ("Alex", 38, "AustralianSuper · Balanced", 11260000, 12000000),

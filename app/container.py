@@ -23,6 +23,7 @@ from app.features.dashboard.service import DashboardService
 from app.features.imports.service import ImportService
 from app.features.investments.service import InvestmentsService
 from app.features.keys.service import ApiKeyService
+from app.features.networth.service import NetWorthService
 from app.features.notifications.rules import Facts
 from app.features.notifications.service import Notifier
 from app.features.retirement.service import RetirementService
@@ -48,6 +49,7 @@ class Services:
     dashboard: DashboardService
     investments: InvestmentsService
     retirement: RetirementService
+    networth: NetWorthService
     notifications: Notifier
     updates: UpdateService
     backups: BackupService
@@ -62,6 +64,8 @@ def build_services(config: Config) -> Services:
     spending = SpendingService(db)
     checkins = CheckinService(db, accounts, rules, bills, settings)
     dashboard = DashboardService(db, accounts, bills, rules, spending, checkins)
+    investments = InvestmentsService(db)
+    retirement = RetirementService(db)
 
     def facts() -> Facts:
         now = dt.datetime.now(dates.zone())
@@ -95,8 +99,9 @@ def build_services(config: Config) -> Services:
         checkins=checkins,
         imports=ImportService(db, accounts, rules, bills),
         dashboard=dashboard,
-        investments=InvestmentsService(db),
-        retirement=RetirementService(db),
+        investments=investments,
+        retirement=retirement,
+        networth=NetWorthService(db, accounts, investments, retirement),
         notifications=Notifier(db, facts),
         updates=UpdateService(settings, Path(config.db_path).parent / "update"),
         backups=BackupService(config.db_path),

@@ -32,6 +32,7 @@ from app.features.imports.router import router as imports_router
 from app.features.investments.router import router as investments_router
 from app.features.keys.router import router as keys_router
 from app.features.keys.router import v1 as keys_v1_router
+from app.features.networth.router import router as networth_router
 from app.features.notifications.router import router as notifications_router
 from app.features.retirement.router import router as retirement_router
 from app.features.rules.router import router as rules_router
@@ -68,6 +69,7 @@ ROUTERS = [
     dashboard_router,
     investments_router,
     retirement_router,
+    networth_router,
     updates_router,
     backups_router,
     health_router,

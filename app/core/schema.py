@@ -231,6 +231,20 @@ def _retirement(conn: sqlite3.Connection) -> None:
     )
 
 
+def _assets(conn: sqlite3.Connection) -> None:
+    """Things owned that aren't accounts, valued by hand for net worth: `kind` home, car or other. asset_values: each
+    value given, from `date` (the latest is what it's worth now)."""
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS assets (id INTEGER PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL DEFAULT"
+        " 'other', sort INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)"
+    )
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS asset_values (id INTEGER PRIMARY KEY, asset_id INTEGER NOT NULL, date TEXT NOT NULL,"
+        " value INTEGER NOT NULL)"
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS asset_values_by_asset ON asset_values (asset_id, date)")
+
+
 MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _baseline,
     _money,
@@ -241,4 +255,5 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _splits_and_paid_back,
     _investments,
     _retirement,
+    _assets,
 ]
