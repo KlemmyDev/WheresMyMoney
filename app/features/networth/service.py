@@ -5,8 +5,8 @@ Net worth: what the household owns less what it owes, today and over time.
 - The loan: what's owed on it, over the last year as the Accounts page has it (estimated from repayments and
   interest until a statement's imported); before that, the earliest figure.
 - Shares: the ETFs at each day's close (app.features.investments).
-- Super: each person's balance as they last gave it (app.features.retirement). Only today's is known, so it's drawn
-  flat into the past.
+- Super: each person's balance as given over time (app.features.retirement keeps every one with its date); between
+  them, the one given last, and before the first, the first.
 - Things owned: the home, a car, anything else, valued by hand with each value kept, so the past uses the value
   given then (and the first one before that).
 
@@ -121,7 +121,16 @@ class NetWorthService:
         banks = [a for a in ov["accounts"] if a["kind"] == "bank"]
         lo = ov["loan"]
         people = self.retirement.people()
-        super_total = sum(p["balance"] for p in people)
+        super_history = self.retirement.history()
+
+        def super_on(iso: str) -> int:
+            total = 0
+            for p in people:
+                values = super_history.get(p["id"]) or [(p["as_of"] or iso, p["balance"])]
+                then = [b for d, b in values if d <= iso]
+                total += then[-1] if then else values[0][1]
+            return total
+
         assets = self.assets()
         shares_now = self.investments.values_on([today])[0]
         shares = self.investments.values_on(days)
@@ -150,7 +159,7 @@ class NetWorthService:
                         "date": iso,
                         "accounts": accts,
                         "shares": shares[n] if day < today else shares_now,
-                        "super": super_total,
+                        "super": super_on(iso) if day < today else sum(p["balance"] for p in people),
                         "home": by_kind.get("home", 0),
                         "other": by_kind.get("car", 0) + by_kind.get("other", 0),
                         "loan": owed,

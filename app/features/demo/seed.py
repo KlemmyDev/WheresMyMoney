@@ -285,7 +285,7 @@ def seed(db: Database, today: dt.date | None = None) -> bool:
             ),
         )
         for n, (person, age, fund, balance, salary, fees, options) in enumerate(supers):
-            conn.execute(
+            cur = conn.execute(
                 "INSERT INTO super_accounts (person, born, fund, balance, as_of, salary, rate, fees, options, sort,"
                 " created_at) VALUES (?, ?, ?, ?, ?, ?, 0.12, ?, ?, ?, ?)",
                 (
@@ -301,6 +301,16 @@ def seed(db: Database, today: dt.date | None = None) -> bool:
                     now,
                 ),
             )
+            # A balance from each of the last two yearly statements, and the one given last month.
+            for months_back, share in ((28, 0.72), (16, 0.85), (1, 1.0)):
+                conn.execute(
+                    "INSERT OR REPLACE INTO super_values (super_id, date, balance) VALUES (?, ?, ?)",
+                    (
+                        int(cur.lastrowid or 0),
+                        dates.add_months(today, -months_back).isoformat(),
+                        round(balance * share),
+                    ),
+                )
         conn.execute("INSERT OR REPLACE INTO kv (key, value) VALUES ('setting:setup_done', 'true')")
         conn.execute("INSERT OR REPLACE INTO kv (key, value) VALUES ('setting:household', '\"Demo household\"')")
     return True
