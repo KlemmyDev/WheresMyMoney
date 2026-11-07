@@ -252,18 +252,17 @@ function FundTile({ p, s }: { p: SuperAccount; s: RetirementSettings }) {
         {fees.map((f, i) => (
           <div
             key={i}
-            className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_auto_120px_auto]"
+            className="flex flex-wrap items-center gap-2 border-t border-line pt-2 first:border-t-0 first:pt-0 sm:flex-nowrap sm:border-0 sm:pt-0"
           >
             <Input
               aria-label={`Fee ${i + 1} name`}
               value={f.name}
+              className="order-1 min-w-0 flex-[1_1_0]"
               onChange={(e) => setFees((r) => r.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}
             />
-            <div
-              className="flex gap-1.5 max-sm:order-3 max-sm:col-span-2"
-              role="group"
-              aria-label={`Fee ${i + 1} kind`}
-            >
+            {/* On a phone: the name and remove on one line, the kind and amount on the next. */}
+            <span aria-hidden className="order-3 basis-full sm:hidden" />
+            <div className="order-4 flex flex-none gap-1.5 sm:order-2" role="group" aria-label={`Fee ${i + 1} kind`}>
               <ChoiceChip
                 pressed={f.kind === "fixed"}
                 onClick={() => setFees((r) => r.map((x, j) => (j === i ? { ...x, kind: "fixed", text: "" } : x)))}
@@ -277,7 +276,7 @@ function FundTile({ p, s }: { p: SuperAccount; s: RetirementSettings }) {
                 % of balance
               </ChoiceChip>
             </div>
-            <span className="relative max-sm:order-2">
+            <span className="relative order-5 min-w-[90px] flex-1 sm:order-3 sm:w-[120px] sm:flex-none">
               <Input
                 aria-label={`Fee ${i + 1} amount`}
                 inputMode="decimal"
@@ -299,7 +298,7 @@ function FundTile({ p, s }: { p: SuperAccount; s: RetirementSettings }) {
               type="button"
               aria-label={`Remove ${f.name || `fee ${i + 1}`}`}
               onClick={() => setFees((r) => r.filter((_, j) => j !== i))}
-              className="flex size-9 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-ink-3 hover:text-bad max-sm:hidden"
+              className="order-2 flex size-9 flex-none cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-ink-3 hover:text-bad sm:order-4"
             >
               ✕
             </button>

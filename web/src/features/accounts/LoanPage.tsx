@@ -101,7 +101,7 @@ export function LoanPage() {
         v={v}
         spotted={spotted}
       />
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(210px,1fr))] gap-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fit,minmax(190px,1fr))] sm:gap-4">
         <Fig
           i={0}
           title="Loan balance"

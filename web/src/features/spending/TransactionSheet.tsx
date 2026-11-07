@@ -119,18 +119,35 @@ function Body({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
             </div>
           )}
           <div className="flex flex-wrap gap-2">
-            {spend.map((c) => (
-              <ChoiceChip
-                key={c.id}
-                pressed={!splits.length && cat === c.id}
-                onClick={() => {
-                  setCat(c.id);
-                  save.mutate({ category_id: c.id, always });
+            {[...spend.filter((c) => c.id === cat), ...spend.filter((c) => c.budget && c.id !== cat)]
+              .slice(0, 9)
+              .map((c) => (
+                <ChoiceChip
+                  key={c.id}
+                  pressed={!splits.length && cat === c.id}
+                  onClick={() => {
+                    setCat(c.id);
+                    save.mutate({ category_id: c.id, always });
+                  }}
+                >
+                  {c.name}
+                </ChoiceChip>
+              ))}
+            <div className="w-40">
+              <CategoryPicker
+                label="Another category"
+                value={null}
+                categories={spend}
+                placeholder="More…"
+                allowClear={false}
+                className="min-h-11 rounded-full border-line-2 bg-transparent text-[14px] text-ink-2"
+                onChange={(c) => {
+                  if (c == null) return;
+                  setCat(c);
+                  save.mutate({ category_id: c, always });
                 }}
-              >
-                {c.name}
-              </ChoiceChip>
-            ))}
+              />
+            </div>
           </div>
           <div className="flex items-center gap-3 rounded-2xl border border-line bg-tile-2 px-3.5 py-3">
             <span className="min-w-0 flex-1">

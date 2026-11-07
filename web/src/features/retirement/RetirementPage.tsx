@@ -209,7 +209,7 @@ function Plan({
   ].sort((a, b) => a.year - b.year);
 
   return (
-    <div className="grid gap-4 md:grid-cols-12">
+    <div className="grid gap-4 md:grid-cols-12 [&>*]:min-w-0">
       <Card lit aria-labelledby="rt-hero" className="flex flex-col gap-4 md:col-span-8">
         <div>
           <Eyebrow id="rt-hero">On these settings</Eyebrow>

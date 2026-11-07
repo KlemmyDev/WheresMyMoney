@@ -572,7 +572,7 @@ body {
 .ic {
   --c: var(--color-teal);
   --wash: color-mix(in srgb, var(--color-accent-fill) 16%, transparent);
-  position: relative;
+  /* No position here: these rules sit outside Tailwind's layers, so it would override an "absolute" passed in. */
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;

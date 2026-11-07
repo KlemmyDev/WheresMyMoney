@@ -361,8 +361,15 @@ export function PageHead({ over, title, actions }: { over: ReactNode; title: Rea
   return (
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div>
-        <div className="text-[11px] leading-4 font-semibold tracking-[0.09em] text-ink-3 uppercase">{over}</div>
-        {/* On a phone the frame's header already names the page. */}
+        {/* On a phone the frame's header already names the section and page, so a bare section name is left out. */}
+        <div
+          className={cn(
+            "text-[11px] leading-4 font-semibold tracking-[0.09em] text-ink-3 uppercase",
+            typeof over === "string" && !over.includes("·") && "hidden sm:block",
+          )}
+        >
+          {over}
+        </div>
         <h1 className="mt-1.5 mb-0 hidden text-[40px] leading-[46px] font-semibold tracking-[-0.03em] sm:block">
           {title}
         </h1>

@@ -52,7 +52,7 @@ export function SpendingPage() {
           </>
         }
       />
-      <div className="grid gap-4 md:grid-cols-12">
+      <div className="grid gap-4 md:grid-cols-12 [&>*]:min-w-0">
         <Card lit tint="spending" aria-labelledby="sp-hero" className="md:col-span-8">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -86,7 +86,7 @@ export function SpendingPage() {
                 : `~${money(-m.projected)} short before ${shortDate(nextDay(m.end))}`}
             </span>
           </div>
-          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+          <div className="grid grid-cols-3 gap-2.5">
             <Stat label="Left" value={money(m.left)} note={`of ${money(m.allowance)}`} role="spending" />
             <Stat
               label="Average a day"

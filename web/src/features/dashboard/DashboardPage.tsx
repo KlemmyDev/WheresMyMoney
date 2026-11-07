@@ -165,7 +165,7 @@ export function DashboardPage() {
   return (
     <>
       {banner}
-      <div className="grid gap-4 md:grid-cols-12">
+      <div className="grid gap-4 md:grid-cols-12 [&>*]:min-w-0">
         <BalanceHero d={d} />
         {s ? (
           <SafeCard s={s} />
@@ -188,13 +188,13 @@ export function DashboardPage() {
       {s && m && (
         <>
           <MonthCard m={m} sel={sel} setSel={setSel} />
-          <div className="grid gap-4 md:grid-cols-12">
+          <div className="grid gap-4 md:grid-cols-12 [&>*]:min-w-0">
             <ComingUp d={d} m={m} />
             <WhereItWent s={s} />
           </div>
         </>
       )}
-      <div className="grid gap-4 md:grid-cols-12">
+      <div className="grid gap-4 md:grid-cols-12 [&>*]:min-w-0">
         <RecentActivity />
         <AccountsCard d={d} />
       </div>
