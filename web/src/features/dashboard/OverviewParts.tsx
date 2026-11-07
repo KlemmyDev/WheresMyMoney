@@ -384,7 +384,7 @@ const GOAL_ROLES: DsRole[] = ["offset", "spending", "savings", "invest", "bills"
 export function GoalsCard({ d }: { d: Dashboard }) {
   const goals = d.savings?.goals ?? [];
   return (
-    <Card aria-labelledby="ov-goals" className="md:col-span-6">
+    <Card aria-labelledby="ov-goals">
       <CardHead
         id="ov-goals"
         title="Savings goals"
