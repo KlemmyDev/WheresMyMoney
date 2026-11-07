@@ -216,6 +216,19 @@ class AccountsService:
             ledger.add_known(conn, account_id, today, balance, "exact" if exact else "checkin", exact, now + 1)
         return {"account": self.view(account_id), "adjustment": adjustment}
 
+    def add_opening(self, account_id: int, amount: int, user_id: int | None = None) -> dict[str, Any]:
+        """Add `amount` to the account's opening balance (dated the day before its history starts), as when an import
+        shows the transactions falling short of the statement's balance. Changes no balance known since."""
+        if self.get(account_id) is None:
+            raise LookupError("That account has gone.")
+        with self.db.writing() as conn:
+            done = ledger.adjust_to(
+                conn, account_id, ledger.ledger(conn, account_id) + amount, "opening", int(time.time()), user_id
+            )
+        if done is None:
+            raise ValueError("There's nothing to add.")
+        return done
+
     # -- what each account is for, and how it's doing ------------------------------------
 
     def loan(self) -> dict[str, Any] | None:

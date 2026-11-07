@@ -181,8 +181,9 @@ class DashboardService:
                 "SELECT substr(t.date, 1, 7), SUM(CASE WHEN t.amount > 0 THEN t.amount ELSE 0 END),"
                 " SUM(CASE WHEN t.amount < 0 THEN -t.amount ELSE 0 END) FROM transactions t"
                 " JOIN accounts a ON a.id = t.account_id AND a.kind = 'bank'"
-                " LEFT JOIN categories c ON c.id = t.category_id"
-                " WHERE t.date >= ? AND t.kind IN ('statement', 'manual', 'cash') AND t.rule_id IS NULL"
+                " LEFT JOIN categories c ON c.id = t.category_id LEFT JOIN rules r ON r.id = t.rule_id"
+                " WHERE t.date >= ? AND t.kind IN ('statement', 'manual', 'cash')"
+                " AND (t.rule_id IS NULL OR r.kind = 'pay')"
                 " AND COALESCE(c.kind, '') != 'transfer' AND upper(t.description) != 'TRANSFER'"
                 " GROUP BY 1 ORDER BY 1",
                 (start.isoformat(),),

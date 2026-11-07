@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Updates WheresMyMoney when the dashboard asks (Manage → System → Updates → Update now).
+# Updates WheresMyMoney when the app asks (Settings → Updates → Update now).
 #
 # install.sh sets this up to run every minute (cron). Each time, it leaves a note that it's here and whether it can
-# update (data/update/updater.json). When the dashboard has asked for an update (data/update/request), it runs this
+# update (data/update/updater.json). When the app has asked for an update (data/update/request), it runs this
 # folder's install.sh --yes, as you would by hand: the release channel's version from GitHub (data/update/channel,
 # newer or older), the databases backed up, rebuilt and restarted. Its output goes to data/update/update.log and how it
-# went to data/update/status.json, which the dashboard shows. The dashboard can only ask: what runs is install.sh, and
+# went to data/update/status.json, which the app shows. The app can only ask: what runs is install.sh, and
 # nothing in the request is read but when it was made.
 #
-# Remove it with: crontab -l | grep -v 'WheresMyMoney: updates from the dashboard' | crontab -
+# Remove it with: crontab -l | grep -v 'WheresMyMoney: updates from the app' | crontab -
 set -uo pipefail
 
 cd "$(dirname "$0")" || exit 1
@@ -22,7 +22,7 @@ mkdir -p "$DIR" || exit 1
 now() { date +%s; }
 # A JSON string: quotes, backslashes and control characters escaped.
 jstr() { printf '"%s"' "$(printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' | tr -d '\000-\037')"; }
-# Write a file whole (the dashboard never reads half of one).
+# Write a file whole (the app never reads half of one).
 put() { printf '%s\n' "$2" >"$DIR/.$1.tmp" && mv -f "$DIR/.$1.tmp" "$DIR/$1"; }
 
 # Can it update without a password? Docker itself, or sudo that doesn't ask (as install.sh would use it).

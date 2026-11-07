@@ -16,6 +16,7 @@ from app.core.config import Config
 from app.core.database import Database
 from app.features.accounts.service import AccountsService
 from app.features.auth.service import AuthService
+from app.features.backups.service import BackupService
 from app.features.bills.service import BillsService
 from app.features.checkins.service import CheckinService
 from app.features.dashboard.service import DashboardService
@@ -45,6 +46,7 @@ class Services:
     dashboard: DashboardService
     notifications: Notifier
     updates: UpdateService
+    backups: BackupService
 
 
 def build_services(config: Config) -> Services:
@@ -91,4 +93,5 @@ def build_services(config: Config) -> Services:
         dashboard=dashboard,
         notifications=Notifier(db, facts),
         updates=UpdateService(settings, Path(config.db_path).parent / "update"),
+        backups=BackupService(config.db_path),
     )

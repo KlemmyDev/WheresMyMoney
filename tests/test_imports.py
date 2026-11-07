@@ -224,3 +224,12 @@ def test_another_banks_columns_are_matched_once_and_remembered(client: TestClien
     assert read["rows"] == 2 and read["balance_ok"]
     again = ok(client.post("/api/imports?filename=other-2.csv", content=raw))
     assert again["rows"] == 2
+
+
+def test_after_an_import_an_opening_balance_closes_the_gap(client: TestClient, household: dict) -> None:
+    ids = household
+    opened = upload(client, ubank(OCTOBER))
+    done = ok(client.post(f"/api/imports/{opened['token']}/commit", json={"account_id": ids["Spending"]}))
+    assert done["gap"] == dollars(292.75)
+    opening = ok(client.post(f"/api/accounts/{ids['Spending']}/opening", json={"amount": done["gap"]}))
+    assert opening["date"] == "2026-10-23" and opening["amount"] == dollars(292.75)

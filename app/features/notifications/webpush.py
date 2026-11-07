@@ -1,9 +1,9 @@
 """
 Browser notifications, through the Web Push protocol: alerts arrive as the browser's (or phone's) own
-notifications, even with the dashboard closed, with no app or account needed.
+notifications, even with the app closed, with no app or account needed.
 
 How it fits together:
-- A browser that turns notifications on (Manage → Alerts) subscribes with its push service (Google's for
+- A browser that turns notifications on (Settings → Notifications) subscribes with its push service (Google's for
   Chrome and Edge, Mozilla's for Firefox, Apple's for Safari) and sends us the subscription: an address at that
   service, and two keys only it can decrypt with. Each is a row of `push_subscriptions`.
 - To notify, we encrypt the message for that browser (RFC 8291, the "aes128gcm" content coding of RFC 8188)
@@ -13,9 +13,9 @@ How it fits together:
   each browser when it subscribes.
 
 Only outgoing requests: nothing has to reach this server from outside. But browsers only allow push on a
-secure page (https://, or localhost), so the dashboard must be opened over HTTPS for a browser to subscribe.
+secure page (https://, or localhost), so the app must be opened over HTTPS for a browser to subscribe.
 
-The crypto is pycryptodomex's (ECDH and ECDSA on P-256, HKDF-SHA256, AES-128-GCM), as the collector already uses.
+The crypto is pycryptodomex's (ECDH and ECDSA on P-256, HKDF-SHA256, AES-128-GCM).
 """
 
 from __future__ import annotations

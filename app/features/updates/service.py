@@ -1,7 +1,7 @@
 """
-Whether a newer version is on GitHub (Manage → System → Updates, and the version at the foot of the navigation).
+Whether a newer version is on GitHub (Settings → Updates, and the version at the foot of the navigation).
 
-It follows a release channel (Manage → System → Updates), each a commit on GitHub:
+It follows a release channel (Settings → Updates), each a commit on GitHub:
 - nightly: the latest commit on main, so every change as it's merged;
 - beta: the newest release tag, a pre-release (v2026.10.9-beta, -beta.2…) or a stable one, whichever is newer;
 - stable: the newest stable release tag (v2026.10.9, with nothing after the version).
@@ -181,14 +181,14 @@ class UpdateService:
         return saved if saved in CHANNELS else DEFAULT_CHANNEL
 
     def set_channel(self, channel: str) -> dict[str, Any]:
-        """Follow another channel (Manage → System → Updates), and check it now."""
+        """Follow another channel (Settings → Updates), and check it now."""
         if channel not in CHANNELS:
             raise ValueError(f"There's no {channel!r} channel. Choose one of {', '.join(CHANNELS)}.")
         try:
             self._make_folder()
             tmp = self.folder / ".channel.tmp"
             tmp.write_text(f"{channel}\n")
-            tmp.chmod(0o644)  # install.sh reads it, as whoever runs it (the dashboard's own files are its alone)
+            tmp.chmod(0o644)  # install.sh reads it, as whoever runs it (the app's own files are its alone)
             tmp.replace(self.folder / "channel")  # whole, for install.sh
         except OSError as e:
             raise UpdateRefused(f"Couldn't save the channel: {e.strerror or e}.") from e

@@ -40,3 +40,18 @@ def test_the_demo_household_fills_an_empty_database(config: Config) -> None:
 
 def test_healthz(client: TestClient) -> None:
     assert ok(client.get("/healthz"))["ok"] is True
+
+
+def test_a_backup_is_made_when_asked_and_listed(client: TestClient) -> None:
+    made = ok(client.post("/api/backups"))
+    assert made["made"]["kind"] == "manual" and made["made"]["size"] > 0
+    assert [b["name"] for b in ok(client.get("/api/backups"))["backups"]] == [made["made"]["name"]]
+
+
+def test_cash_flow_counts_pay_but_not_transfers(config: Config) -> None:
+    with TestClient(create_app(replace(config, demo=True), serve_web=False)) as c:
+        flow = ok(c.get("/api/dashboard"))["flow"]
+        full = [m for m in flow if not m["partial"]]
+        # Two or three pays a month come in; transfers between accounts don't count either way.
+        assert all(m["in"] >= 2 * 695000 for m in full)
+        assert all(m["in"] > m["out"] for m in full)

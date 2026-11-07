@@ -23,6 +23,7 @@ from app.features.accounts.router import router as accounts_router
 from app.features.auth.middleware import AuthMiddleware
 from app.features.auth.router import household as household_router
 from app.features.auth.router import router as auth_router
+from app.features.backups.router import router as backups_router
 from app.features.bills.router import router as bills_router
 from app.features.checkins.router import router as checkins_router
 from app.features.dashboard.router import router as dashboard_router
@@ -64,6 +65,7 @@ ROUTERS = [
     spending_router,
     dashboard_router,
     updates_router,
+    backups_router,
     health_router,
 ]
 
@@ -90,8 +92,10 @@ def create_app(config: Config | None = None, *, serve_web: bool = True) -> FastA
         if config.background:
             await services.updates.start()  # asks GitHub for a newer version every few hours, unless turned off
             await services.notifications.start()  # check-in reminders and alerts
+            await services.backups.start()  # a backup each night at 3am
         yield
         if config.background:
+            await services.backups.stop()
             await services.notifications.stop()
             await services.updates.stop()
 

@@ -1,0 +1,424 @@
+@import "tailwindcss";
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+@import "@fontsource/ibm-plex-mono/600.css";
+
+/*
+ * WheresMyMoney's design tokens: the Cockpit direction from the design canvas. Dark, dense tiles, IBM Plex Sans for
+ * words and IBM Plex Mono (tabular) for every figure. Each account role has its colour (offset blue, bills amber,
+ * spending violet, savings green), and teal is the app's own: coverage, primary actions, what's selected.
+ *
+ * The fonts come with the app (@fontsource), so nothing is fetched from Google.
+ */
+@theme static {
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --breakpoint-*: initial;
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 900px;
+  --breakpoint-lg: 1180px;
+
+  --color-page: #0d1117;
+  --color-tile: #151b23;
+  --color-raised: #1d2530;
+  --color-ink: #e6edf3;
+  --color-ink-2: #b1bac4;
+  --color-ink-3: #8d97a3;
+  --color-line: #262f3a;
+  --color-teal: #2dd4bf;
+  --color-teal-hover: #5eead4;
+  --color-offset: #60a5fa;
+  --color-savings: #4ade80;
+  --color-bills: #fbbf24;
+  --color-spending: #a78bfa;
+  --color-track: #94a3b8;
+  --color-rose: #fb7185;
+  --color-sky: #38bdf8;
+  --color-out: #64748b;
+  --color-good: #4ade80;
+  --color-warn: #fbbf24;
+  --color-bad: #f87171;
+
+  --radius-tile: 12px;
+
+  /* Motion (the motion spec): press 90, hover and toggles 150, content and tabs 240, sheets and dialogs 360 (exit
+     250), numbers 600, charts 700, stagger 40, the success spring 420. */
+  --ease-enter: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --ease-move: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.3, 1.4, 0.5, 1);
+  --duration-press: 90ms;
+  --duration-hover: 150ms;
+  --duration-content: 240ms;
+  --duration-sheet: 360ms;
+  --duration-exit: 250ms;
+  --duration-number: 600ms;
+  --duration-chart: 700ms;
+  --duration-stagger: 40ms;
+  --duration-success: 420ms;
+
+  --animate-rise: rise 360ms var(--ease-enter) both;
+  --animate-fade: fade 240ms var(--ease-enter) both;
+}
+
+html {
+  color-scheme: dark;
+  background: var(--color-page);
+}
+
+body {
+  margin: 0;
+  background: var(--color-page);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: rgb(45 212 191 / 0.3);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-teal);
+  outline-offset: 2px;
+}
+
+.mono,
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A tile's title: small capitals in the faintest ink. */
+.tt {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ink-3);
+}
+
+/* Buttons and rows press to 97%. */
+.press {
+  transition:
+    transform var(--duration-press) var(--ease-enter),
+    background-color var(--duration-hover) var(--ease-enter),
+    border-color var(--duration-hover) var(--ease-enter),
+    color var(--duration-hover) var(--ease-enter),
+    box-shadow var(--duration-hover) var(--ease-enter);
+}
+.press:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* --- motion ---------------------------------------------------------------------------------------- */
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@keyframes push-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes grow-y {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes sheet-down {
+  from {
+    transform: none;
+  }
+  to {
+    transform: translateY(100%);
+  }
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes dialog-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes toast-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes pop {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@keyframes draw {
+  from {
+    stroke-dashoffset: var(--len, 1000);
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes flash {
+  from {
+    background-color: rgb(45 212 191 / 0.25);
+  }
+  to {
+    background-color: rgb(45 212 191 / 0);
+  }
+}
+
+/* Blocks rise 10px and fade in, top to bottom, 40ms apart (the first 8 only). */
+.rise {
+  animation: rise var(--duration-sheet) var(--ease-enter) both;
+  animation-delay: calc(min(var(--i, 0), 8) * var(--duration-stagger));
+}
+.fade-in {
+  animation: fade var(--duration-content) var(--ease-enter) both;
+}
+.screen {
+  animation: rise 260ms var(--ease-enter) both;
+}
+.push-in {
+  animation: push-in 320ms var(--ease-enter) both;
+}
+.reveal {
+  animation: reveal var(--duration-content) var(--ease-enter) both;
+}
+.grow {
+  transform-origin: bottom;
+  animation: grow-y var(--duration-chart) var(--ease-enter) both;
+  animation-delay: calc(min(var(--i, 0), 8) * var(--duration-stagger) + 150ms);
+}
+.draw {
+  animation: draw var(--duration-chart) var(--ease-enter) both;
+}
+.fill-after {
+  animation: fade var(--duration-content) var(--ease-enter) both;
+  animation-delay: var(--duration-chart);
+}
+.pop {
+  animation: pop var(--duration-success) var(--ease-spring) both;
+}
+.flash {
+  animation: flash 1200ms var(--ease-enter) both;
+}
+.scrim-in {
+  animation: fade var(--duration-content) var(--ease-enter) both;
+}
+.scrim-out {
+  animation: fade-out var(--duration-exit) var(--ease-exit) both;
+}
+.dialog-in {
+  animation: dialog-in var(--duration-sheet) var(--ease-enter) both;
+}
+.dialog-out {
+  animation: dialog-out var(--duration-exit) var(--ease-exit) both;
+}
+.sheet-in {
+  animation: sheet-up var(--duration-sheet) var(--ease-enter) both;
+}
+.sheet-out {
+  animation: sheet-down var(--duration-exit) var(--ease-exit) both;
+}
+.toast-in {
+  animation: toast-in var(--duration-sheet) var(--ease-enter) both;
+}
+.toast-out {
+  animation: toast-out var(--duration-exit) var(--ease-exit) both;
+}
+
+/* Reduced motion: everything is an instant swap or a plain fade. Numbers jump to their value (useCountUp), charts
+   appear already drawn, nothing slides. */
+@media (prefers-reduced-motion: reduce) {
+  .rise,
+  .screen,
+  .push-in,
+  .reveal,
+  .dialog-in,
+  .sheet-in,
+  .toast-in {
+    animation: fade var(--duration-content) linear both !important;
+    animation-delay: 0ms !important;
+  }
+  .dialog-out,
+  .sheet-out,
+  .toast-out,
+  .scrim-out {
+    animation: fade-out var(--duration-exit) linear both !important;
+  }
+  .grow,
+  .draw,
+  .fill-after,
+  .pop,
+  .flash {
+    animation: none !important;
+  }
+  .press:active:not(:disabled) {
+    transform: none;
+  }
+  * {
+    transition-duration: 1ms !important;
+  }
+}
+
+/* The dialog (Dialog in overlay.tsx) is centred with the translate property, so its keyframes only scale it. */
+@keyframes dialog-in-c {
+  from {
+    opacity: 0;
+    transform: translateY(1.5%) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes dialog-out-c {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(0.5%) scale(0.97);
+  }
+}
+@media (width < 640px) {
+  .dialog-panel.entering {
+    animation: sheet-up var(--duration-sheet) var(--ease-enter) both;
+  }
+  .dialog-panel.leaving {
+    animation: sheet-down var(--duration-exit) var(--ease-exit) both;
+  }
+}
+@media (width >= 640px) {
+  .dialog-panel.entering {
+    animation: dialog-in-c var(--duration-sheet) var(--ease-enter) both;
+  }
+  .dialog-panel.leaving {
+    animation: dialog-out-c var(--duration-exit) var(--ease-exit) both;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dialog-panel.entering {
+    animation: fade var(--duration-content) linear both !important;
+  }
+  .dialog-panel.leaving {
+    animation: fade-out var(--duration-exit) linear both !important;
+  }
+}
+
+@keyframes grow-x {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+.grow-x {
+  transform-origin: left;
+  animation: grow-x var(--duration-chart) var(--ease-enter) both;
+  animation-delay: calc(min(var(--i, 0), 8) * var(--duration-stagger) + 150ms);
+}
+@media (prefers-reduced-motion: reduce) {
+  .grow-x {
+    animation: none !important;
+  }
+}

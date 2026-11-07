@@ -12,4 +12,4 @@
 - [ ] `uv run mypy`
 - [ ] `uv run pytest`
 - [ ] `npm --prefix web run typecheck`, `lint`, `format:check` and `build`
-- [ ] Tried in the dashboard (against `MOCK=1`, or real hardware: say which)
+- [ ] Tried in the app (against `DEMO=1`, or a real household: say which)

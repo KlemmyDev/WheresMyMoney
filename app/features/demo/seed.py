@@ -226,13 +226,13 @@ def seed(db: Database, today: dt.date | None = None) -> bool:
                     "INSERT OR IGNORE INTO merchant_rules (pattern, category_id, created_at) VALUES (?, ?, ?)",
                     (merchants.pattern(desc), cat[category], now),
                 )
-        # The loan's balance, as at the last statement.
-        conn.execute(
-            "INSERT INTO balances (account_id, date, at, balance, source, exact) VALUES (?, ?, ?, ?, 'checkin', 0)",
-            (home_loan, last.isoformat(), now - 3600, 60482000),
-        )
-        # A rough check-in at the last payday.
+        # A rough check-in at the last payday, with the loan's balance from its last statement.
         last_pay = payday if payday <= last else payday - dt.timedelta(days=14)
+        for day, owed in ((dates.add_months(last_pay, -1), 60626700), (last_pay, 60482000)):
+            conn.execute(
+                "INSERT INTO balances (account_id, date, at, balance, source, exact) VALUES (?, ?, ?, ?, 'checkin', 0)",
+                (home_loan, day.isoformat(), now - 3600, owed),
+            )
         cur = conn.execute(
             "INSERT INTO checkins (date, exact, created_at) VALUES (?, 0, ?)", (last_pay.isoformat(), now - 3600)
         )

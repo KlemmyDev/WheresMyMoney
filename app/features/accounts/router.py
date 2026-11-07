@@ -62,6 +62,18 @@ async def set_balance(svc: ServicesDep, account_id: int, body: JsonBody, user: U
     )
 
 
+@router.post("/accounts/{account_id}/opening")
+async def add_opening(svc: ServicesDep, account_id: int, body: JsonBody, user: UserDep):
+    """Add to the opening balance: {"amount": 29275} (the gap an import showed)."""
+    try:
+        amount = int(body.get("amount"))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=422, detail="Enter the amount.") from None
+    return await run(svc.accounts.add_opening, account_id, amount, user.id if user else None)
+
+
 @router.get("/loan")
 async def loan(svc: ServicesDep):
     ov = await run(svc.accounts.overview)

@@ -32,7 +32,7 @@ async def check_now(svc: ServicesDep):
 
 @router.put("/channel")
 async def set_channel(body: ChannelBody, svc: ServicesDep):
-    """Follow another release channel (Manage → System → Updates), and check it now."""
+    """Follow another release channel (Settings → Updates), and check it now."""
     try:
         return await asyncio.to_thread(svc.updates.set_channel, body.channel)
     except UpdateRefused as e:

@@ -1,0 +1,131 @@
+/** Every query the app makes, and the one rule for after a change: refetch what's on screen. */
+import { queryOptions, type QueryClient } from "@tanstack/react-query";
+import { apiGet } from "~/features/common/api";
+import type {
+  AccountsOverview,
+  BillsOverview,
+  Category,
+  Dashboard,
+  RulesOverview,
+  SpendingMonth,
+  Transaction,
+} from "~/features/common/types";
+
+export const dashboardQuery = (period: string) =>
+  queryOptions({
+    queryKey: ["dashboard", period],
+    queryFn: ({ signal }) => apiGet<Dashboard>("dashboard", { period }, { signal }),
+    staleTime: 30_000,
+  });
+
+export const accountsQuery = queryOptions({
+  queryKey: ["accounts"],
+  queryFn: ({ signal }) => apiGet<AccountsOverview>("accounts", undefined, { signal }),
+});
+
+export const accountQuery = (id: number) =>
+  queryOptions({
+    queryKey: ["accounts", id],
+    queryFn: ({ signal }) =>
+      apiGet<AccountsOverview["accounts"][number] & { history: [string, number][] }>(`accounts/${id}`, undefined, {
+        signal,
+      }),
+  });
+
+export const transactionsQuery = (params: { account_id?: number; start?: string; q?: string; limit?: number }) =>
+  queryOptions({
+    queryKey: ["transactions", params],
+    queryFn: ({ signal }) => apiGet<Transaction[]>("transactions", params, { signal }),
+  });
+
+export const billsQuery = queryOptions({
+  queryKey: ["bills"],
+  queryFn: ({ signal }) => apiGet<BillsOverview>("bills", undefined, { signal }),
+});
+
+export const rulesQuery = queryOptions({
+  queryKey: ["rules"],
+  queryFn: ({ signal }) => apiGet<RulesOverview>("rules", undefined, { signal }),
+});
+
+export const spendingQuery = queryOptions({
+  queryKey: ["spending"],
+  queryFn: ({ signal }) =>
+    apiGet<{ month: SpendingMonth | null; recent: Transaction[]; categories: Category[] }>("spending", undefined, {
+      signal,
+    }),
+});
+
+export const categoriesQuery = queryOptions({
+  queryKey: ["categories"],
+  queryFn: ({ signal }) =>
+    apiGet<{ categories: Category[]; merchant_rules: { id: number; pattern: string; category: string }[] }>(
+      "categories",
+      undefined,
+      { signal },
+    ),
+  staleTime: 60_000,
+});
+
+export type LoanView = {
+  loan: AccountsOverview["accounts"][number];
+  offsetting: number;
+  offset_only: number;
+  coverage: number;
+  coverage_offset_only: number;
+  interest_per_day: number;
+  charged_per_month: number;
+  principal_per_month: number;
+  monthly_growth: number;
+  planned_growth: number;
+  recent: { date: string | null; months: number | null; points: [string, number, number][] };
+  planned: { date: string | null; months: number | null; points: [string, number, number][] };
+  scenarios: {
+    extra: number;
+    date: string | null;
+    months: number | null;
+    sooner: number | null;
+    interest_saved: number;
+  }[];
+  by_account: { id: number; name: string; colour: string; balance: number; share: number }[];
+};
+
+export const loanQuery = queryOptions({
+  queryKey: ["loan"],
+  queryFn: ({ signal }) => apiGet<LoanView | null>("loan", undefined, { signal }),
+});
+
+export type Settings = {
+  settings: {
+    household: string;
+    reminder: string;
+    detail: string;
+    setup_done: boolean;
+    update_check: boolean;
+    tolerance: number;
+  };
+  about: { version: string; release: string | null; commit: string | null };
+  today: string;
+};
+
+export const settingsQuery = queryOptions({
+  queryKey: ["settings"],
+  queryFn: ({ signal }) => apiGet<Settings>("settings", undefined, { signal }),
+  staleTime: 60_000,
+});
+
+export type SetupState = {
+  done: boolean;
+  show: boolean;
+  steps: { accounts: boolean; loan: boolean; bills: boolean; pay: boolean; current: boolean };
+};
+
+export const setupQuery = queryOptions({
+  queryKey: ["setup"],
+  queryFn: ({ signal }) => apiGet<SetupState>("setup", undefined, { signal }),
+});
+
+/** After anything that changes the household's money: refetch every view of it (not the session). */
+export function refresh(qc: QueryClient) {
+  return qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== "auth" });
+}
