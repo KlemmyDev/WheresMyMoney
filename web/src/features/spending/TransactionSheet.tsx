@@ -353,3 +353,59 @@ function SplitEditor({
     </div>
   );
 }
+
+const ROW_HOW: Partial<Record<Transaction["kind"], [string, "teal" | "info" | "mute"]>> = {
+  manual: ["By hand", "info"],
+  cash: ["Cash", "mute"],
+  adjustment: ["Adjustment", "teal"],
+};
+
+/** One transaction in a list, to tap for its sheet: what, when, its category (or split), and how it got here. */
+export function TxRow({
+  tx,
+  onOpen,
+  sub,
+}: {
+  tx: Transaction;
+  onOpen: (t: Transaction) => void;
+  /** The second line before the category (the date, or the account). */
+  sub: string;
+}) {
+  const how = tx.merged ? (["Matched", "good"] as const) : ROW_HOW[tx.kind];
+  const category = tx.splits?.length
+    ? `Split: ${tx.splits.map((p) => p.category).join(", ")}`
+    : (tx.category ?? (tx.kind === "adjustment" ? null : "Not sorted"));
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(tx)}
+      className="chip-host press flex min-h-16 w-full cursor-pointer items-center gap-3 rounded-2xl border-0 bg-transparent px-1.5 text-left text-ink hover:bg-tile-2"
+    >
+      <Chip
+        g={tx.amount > 0 ? I.pay : I.spending}
+        tone={tx.splits?.length ? "grad" : tx.amount > 0 ? "savings" : tx.category ? "spending" : "neutral"}
+        size="lg"
+        round
+      />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate">{tx.merchant || tx.description}</span>
+        <span className="block truncate text-[13px] text-ink-3">
+          {[sub, category].filter(Boolean).join(" · ")}
+          {tx.note ? ` · ${tx.note}` : ""}
+        </span>
+      </span>
+      <span className="flex flex-none flex-col items-end gap-1">
+        <span
+          className={`num ${tx.amount > 0 ? "text-good" : ""} ${tx.excluded ? "text-ink-3 line-through decoration-1" : ""}`}
+        >
+          {money(tx.amount, { cents: true, sign: true })}
+        </span>
+        <span className="flex gap-1">
+          {tx.excluded && <Pill tone="teal">Paid back</Pill>}
+          {tx.splits?.length > 0 && <Pill tone="mute">Split</Pill>}
+          {how && <Pill tone={how[1]}>{how[0]}</Pill>}
+        </span>
+      </span>
+    </button>
+  );
+}

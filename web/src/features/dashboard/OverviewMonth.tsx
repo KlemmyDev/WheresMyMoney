@@ -13,7 +13,7 @@ import { dayDate, money, parseDate, shortDate } from "~/features/common/format";
 import { Chip, I, type Glyph, type Tone } from "~/features/common/icons";
 import { transactionsQuery } from "~/features/common/queries";
 import type { Dashboard, SpendingMonth, Transaction } from "~/features/common/types";
-import { TransactionSheet } from "~/features/spending/TransactionSheet";
+import { TransactionSheet, TxRow } from "~/features/spending/TransactionSheet";
 import { Pill, cn } from "~/features/common/ui";
 import type { Month } from "~/features/dashboard/DashboardPage";
 
@@ -481,13 +481,6 @@ export function WhereItWent({ s }: { s: SpendingMonth }) {
   );
 }
 
-const HOW: Record<string, [string, "teal" | "info" | "good" | "warn" | "mute"]> = {
-  manual: ["Entered", "teal"],
-  cash: ["Cash", "teal"],
-  statement: ["Imported", "info"],
-  adjustment: ["Adjustment", "warn"],
-};
-
 /** The latest few transactions across the household, newest first. */
 export function RecentActivity() {
   const q = useQuery(transactionsQuery({ limit: 6 }));
@@ -504,37 +497,9 @@ export function RecentActivity() {
         }
       />
       <div className="-mx-1 flex flex-col">
-        {(q.data ?? []).map((t) => {
-          const [how, tone] = t.merged ? (["Matched", "good"] as const) : (HOW[t.kind] ?? ["", "mute"]);
-          return (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setOpen(t)}
-              className="chip-host press flex min-h-16 w-full cursor-pointer items-center gap-3 rounded-2xl border-0 bg-transparent px-1.5 text-left text-ink hover:bg-tile-2"
-            >
-              <Chip
-                g={t.amount > 0 ? I.pay : I.spending}
-                tone={t.amount > 0 ? "savings" : "spending"}
-                size="lg"
-                round
-              />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate">{t.merchant || t.description}</span>
-                <span className="block truncate text-[13px] text-ink-3">
-                  {shortDate(t.date)}
-                  {t.category ? ` · ${t.category}` : " · Not sorted"}
-                </span>
-              </span>
-              <span className="flex flex-col items-end gap-1">
-                <span className={cn("num", t.amount > 0 && "text-good")}>
-                  {money(t.amount, { cents: true, sign: true })}
-                </span>
-                {how && <Pill tone={tone}>{how}</Pill>}
-              </span>
-            </button>
-          );
-        })}
+        {(q.data ?? []).map((t) => (
+          <TxRow key={t.id} tx={t} onOpen={setOpen} sub={shortDate(t.date)} />
+        ))}
         {q.data && !q.data.length && <span className="px-1.5 py-2 text-[13px] text-ink-3">No transactions yet.</span>}
       </div>
       <TransactionSheet tx={open} onClose={() => setOpen(null)} />
