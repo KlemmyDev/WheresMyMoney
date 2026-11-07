@@ -197,6 +197,30 @@ def _splits_and_paid_back(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS splits_by_transaction ON splits (transaction_id)")
 
 
+def _investments(conn: sqlite3.Connection) -> None:
+    """Investments: the ETFs held, entered by hand as they're bought and sold.
+
+    funds: `ticker` as the exchange has it (VAS; looked up as VAS.AX unless it names its market), `grp` (aus, intl,
+    bonds, property, cash, other) and `target`, its aimed-for share of the portfolio (0 to 1).
+    trades: `side` buy or sell, `units` (fractions allowed), `price` each in cents (fractions of a cent allowed), and
+    the brokerage `fee` in cents. prices: a fund's close each day, in cents, looked up once a day."""
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS funds (id INTEGER PRIMARY KEY, ticker TEXT NOT NULL UNIQUE COLLATE NOCASE,"
+        " name TEXT NOT NULL, grp TEXT NOT NULL DEFAULT 'other', target REAL, sort INTEGER NOT NULL DEFAULT 0,"
+        " created_at INTEGER NOT NULL)"
+    )
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS trades (id INTEGER PRIMARY KEY, fund_id INTEGER NOT NULL, date TEXT NOT NULL,"
+        " side TEXT NOT NULL, units REAL NOT NULL, price REAL NOT NULL, fee INTEGER NOT NULL DEFAULT 0,"
+        " created_at INTEGER NOT NULL)"
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS trades_by_fund ON trades (fund_id, date)")
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS prices (fund_id INTEGER NOT NULL, date TEXT NOT NULL, close REAL NOT NULL,"
+        " PRIMARY KEY (fund_id, date))"
+    )
+
+
 MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _baseline,
     _money,
@@ -205,4 +229,5 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _more_categories,
     _goal_details,
     _splits_and_paid_back,
+    _investments,
 ]
