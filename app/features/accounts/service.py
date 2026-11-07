@@ -153,7 +153,7 @@ class AccountsService:
         now = int(time.time())
         with self.db.writing() as conn:
             if conn.execute("SELECT COUNT(*) FROM accounts WHERE archived = 0").fetchone()[0] >= MAX_ACCOUNTS:
-                raise ValueError("That's a lot of accounts. Archive some you don't use first.")
+                raise ValueError("That's a lot of accounts. Remove some you don't use first.")
             sort = conn.execute("SELECT COALESCE(MAX(sort), 0) + 1 FROM accounts").fetchone()[0]
             cur = conn.execute(
                 "INSERT INTO accounts (name, kind, role, last4, colour, offsets_loan, target_months, allowance,"
@@ -188,11 +188,54 @@ class AccountsService:
         return account
 
     def archive(self, account_id: int) -> bool:
+        """Hide an account, keeping its history. The loan stops being paid from it."""
         with self.db.writing() as conn:
-            return conn.execute("UPDATE accounts SET archived = 1 WHERE id = ?", (account_id,)).rowcount > 0
+            done = conn.execute(
+                "UPDATE accounts SET archived = 1 WHERE id = ? AND archived = 0", (account_id,)
+            ).rowcount
+            if done:
+                conn.execute("UPDATE accounts SET repay_from = NULL WHERE repay_from = ?", (account_id,))
+            return done > 0
+
+    def archived(self) -> list[dict[str, Any]]:
+        """The accounts that were removed, newest first, with how many transactions each kept."""
+        with self.db.reading() as conn:
+            rows = conn.execute(
+                f"SELECT {_COLUMNS}, (SELECT COUNT(*) FROM transactions t WHERE t.account_id = accounts.id)"
+                " FROM accounts WHERE archived = 1 ORDER BY id DESC"
+            ).fetchall()
+            return [{**_row(r), "transactions": r[-1], "balance": ledger.balance(conn, r[0])} for r in rows]
+
+    def restore(self, account_id: int) -> dict[str, Any]:
+        """Bring a removed account back, with its history."""
+        with self.db.writing() as conn:
+            row = conn.execute("SELECT kind FROM accounts WHERE id = ? AND archived = 1", (account_id,)).fetchone()
+            if row is None:
+                raise LookupError("That account isn't one you removed.")
+            if conn.execute("SELECT COUNT(*) FROM accounts WHERE archived = 0").fetchone()[0] >= MAX_ACCOUNTS:
+                raise ValueError("That's a lot of accounts. Remove one you don't use first.")
+            if (
+                row[0] == "loan"
+                and conn.execute("SELECT 1 FROM accounts WHERE kind = 'loan' AND archived = 0").fetchone()
+            ):
+                raise ValueError("There's already a home loan. Remove it first to bring this one back.")
+            conn.execute("UPDATE accounts SET archived = 0 WHERE id = ?", (account_id,))
+        account = self.get(account_id)
+        assert account is not None
+        return account
 
     def by_last4(self, last4: str) -> dict[str, Any] | None:
-        return next((a for a in self.rows() if a["kind"] == "bank" and a["last4"] == last4), None)
+        return next((a for a in self.rows() if a["last4"] == last4), None)
+
+    def loan_changes(self, account_id: int) -> list[dict[str, Any]]:
+        """The loan's rate and repayment over time, newest first, as its statements showed them."""
+        with self.db.reading() as conn:
+            rows = conn.execute(
+                "SELECT date, field, value, was, description FROM loan_changes WHERE account_id = ?"
+                " ORDER BY date DESC, id DESC",
+                (account_id,),
+            ).fetchall()
+        return [{"date": r[0], "field": r[1], "value": r[2], "was": r[3], "description": r[4]} for r in rows]
 
     # -- balances -----------------------------------------------------------------------
 
@@ -235,7 +278,8 @@ class AccountsService:
         return next((a for a in self.rows() if a["kind"] == "loan"), None)
 
     def view(self, account_id: int) -> dict[str, Any]:
-        found = next((a for a in self.overview()["accounts"] if a["id"] == account_id), None)
+        ov = self.overview()
+        found = next((a for a in [*ov["accounts"], ov["loan"]] if a and a["id"] == account_id), None)
         if found is None:
             raise LookupError("That account has gone.")
         return found

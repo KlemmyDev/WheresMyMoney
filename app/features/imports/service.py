@@ -34,6 +34,7 @@ from app.core.database import Database
 from app.features.accounts import ledger
 from app.features.accounts.service import AccountsService
 from app.features.bills.service import BillsService
+from app.features.imports import loan as loan_rows
 from app.features.imports.statement import Columns, Row, Statement, StatementError, parse, recognise, signature, table
 from app.features.rules.service import RulesService
 from app.features.spending import merchants
@@ -54,6 +55,10 @@ class Pending:
     created: float
     user_id: int | None
     analysis: dict[int, dict[str, Any]] = field(default_factory=dict)  # by account
+
+    def seen_by(self, account: dict[str, Any]) -> Statement:
+        """The statement as the account sees it: a loan's has what's owed positive."""
+        return self.statement.owed() if account["kind"] == "loan" else self.statement
 
 
 def _transfer(description: str) -> bool:
@@ -143,9 +148,10 @@ class ImportService:
     def analyse(self, token: str, account_id: int) -> dict[str, Any]:
         p = self._get(token)
         account = self.accounts.get(account_id)
-        if account is None or account["kind"] != "bank":
+        if account is None:
             raise ValueError("Choose which of your accounts the statement is from.")
-        st = p.statement
+        is_loan = account["kind"] == "loan"
+        st = p.seen_by(account)
         rows = st.rows
         first, last = st.first_date or "", st.last_date or ""
         with self.db.reading() as conn:
@@ -193,6 +199,11 @@ class ImportService:
                 "amount": r.amount,
                 "balance": r.balance,
             }
+            if is_loan and loan_rows.is_note(r):
+                # A $0.00 row that only says something, like a rate change: it's read, not imported.
+                item.update(status="note", why="note")
+                out.append(item)
+                continue
             if seen[key] <= existing.get(key, 0):
                 item["status"] = "duplicate"
                 out.append(item)
@@ -200,6 +211,10 @@ class ImportService:
             item["status"] = "new"
             m = merchants.merchant(r.description)
             item["merchant"] = m
+            if is_loan:
+                item.update(why=loan_rows.why(r), sure=True, loan=True)
+                out.append(item)
+                continue
             # A hand entry for the same amount, that day or a few days before.
             match = None
             for t in manual:
@@ -246,7 +261,7 @@ class ImportService:
         ]
         need = [x for x in new if not x.get("sure")]
         totals: dict[str, int] = {}
-        for x in new:
+        for x in [] if is_loan else new:
             if x.get("why") in ("transfer", "pay") or x["amount"] >= 0:
                 continue
             name = x.get("category") or "Not sorted yet"
@@ -259,6 +274,7 @@ class ImportService:
             "counts": {
                 "rows": len(rows),
                 "duplicates": sum(1 for x in out if x["status"] == "duplicate"),
+                "notes": sum(1 for x in out if x["status"] == "note"),
                 "new": len(new),
                 "merge": sum(1 for x in out if x["status"] == "merge"),
                 "sorted": sum(1 for x in new if x.get("sure") and x.get("why") not in ("transfer",)),
@@ -272,9 +288,37 @@ class ImportService:
             # Whether this file reaches back before anything already in the account (so its opening balance is
             # the account's): then the ledger can be made to match the statement with an opening balance.
             "earliest": not earliest or (st.first_date or "") <= earliest,
+            "loan": self._loan_changes(account, st) if is_loan else None,
         }
         p.analysis[account_id] = result
         return result
+
+    def _loan_changes(self, account: dict[str, Any], st: Statement) -> dict[str, Any]:
+        """The rate and repayment changes the statement shows, each with whether it's new, and what the loan's rate
+        and repayment will be once it's imported (the latest of each, counting what earlier statements showed)."""
+        found = loan_rows.changes(st.rows)
+        with self.db.reading() as conn:
+            known = conn.execute(
+                "SELECT date, field, value, was FROM loan_changes WHERE account_id = ?", (account["id"],)
+            ).fetchall()
+        have = {(d, f, v) for d, f, v, _ in known}
+        timeline = sorted([(d, f, v) for d, f, v, _ in known] + [(c["date"], c["field"], c["value"]) for c in found])
+        for c in found:
+            c["new"] = (c["date"], c["field"], c["value"]) not in have
+            if c["was"] is None:
+                # The statement didn't say what it was before: the latest known before it, if any.
+                before = [v for d, f, v in timeline if f == c["field"] and d < c["date"]]
+                c["was"] = before[-1] if before else None
+        # A repayment that's the same as the one before isn't a change.
+        shown = [c for c in found if c["field"] == "rate" or c["was"] != c["value"]]
+        latest = {f: v for _, f, v in timeline}
+        return {
+            "changes": shown,
+            "rate_bp": latest.get("rate", account["rate_bp"]),
+            "repayment": latest.get("repayment", account["repayment"]),
+            "was_rate_bp": account["rate_bp"],
+            "was_repayment": account["repayment"],
+        }
 
     @staticmethod
     def _balance_on(eod: dict[str, int], day: str) -> int | None:
@@ -377,7 +421,9 @@ class ImportService:
         # Looked at again, not taken from the review: statements reviewed together are imported one after another,
         # so an earlier one may since have brought in rows (or merged hand entries) that this one shares.
         analysis = self.analyse(token, account_id)
-        st = p.statement
+        account = self.accounts.get(account_id)
+        assert account is not None
+        st = p.seen_by(account)
         chosen = {int(k): (int(v) if v not in (None, "") else None) for k, v in (body.get("categories") or {}).items()}
         always = {int(i) for i in body.get("always") or []}
         accept = bool(body.get("accept_suggestions", True))
@@ -402,7 +448,7 @@ class ImportService:
             )
             import_id = int(cur.lastrowid or 0)
             for x in analysis["rows"]:
-                if x["status"] == "duplicate":
+                if x["status"] in ("duplicate", "note"):
                     continue
                 category = chosen.get(x["index"], x.get("category_id"))
                 if x["index"] not in chosen and category is None and accept:
@@ -474,10 +520,13 @@ class ImportService:
                     opening = ledger.adjust_to(
                         conn, account_id, ledger.ledger(conn, account_id) + need, "opening", now, p.user_id
                     )
+            loan_update = None
+            if analysis["loan"]:
+                loan_update = self._save_loan_changes(conn, account_id, analysis["loan"], import_id, now)
             conn.execute("UPDATE imports SET added = ?, merged = ? WHERE id = ?", (added, merged, import_id))
         # How the rules it matched went.
         for x in analysis["rows"]:
-            if x.get("rule_id") and x["status"] != "duplicate":
+            if x.get("rule_id") and x["status"] not in ("duplicate", "note"):
                 self.rules.note(x["rule_id"], "differed" if x.get("differed") else "ok", x["date"])
         with self._lock:
             self._pending.pop(token, None)
@@ -498,6 +547,36 @@ class ImportService:
             "ledger_at_close": through,
             "closing": st.closing,
             "gap": (st.closing - through) if st.closing is not None else None,
+            "loan": loan_update,
+        }
+
+    @staticmethod
+    def _save_loan_changes(
+        conn: Any, account_id: int, found: dict[str, Any], import_id: int, now: int
+    ) -> dict[str, Any] | None:
+        """Keep the rate and repayment changes, and set the loan's rate and repayment to the latest of each."""
+        for c in found["changes"]:
+            conn.execute(
+                "INSERT OR IGNORE INTO loan_changes (account_id, date, field, value, was, description, import_id,"
+                " created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (account_id, c["date"], c["field"], c["value"], c["was"], c["description"], import_id, now),
+            )
+        latest = {
+            f: v
+            for f, v in conn.execute(
+                "SELECT field, value FROM loan_changes WHERE account_id = ? ORDER BY date, id", (account_id,)
+            ).fetchall()
+        }
+        if not latest:
+            return None
+        if "rate" in latest:
+            conn.execute("UPDATE accounts SET rate_bp = ? WHERE id = ?", (latest["rate"], account_id))
+        if "repayment" in latest:
+            conn.execute("UPDATE accounts SET repayment = ? WHERE id = ?", (latest["repayment"], account_id))
+        return {
+            "rate_bp": latest.get("rate", found["was_rate_bp"]),
+            "repayment": latest.get("repayment", found["was_repayment"]),
+            "changes": sum(1 for c in found["changes"] if c["new"]),
         }
 
     def history(self, limit: int = 30) -> list[dict[str, Any]]:

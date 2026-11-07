@@ -22,10 +22,24 @@ async def add(svc: ServicesDep, body: JsonBody, user: UserDep):
     return await run(svc.accounts.add, body, user.id if user else None)
 
 
+@router.get("/accounts/archived")
+async def archived(svc: ServicesDep):
+    """The accounts that were removed, to bring back."""
+    return await run(svc.accounts.archived)
+
+
+@router.post("/accounts/{account_id}/restore")
+async def restore(svc: ServicesDep, account_id: int):
+    """Bring a removed account back, with its history."""
+    return await run(svc.accounts.restore, account_id)
+
+
 @router.get("/accounts/{account_id}")
 async def one(svc: ServicesDep, account_id: int):
     account = await run(svc.accounts.view, account_id)
     history = await run(svc.accounts.history, account_id, 180)
+    if account["kind"] == "loan":
+        return {**account, "history": history, "changes": await run(svc.accounts.loan_changes, account_id)}
     return {**account, "history": history}
 
 

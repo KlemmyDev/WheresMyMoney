@@ -130,7 +130,18 @@ def _money(conn: sqlite3.Connection) -> None:
 
 # Applied in order; the database's PRAGMA user_version records how many have run.
 # Never edit or reorder one that has shipped: add a new one.
+def _loan_changes(conn: sqlite3.Connection) -> None:
+    """loan_changes: the home loan's interest rate and repayment over time, as its statements showed them. `field` is
+    rate (`value` in basis points) or repayment (cents). The loan's own rate_bp and repayment are the latest of each."""
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS loan_changes (id INTEGER PRIMARY KEY, account_id INTEGER NOT NULL,"
+        " date TEXT NOT NULL, field TEXT NOT NULL, value INTEGER NOT NULL, was INTEGER, description TEXT NOT NULL,"
+        " import_id INTEGER, created_at INTEGER NOT NULL, UNIQUE (account_id, date, field, value))"
+    )
+
+
 MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _baseline,
     _money,
+    _loan_changes,
 ]
