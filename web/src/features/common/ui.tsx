@@ -219,7 +219,9 @@ export function Input({ className, ...rest }: InputHTMLAttributes<HTMLInputEleme
     <input
       {...rest}
       className={cn(
-        "mono min-h-[42px] w-full rounded-lg border border-line bg-page px-3 text-sm font-medium text-ink transition-[border-color,box-shadow] duration-150 ease-[var(--ease-enter)] placeholder:text-ink-3 focus:border-teal focus:shadow-[0_0_0_3px_rgb(45_212_191/0.2)] focus:outline-none",
+        // Figures by default; `font-sans` (a name, a note) opts out of the mono class, which twMerge can't see.
+        !className?.includes("font-sans") && "mono",
+        "min-h-[42px] w-full rounded-lg border border-line bg-page px-3 text-sm font-medium text-ink transition-[border-color,box-shadow] duration-150 ease-[var(--ease-enter)] placeholder:text-ink-3 focus:border-teal focus:shadow-[0_0_0_3px_rgb(45_212_191/0.2)] focus:outline-none",
         className,
       )}
     />

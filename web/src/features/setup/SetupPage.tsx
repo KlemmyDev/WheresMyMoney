@@ -8,14 +8,14 @@ import { useNavigate } from "@tanstack/react-router";
 import { useState, type CSSProperties } from "react";
 import { apiSend, errorMessage } from "~/features/common/api";
 import { CoverageRing } from "~/features/common/charts";
-import { EVERY_LABEL, editable, money, parseMoney, pct, ROLE_LABEL, todayIso } from "~/features/common/format";
-import { Logo } from "~/features/common/brand";
+import { EVERY_LABEL, colour, editable, money, parseMoney, pct, ROLE_LABEL, todayIso } from "~/features/common/format";
+import { Loading, Logo } from "~/features/common/brand";
 import { accountsQuery, billsQuery, refresh } from "~/features/common/queries";
 import type { Account, Every, Role } from "~/features/common/types";
+import { JobArt, JobPicker, StepFlow, useStep } from "~/features/common/steps";
 import { Button, Choice, Dot, ErrorText, Input, Label, Option, Select, Tile, cn } from "~/features/common/ui";
 
 const STEPS = ["Accounts", "Loan", "Bills", "Pay and spending", "Keeping it current"];
-const ROLES: Role[] = ["offset", "bills", "spending", "savings", "track"];
 const COMMON_BILLS: [string, Every][] = [
   ["Council rates", "quarterly"],
   ["Water", "quarterly"],
@@ -37,7 +37,8 @@ const COMMON_BILLS: [string, Every][] = [
 ];
 
 export function SetupPage() {
-  const [step, setStep] = useState(0);
+  const flow = useStep(STEPS.length);
+  const step = flow.step;
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const qc = useQueryClient();
@@ -50,7 +51,7 @@ export function SetupPage() {
       if (save) await save();
       await refresh(qc);
       if (step === STEPS.length - 1) navigate({ to: "/" });
-      else setStep(step + 1);
+      else flow.next();
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -61,7 +62,7 @@ export function SetupPage() {
     accounts: accounts.data?.accounts ?? [],
     loan: accounts.data?.loan ?? null,
     next,
-    back: () => setStep(Math.max(step - 1, 0)),
+    back: flow.back,
     busy,
   };
   return (
@@ -70,34 +71,72 @@ export function SetupPage() {
         <span className="flex items-center gap-2.5">
           <Logo />
         </span>
-        <ol className="m-0 flex list-none flex-wrap gap-4 p-0 text-[13px]" aria-label="Set-up steps">
+        <ol className="relative m-0 flex list-none flex-wrap gap-4 p-0 text-[13px]" aria-label="Set-up steps">
           {STEPS.map((s, i) => (
             <li
               key={s}
               aria-current={i === step ? "step" : undefined}
-              className={cn("flex items-center gap-2", i === step ? "text-ink" : "text-ink-3")}
+              className={cn(
+                "flex items-center gap-2 transition-colors duration-[240ms]",
+                i === step ? "text-ink" : i < step ? "text-ink-2" : "text-ink-3",
+              )}
             >
               <span
                 className={cn(
-                  "mono flex size-6 items-center justify-center rounded-full border text-xs",
+                  "mono flex size-6 items-center justify-center rounded-full border text-xs transition-[background-color,border-color,color,transform] duration-[240ms]",
+                  i === step && "scale-110",
                   i < step ? "border-teal bg-teal text-page" : i === step ? "border-teal text-teal" : "border-line",
                 )}
               >
-                {i < step ? "✓" : i + 1}
+                {i < step ? (
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="13"
+                    height="13"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    aria-hidden
+                  >
+                    <path
+                      d="M5 12.5l4.5 4.5L19 7.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="draw"
+                      style={{ strokeDasharray: 22, ["--len" as string]: 22, animationDuration: "320ms" }}
+                    />
+                  </svg>
+                ) : (
+                  i + 1
+                )}
               </span>
               {s}
             </li>
           ))}
         </ol>
       </div>
-      {error && <ErrorText>{error}</ErrorText>}
-      <div key={step} className="push-in">
-        {step === 0 && <StepAccounts {...props} />}
-        {step === 1 && <StepLoan {...props} />}
-        {step === 2 && <StepBills {...props} />}
-        {step === 3 && <StepPay {...props} />}
-        {step === 4 && <StepCurrent {...props} />}
+      <div className="h-1 overflow-hidden rounded-full bg-line" aria-hidden>
+        <div
+          className="h-full rounded-full bg-teal transition-[width] duration-[480ms] ease-[var(--ease-move)]"
+          style={{ width: `${((step + 1) / STEPS.length) * 100}%` }}
+        />
       </div>
+      {error && <ErrorText>{error}</ErrorText>}
+      {/* Each step starts from what's already saved, so wait for it: otherwise the first step would offer the four
+          starter accounts again on a reload and add them twice. */}
+      {accounts.data ? (
+        <StepFlow step={step} dir={flow.dir}>
+          {step === 0 && <StepAccounts {...props} />}
+          {step === 1 && <StepLoan {...props} />}
+          {step === 2 && <StepBills {...props} />}
+          {step === 3 && <StepPay {...props} />}
+          {step === 4 && <StepCurrent {...props} />}
+        </StepFlow>
+      ) : accounts.isError ? (
+        <ErrorText>{errorMessage(accounts.error)}</ErrorText>
+      ) : (
+        <Loading label="Loading your accounts" />
+      )}
     </div>
   );
 }
@@ -135,15 +174,18 @@ function Footer({
   );
 }
 
+let rowKey = 0;
+const nextKey = () => ++rowKey;
+
 function StepAccounts({ accounts, next, back, busy }: StepProps) {
-  const [rows, setRows] = useState<{ name: string; balance: string; role: Role; last4: string }[]>(() =>
+  const [rows, setRows] = useState<{ key: number; name: string; balance: string; role: Role; last4: string }[]>(() =>
     accounts.length
       ? []
       : [
-          { name: "Offset", balance: "", role: "offset", last4: "" },
-          { name: "Bills", balance: "", role: "bills", last4: "" },
-          { name: "Spending", balance: "", role: "spending", last4: "" },
-          { name: "Savings", balance: "", role: "savings", last4: "" },
+          { key: nextKey(), name: "Offset", balance: "", role: "offset", last4: "" },
+          { key: nextKey(), name: "Bills", balance: "", role: "bills", last4: "" },
+          { key: nextKey(), name: "Spending", balance: "", role: "spending", last4: "" },
+          { key: nextKey(), name: "Savings", balance: "", role: "savings", last4: "" },
         ],
   );
   const total =
@@ -153,78 +195,122 @@ function StepAccounts({ accounts, next, back, busy }: StepProps) {
       <div>
         <h1 className="m-0 text-[26px] font-semibold">Add your accounts</h1>
         <p className="mt-1 mb-0 text-ink-2">
-          No bank login needed. Type each account's name and today's balance, then give it a job. The job decides what
+          No bank login needed. Type each account's name and today's balance, then pick its job: the job decides what
           target and chart it gets.
         </p>
       </div>
-      <div className="grid gap-1.5 text-[13px] text-ink-2 sm:grid-cols-2">
-        {ROLES.map((r) => (
-          <span key={r} className="flex items-center gap-2">
-            <Dot c={r} />
-            <b className="text-ink">{ROLE_LABEL[r]}</b>
-            {
-              {
-                offset: "grow until it covers the loan",
-                bills: "hold a number of months of bills",
-                spending: "a month of everyday money, cards attached",
-                savings: "split into things you're saving for",
-                track: "a balance, no target",
-              }[r]
-            }
-          </span>
-        ))}
-      </div>
       {accounts.map((a) => (
-        <div key={a.id} className="flex items-center gap-3 rounded-lg bg-raised px-3 py-2.5">
-          <Dot c={a.colour} /> <b>{a.name}</b> <span className="mono">{money(a.balance)}</span>{" "}
-          <span className="text-ink-3">{ROLE_LABEL[a.role]}</span>
+        <div
+          key={a.id}
+          className="rise flex items-center gap-3 rounded-xl border border-line bg-page px-4 py-3"
+          style={{ boxShadow: `inset 3px 0 0 ${colour(a.role)}` }}
+        >
+          <JobArt role={a.role} size={32} />
+          <b className="min-w-0 flex-1 truncate font-semibold">{a.name}</b>
+          <span className="hidden text-[13px] text-ink-3 sm:inline">{ROLE_LABEL[a.role]}</span>
+          <span className="mono text-right sm:w-28">{money(a.balance)}</span>
         </div>
       ))}
-      <div className="flex flex-col gap-2">
-        {rows.map((r, i) => (
-          <div
-            key={i}
-            className="rise grid gap-2 sm:grid-cols-[1fr_90px_160px_minmax(0,1.6fr)]"
-            style={{ "--i": i } as CSSProperties}
-          >
-            <Input
-              className="font-sans"
-              aria-label="Name"
-              value={r.name}
-              onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}
-            />
-            <Input
-              aria-label="Last four digits"
-              placeholder="••2210"
-              maxLength={4}
-              value={r.last4}
-              onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, last4: e.target.value } : x)))}
-            />
-            <Input
-              aria-label="Balance today"
-              inputMode="decimal"
-              placeholder="Balance today"
-              value={r.balance}
-              onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, balance: e.target.value } : x)))}
-            />
-            <Select
-              aria-label="Job"
-              value={r.role}
-              onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, role: e.target.value as Role } : x)))}
+      <div className="flex flex-col gap-3">
+        {rows.map((r, i) => {
+          const set = (patch: Partial<(typeof rows)[number]>) =>
+            setRows(rows.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+          return (
+            <div
+              key={r.key}
+              className="rise relative flex flex-col gap-3 rounded-xl border border-line bg-page p-4 transition-[border-color,box-shadow] duration-300"
+              style={
+                {
+                  "--i": i,
+                  borderColor: `color-mix(in srgb, ${colour(r.role)} 45%, var(--color-line))`,
+                  boxShadow: `inset 3px 0 0 ${colour(r.role)}`,
+                } as CSSProperties
+              }
             >
-              {ROLES.map((role) => (
-                <option key={role} value={role}>
-                  {ROLE_LABEL[role]}
-                </option>
-              ))}
-            </Select>
-          </div>
-        ))}
-        <div>
-          <Button small onClick={() => setRows([...rows, { name: "", balance: "", role: "track", last4: "" }])}>
-            Add another account
-          </Button>
-        </div>
+              <div className="grid grid-cols-[96px_minmax(0,1fr)] gap-3 sm:grid-cols-[auto_1fr_110px_170px_auto] sm:items-end">
+                <span className="hidden pb-1.5 sm:block">
+                  <JobArt key={r.role} role={r.role} draw size={40} />
+                </span>
+                <div className="col-span-2 sm:col-span-1">
+                  <Label htmlFor={`sa-n-${r.key}`}>Name, as in your banking app</Label>
+                  <Input
+                    id={`sa-n-${r.key}`}
+                    className="font-sans"
+                    value={r.name}
+                    onChange={(e) => set({ name: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor={`sa-l-${r.key}`}>Last four</Label>
+                  <Input
+                    id={`sa-l-${r.key}`}
+                    inputMode="numeric"
+                    placeholder="2210"
+                    maxLength={4}
+                    value={r.last4}
+                    onChange={(e) => set({ last4: e.target.value.replace(/\D/g, "") })}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor={`sa-b-${r.key}`}>Balance today</Label>
+                  <Input
+                    id={`sa-b-${r.key}`}
+                    inputMode="decimal"
+                    placeholder="0.00"
+                    value={r.balance}
+                    onChange={(e) => set({ balance: e.target.value })}
+                  />
+                </div>
+                {rows.length > 1 && (
+                  <button
+                    type="button"
+                    aria-label={`Remove ${r.name || "this account"}`}
+                    onClick={() => setRows(rows.filter((_, j) => j !== i))}
+                    className="press absolute top-2 right-2 flex size-8 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent text-ink-3 hover:bg-raised hover:text-ink sm:static sm:size-[42px]"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      width="14"
+                      height="14"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.2"
+                      strokeLinecap="round"
+                      aria-hidden
+                    >
+                      <path d="M6 6l12 12M18 6L6 18" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+              <JobPicker
+                compact
+                label={`${r.name || "This account"}'s job`}
+                value={r.role}
+                onChange={(role) => set({ role })}
+              />
+            </div>
+          );
+        })}
+        <button
+          type="button"
+          onClick={() => setRows([...rows, { key: nextKey(), name: "", balance: "", role: "track", last4: "" }])}
+          className="press flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-line bg-transparent text-[13px] font-medium text-ink-2 hover:border-teal hover:text-teal"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            aria-hidden
+          >
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          Add another account
+        </button>
       </div>
       <div className="flex justify-between text-[13px]">
         <span className="text-ink-3">Use the same names as your banking app so check-ins are quick.</span>
@@ -316,7 +402,7 @@ function StepLoan({ accounts, loan, next, back, busy }: StepProps) {
           </div>
           <div className="sm:col-span-2">
             <div className="tt mb-2">Which accounts offset this loan?</div>
-            <div className="flex flex-wrap gap-2">
+            <div className="grid gap-2 sm:grid-cols-2">
               {accounts.map((a) => (
                 <Option
                   key={a.id}

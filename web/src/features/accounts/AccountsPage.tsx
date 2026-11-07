@@ -27,11 +27,11 @@ import {
 } from "~/features/common/format";
 import { useActions } from "~/features/common/layout";
 import { Dialog, useToast } from "~/features/common/overlay";
+import { JOB, JobArt, JobPicker, StepDots, StepFlow, useStep } from "~/features/common/steps";
 import { accountQuery, accountsQuery, refresh, transactionsQuery } from "~/features/common/queries";
 import type { Account, Goal, Role } from "~/features/common/types";
 import {
   Button,
-  Choice,
   Dot,
   ErrorText,
   Field,
@@ -40,13 +40,12 @@ import {
   Option,
   PageHead,
   Pill,
+  SuccessTick,
   Switch,
   Tile,
   TileTitle,
   cn,
 } from "~/features/common/ui";
-
-const ROLES: Role[] = ["offset", "bills", "spending", "savings", "track"];
 
 export function roleBadge(a: Account, goals: Goal[]): string {
   if (a.kind === "loan") return "LOAN";
@@ -188,7 +187,13 @@ export function AccountsPage({ selected }: { selected?: number }) {
             <Detail key={sel.id} account={sel} goals={data.goals} />
           ))}
       </div>
-      <AddAccount open={adding} onClose={() => setAdding(false)} hasLoan={!!data.loan} accounts={data.accounts} />
+      <AddAccount
+        open={adding}
+        onClose={() => setAdding(false)}
+        hasLoan={!!data.loan}
+        accounts={data.accounts}
+        onAdded={(id) => navigate({ to: "/accounts", search: { id }, replace: true })}
+      />
     </>
   );
 }
@@ -326,14 +331,7 @@ function Detail({ account, goals }: { account: Account; goals: Goal[] }) {
         </div>
       )}
       <div className="tt mt-1">What is this account for?</div>
-      <Choice
-        label="Account role"
-        value={a.role}
-        tone={a.colour}
-        onChange={(role) => save.mutate({ role, colour: role })}
-        options={ROLES.map((r) => ({ value: r, label: ROLE_LABEL[r] }))}
-      />
-      <div className="text-xs text-ink-3">The role sets which target, chart and alerts this account gets.</div>
+      <JobPicker compact label="Account role" value={a.role} onChange={(role) => save.mutate({ role, colour: role })} />
       <div className="mt-1 rounded-lg border border-line">
         {a.role === "bills" && t?.kind === "months" && (
           <>
@@ -614,130 +612,347 @@ export function AddAccount({
   onClose,
   hasLoan,
   accounts,
+  onAdded,
 }: {
   open: boolean;
   onClose: () => void;
   hasLoan: boolean;
   accounts: Account[];
+  onAdded?: (id: number) => void;
 }) {
   return (
     <Dialog open={open} onClose={onClose} labelledBy="add-acct-h">
-      <AddAccountForm onClose={onClose} hasLoan={hasLoan} accounts={accounts} />
+      <AddAccountFlow onClose={onClose} hasLoan={hasLoan} accounts={accounts} onAdded={onAdded} />
     </Dialog>
   );
 }
 
-function AddAccountForm({
+/**
+ * Adding an account, a step at a time: what kind (only while there's no loan yet), its name and balance (with a card
+ * that fills in as you type, as it'll look in the list), its job (cards that show what each one gets), then done.
+ */
+function AddAccountFlow({
   onClose,
   hasLoan,
   accounts,
+  onAdded,
 }: {
   onClose: () => void;
   hasLoan: boolean;
   accounts: Account[];
+  onAdded?: (id: number) => void;
 }) {
   const qc = useQueryClient();
   const [kind, setKind] = useState<"bank" | "loan">("bank");
   const [name, setName] = useState("");
   const [last4, setLast4] = useState("");
   const [balance, setBalance] = useState("");
-  const [role, setRole] = useState<Role>("track");
+  const [role, setRole] = useState<Role>("offset");
+  const [offsets, setOffsets] = useState(true);
+  const [offsetsTouched, setOffsetsTouched] = useState(false);
   const [rate, setRate] = useState("");
+  const [added, setAdded] = useState<Account | null>(null);
+  const steps = [...(hasLoan ? [] : ["kind"]), "details", ...(kind === "bank" ? ["job"] : []), "done"] as const;
+  const flow = useStep(steps.length);
+  const at = steps[flow.step];
+  const loan = kind === "loan";
+  const cents = parseMoney(balance);
+
   const add = useMutation({
     mutationFn: () =>
-      apiSend("POST", "accounts", {
+      apiSend<Account>("POST", "accounts", {
         kind,
         name,
         last4,
-        role,
-        balance: parseMoney(balance),
-        rate_bp: kind === "loan" ? Math.round(Number(rate || 0) * 100) : undefined,
-        repay_from: kind === "loan" ? accounts.find((a) => a.role === "offset")?.id : undefined,
+        role: loan ? "track" : role,
+        offsets_loan: loan ? false : offsets,
+        balance: cents ?? 0,
+        rate_bp: loan ? Math.round(Number(rate || 0) * 100) : undefined,
+        repay_from: loan ? accounts.find((a) => a.role === "offset")?.id : undefined,
       }),
-    onSuccess: () => (refresh(qc), onClose()),
+    onSuccess: (a) => {
+      setAdded(a);
+      refresh(qc);
+      flow.next();
+    },
   });
+
+  const pickRole = (r: Role) => {
+    setRole(r);
+    if (!offsetsTouched) setOffsets(r !== "track");
+  };
+  const canNext = at === "details" ? !!name.trim() && (balance === "" || cents != null) : true;
+  const submitStep = at === (loan ? "details" : "job");
+  const onNext = () => {
+    if (!canNext || add.isPending) return;
+    if (submitStep) add.mutate();
+    else flow.next();
+  };
+  const title =
+    at === "kind"
+      ? "What are you adding?"
+      : at === "details"
+        ? loan
+          ? "Your home loan"
+          : "Name and balance"
+        : at === "job"
+          ? "What's its job?"
+          : `${added?.name ?? name} is in`;
+
   return (
-    <div className="flex flex-col gap-3 overflow-y-auto p-6">
-      <h2 id="add-acct-h" className="m-0 text-xl font-semibold">
-        Add an account
-      </h2>
-      {!hasLoan && (
-        <Choice
-          label="Kind"
-          value={kind}
-          onChange={setKind}
-          options={[
-            { value: "bank", label: "A bank account" },
-            { value: "loan", label: "The home loan" },
-          ]}
-        />
-      )}
-      <div className="grid gap-3 sm:grid-cols-[1fr_120px]">
-        <div>
-          <Label htmlFor="aa-name">Name, as in your banking app</Label>
-          <Input
-            id="aa-name"
-            className="font-sans"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder={kind === "loan" ? "Home loan" : "Offset"}
-          />
-        </div>
-        <div>
-          <Label htmlFor="aa-last4">Last four digits</Label>
-          <Input
-            id="aa-last4"
-            inputMode="numeric"
-            maxLength={4}
-            value={last4}
-            onChange={(e) => setLast4(e.target.value)}
-            placeholder="2210"
-          />
-        </div>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div>
-          <Label htmlFor="aa-bal">{kind === "loan" ? "Loan balance" : "Balance today"}</Label>
-          <Input
-            id="aa-bal"
-            inputMode="decimal"
-            value={balance}
-            onChange={(e) => setBalance(e.target.value)}
-            placeholder="0.00"
-          />
-        </div>
-        {kind === "loan" && (
-          <div>
-            <Label htmlFor="aa-rate">Interest rate (%)</Label>
-            <Input
-              id="aa-rate"
-              inputMode="decimal"
-              value={rate}
-              onChange={(e) => setRate(e.target.value)}
-              placeholder="5.84"
-            />
-          </div>
+    <form
+      className="flex flex-col gap-5 overflow-y-auto p-6"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onNext();
+      }}
+    >
+      <div className="flex items-center justify-between gap-4">
+        <h2 id="add-acct-h" key={title} className="fade-in m-0 text-xl font-semibold">
+          {title}
+        </h2>
+        {at !== "done" && (
+          <StepDots steps={steps.slice(0, -1) as unknown as string[]} step={flow.step} className="w-24" />
         )}
       </div>
-      {kind === "bank" && (
-        <>
-          <div className="tt">Its job</div>
-          <Choice
-            label="Role"
-            value={role}
-            tone={role}
-            onChange={setRole}
-            options={ROLES.map((r) => ({ value: r, label: ROLE_LABEL[r] }))}
-          />
-        </>
-      )}
+      <StepFlow step={at} dir={flow.dir}>
+        {at === "kind" && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {(
+              [
+                ["bank", "A bank account", "Offset, bills, spending, savings: anything with a balance.", "offset"],
+                ["loan", "The home loan", "What you owe. Your accounts offset it.", "track"],
+              ] as const
+            ).map(([k, t, d, c], i) => (
+              <button
+                key={k}
+                type="button"
+                aria-pressed={kind === k}
+                onClick={() => (setKind(k), flow.next())}
+                className="press rise group flex cursor-pointer flex-col items-start gap-3 rounded-xl border border-line bg-raised p-4 text-left hover:border-ink-3"
+                style={{ "--i": i } as CSSProperties}
+              >
+                <span
+                  className="flex size-10 items-center justify-center rounded-lg text-lg"
+                  style={{ background: `color-mix(in srgb, ${colour(c)} 16%, transparent)`, color: colour(c) }}
+                  aria-hidden
+                >
+                  {k === "bank" ? (
+                    <svg
+                      viewBox="0 0 24 24"
+                      width="20"
+                      height="20"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.9"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M3 10l9-6 9 6M5 10v8M10 10v8M14 10v8M19 10v8M3 20h18" />
+                    </svg>
+                  ) : (
+                    <svg
+                      viewBox="0 0 24 24"
+                      width="20"
+                      height="20"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.9"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M3 11l9-7 9 7M5 10v10h14V10M10 20v-5h4v5" />
+                    </svg>
+                  )}
+                </span>
+                <span className="text-[15px] font-semibold text-ink">{t}</span>
+                <span className="text-[13px] text-ink-2">{d}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        {at === "details" && (
+          <div className="flex flex-col gap-4">
+            <PreviewCard
+              name={name}
+              last4={last4}
+              balance={loan && cents != null ? -cents : cents}
+              tone={loan ? "track" : "teal"}
+              loan={loan}
+              badge={loan ? "LOAN" : "NEW ACCOUNT"}
+            />
+            <div className="grid gap-3 sm:grid-cols-[1fr_120px]">
+              <div>
+                <Label htmlFor="aa-name">Name, as in your banking app</Label>
+                <Input
+                  id="aa-name"
+                  className="font-sans"
+                  autoComplete="off"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder={loan ? "Home loan" : "Offset"}
+                />
+              </div>
+              <div>
+                <Label htmlFor="aa-last4">Last four digits</Label>
+                <Input
+                  id="aa-last4"
+                  inputMode="numeric"
+                  maxLength={4}
+                  value={last4}
+                  onChange={(e) => setLast4(e.target.value.replace(/\D/g, ""))}
+                  placeholder="2210"
+                />
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="aa-bal">{loan ? "Loan balance" : "Balance today"}</Label>
+                <Input
+                  id="aa-bal"
+                  inputMode="decimal"
+                  value={balance}
+                  onChange={(e) => setBalance(e.target.value)}
+                  placeholder="0.00"
+                />
+              </div>
+              {loan && (
+                <div>
+                  <Label htmlFor="aa-rate">Interest rate (%)</Label>
+                  <Input
+                    id="aa-rate"
+                    inputMode="decimal"
+                    value={rate}
+                    onChange={(e) => setRate(e.target.value)}
+                    placeholder="5.84"
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        {at === "job" && (
+          <div className="flex flex-col gap-4">
+            <JobPicker value={role} onChange={pickRole} />
+            <div key={role} className="fade-in flex items-center gap-3 rounded-lg bg-page px-3.5 py-3 text-[13px]">
+              <JobArt role={role} size={36} />
+              <span className="min-w-0 flex-1">
+                <b className="font-semibold">You'll see:</b> <span className="text-ink-2">{JOB[role].get}</span>
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-line px-3.5 py-2.5">
+              <span id="aa-off" className="text-[13px]">
+                Offsets the home loan
+                <span className="block text-xs text-ink-3">Its balance counts against the loan's interest.</span>
+              </span>
+              <Switch
+                labelledBy="aa-off"
+                checked={offsets}
+                onChange={(v) => (setOffsets(v), setOffsetsTouched(true))}
+              />
+            </div>
+          </div>
+        )}
+        {at === "done" && added && (
+          <div className="flex flex-col items-center gap-4 py-2 text-center">
+            <SuccessTick size={64} />
+            <p className="m-0 max-w-sm text-ink-2">
+              {added.kind === "loan"
+                ? "Your home loan is set up. Check its balance in now and then, like the others."
+                : DONE_NOTE[added.role]}
+            </p>
+            <div className="w-full text-left">
+              <PreviewCard
+                name={added.name}
+                last4={added.last4 ?? ""}
+                balance={added.kind === "loan" ? -(cents ?? 0) : (cents ?? 0)}
+                tone={added.colour ?? added.role}
+                loan={added.kind === "loan"}
+                badge={added.kind === "loan" ? "LOAN" : ROLE_LABEL[added.role].toUpperCase()}
+                settled
+              />
+            </div>
+          </div>
+        )}
+      </StepFlow>
       {add.isError && <ErrorText>{errorMessage(add.error)}</ErrorText>}
-      <div className="flex justify-end gap-2">
-        <Button onClick={onClose}>Cancel</Button>
-        <Button primary disabled={!name || add.isPending} onClick={() => add.mutate()}>
-          Add
-        </Button>
+      <div className="flex justify-between gap-2">
+        {at === "done" ? (
+          <>
+            <Button onClick={onClose}>Done</Button>
+            <Button
+              primary
+              onClick={() => {
+                if (added) onAdded?.(added.id);
+                onClose();
+              }}
+            >
+              Open {added?.name}
+            </Button>
+          </>
+        ) : (
+          <>
+            {flow.step === 0 ? <Button onClick={onClose}>Cancel</Button> : <Button onClick={flow.back}>Back</Button>}
+            {at !== "kind" && (
+              <Button primary type="submit" disabled={!canNext || add.isPending}>
+                {add.isPending ? "Adding…" : submitStep ? (loan ? "Add the loan" : "Add account") : "Continue"}
+              </Button>
+            )}
+          </>
+        )}
       </div>
+    </form>
+  );
+}
+
+const DONE_NOTE: Record<Role, string> = {
+  offset: "It counts towards covering the loan, and its progress is on the dashboard.",
+  bills: "Add your bills and it'll know how many months it should hold.",
+  spending: "Set the monthly amount it's topped up to on its page.",
+  savings: "Add the things it's saving for on its page, and watch them fill.",
+  track: "Its balance and trend are on its page, with no target.",
+};
+
+/** The account as it'll look in the list, filling in as you type. */
+function PreviewCard({
+  name,
+  last4,
+  balance,
+  tone,
+  loan,
+  badge,
+  settled = false,
+}: {
+  name: string;
+  last4: string;
+  balance: number | null;
+  tone: string;
+  loan: boolean;
+  badge: string;
+  settled?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 rounded-tile border bg-page px-[18px] py-4 transition-[border-color,box-shadow] duration-300",
+        loan && "border-dashed",
+        settled ? "rise" : "",
+      )}
+      style={{ borderColor: colour(tone), boxShadow: `inset 3px 0 0 ${colour(tone)}` }}
+      aria-hidden
+    >
+      <span className="flex min-w-0 items-center gap-2.5">
+        {loan ? <span className="text-ink-2">⌂</span> : <Dot c={tone} />}
+        <b className={cn("truncate font-semibold", !name && "text-ink-3")}>
+          {name || (loan ? "Home loan" : "Account name")}
+        </b>
+        <Pill tone="role">{badge}</Pill>
+      </span>
+      <span className="mono text-lg font-semibold">
+        <Count k={`preview:${settled}`} value={balance ?? 0} format={(v) => money(v)} />
+      </span>
+      <span className="mono text-xs text-ink-3">{last4 ? `Acct ••${last4}` : "No account number"}</span>
+      <span className="mono text-xs text-ink-3">today</span>
     </div>
   );
 }
