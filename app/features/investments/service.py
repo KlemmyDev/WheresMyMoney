@@ -442,6 +442,35 @@ class InvestmentsService:
             if d >= today:
                 break
             d = min(d + dt.timedelta(days=step), today)
+        return [
+            {"date": day.isoformat(), "value": round(v), "cost": round(c)}
+            for day, (v, c) in zip(samples, self._values(funds, trades, closes, samples), strict=True)
+        ]
+
+    def values_on(self, days: list[dt.date]) -> list[int]:
+        """The portfolio's value at the end of each of these days (in order), in cents."""
+        if not days:
+            return []
+        with self.db.reading() as conn:
+            funds = self._funds(conn)
+            trades = self._trades(conn)
+            closes = {
+                f["id"]: conn.execute(
+                    "SELECT date, close FROM prices WHERE fund_id = ? AND date >= ? ORDER BY date",
+                    (f["id"], (days[0] - dt.timedelta(days=10)).isoformat()),
+                ).fetchall()
+                for f in funds
+            }
+        return [round(v) for v, _ in self._values(funds, trades, closes, days)]
+
+    def _values(
+        self,
+        funds: list[dict[str, Any]],
+        trades: dict[int, list[tuple[str, str, float, float, int]]],
+        closes: dict[int, list[tuple[str, float]]],
+        samples: list[dt.date],
+    ) -> list[tuple[float, float]]:
+        """Value and cost at each sample day (in order): units held then at the close on or before the day."""
         out = []
         idx = {f: 0 for f in closes}
         for day in samples:
@@ -463,5 +492,5 @@ class InvestmentsService:
                     price = next((t[3] for t in reversed(ft) if t[0] <= iso), 0.0)
                 value += h.units * price
                 cost += h.cost
-            out.append({"date": iso, "value": round(value), "cost": round(cost)})
+            out.append((value, cost))
         return out

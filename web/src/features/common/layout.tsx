@@ -27,7 +27,7 @@ export const SECTIONS: readonly Section[] = [
     g: I.overview,
     pages: [
       { to: "/", label: "Overview", sub: "Today, and the month ahead", g: I.overview, tone: "grad" },
-      { to: "/net-worth", label: "Net worth", sub: "Owned minus owed", g: I.networth, tone: "invest", soon: true },
+      { to: "/net-worth", label: "Net worth", sub: "Owned minus owed", g: I.networth, tone: "invest" },
     ],
   },
   {

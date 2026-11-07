@@ -277,3 +277,46 @@ export const retirementQuery = queryOptions({
   queryKey: ["retirement"],
   queryFn: ({ signal }) => apiGet<RetirementData>("retirement", undefined, { signal }),
 });
+
+export type Asset = {
+  id: number;
+  name: string;
+  kind: "home" | "car" | "other";
+  value: number;
+  as_of: string | null;
+  values: { date: string; value: number }[];
+};
+
+export type NetWorthPoint = {
+  date: string;
+  accounts: number;
+  shares: number;
+  super: number;
+  home: number;
+  other: number;
+  loan: number;
+};
+
+export type NetWorth = {
+  range: string;
+  accounts: {
+    id: number;
+    name: string;
+    role: string;
+    balance: number;
+    known: { date: string; source: string } | null;
+  }[];
+  loan: { id: number; name: string; balance: number; rate_bp: number | null; offsetting: number } | null;
+  shares: { value: number; funds: number };
+  super: { person: string; balance: number; as_of: string | null }[];
+  assets: Asset[];
+  now: NetWorthPoint;
+  history: NetWorthPoint[];
+  kinds: Record<string, string>;
+};
+
+export const netWorthQuery = (range: string) =>
+  queryOptions({
+    queryKey: ["networth", range],
+    queryFn: ({ signal }) => apiGet<NetWorth>("networth", { range }, { signal }),
+  });
