@@ -21,6 +21,7 @@ import { apiSend, apiUpload, errorMessage } from "~/features/common/api";
 import { amount, capsDate, longDate, money, monthYear } from "~/features/common/format";
 import { accountsQuery, categoriesQuery, refresh } from "~/features/common/queries";
 import type { Account, Category } from "~/features/common/types";
+import { CategoryPicker } from "~/features/common/CategoryPicker";
 import {
   Button,
   Choice,
@@ -1085,31 +1086,13 @@ function Review({
                       {LOAN_WHY[r.why ?? "loan"] ?? "Loan"}
                     </span>
                   ) : (
-                    <select
-                      aria-label={`Category for ${r.description}`}
-                      value={current ?? (r.suggest_id != null ? `s${r.suggest_id}` : "")}
-                      onChange={(e) =>
-                        setChoice(r.key, e.target.value === "" ? null : Number(e.target.value.replace(/^s/, "")))
-                      }
-                      className={cn(
-                        "min-h-8 w-full cursor-pointer rounded-md border bg-raised px-2 text-xs text-ink",
-                        current == null && r.suggest_id == null
-                          ? "border-warn bg-warn/10"
-                          : current == null
-                            ? "border-line"
-                            : "border-good/40 bg-good/8",
-                      )}
-                    >
-                      <option value="">Choose</option>
-                      {r.suggest_id != null && current == null && (
-                        <option value={`s${r.suggest_id}`}>Suggest: {r.suggest}</option>
-                      )}
-                      {categories.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
+                    <CategoryPicker
+                      label={`Category for ${r.description}`}
+                      value={current}
+                      suggested={r.suggest_id}
+                      categories={categories}
+                      onChange={(c) => setChoice(r.key, c)}
+                    />
                   )}
                 </div>
               );

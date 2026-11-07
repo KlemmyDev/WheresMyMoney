@@ -10,6 +10,7 @@ import { amount, capsDate } from "~/features/common/format";
 import { useToast } from "~/features/common/overlay";
 import { accountsQuery, categoriesQuery, refresh, transactionsQuery } from "~/features/common/queries";
 import type { Transaction } from "~/features/common/types";
+import { CategoryPicker } from "~/features/common/CategoryPicker";
 import { Button, Dot, ErrorText, Input, PageHead, Pill, Select, Tile } from "~/features/common/ui";
 
 export function TransactionsPage({ account }: { account?: number }) {
@@ -20,11 +21,17 @@ export function TransactionsPage({ account }: { account?: number }) {
   const txs = useQuery(transactionsQuery({ account_id: account, q: q || undefined, limit: 500 }));
   const qc = useQueryClient();
   const toast = useToast();
-  const [remember, setRemember] = useState(true);
   const update = useMutation({
-    mutationFn: ({ id, category_id }: { id: number; category_id: number | null }) =>
+    mutationFn: ({ id, category_id, remember }: { id: number; category_id: number | null; remember: boolean }) =>
       apiSend<Transaction>("PUT", `transactions/${id}`, { category_id, always: remember }),
-    onSuccess: (t) => (refresh(qc), toast(`${t.description} is ${t.category ?? "not sorted"}`)),
+    onSuccess: (t, { remember }) => (
+      refresh(qc),
+      toast(
+        t.category && remember && t.remember_as
+          ? `${t.remember_as} is ${t.category} from now on`
+          : `${t.description} is ${t.category ?? "not sorted"}`,
+      )
+    ),
   });
   const remove = useMutation({
     mutationFn: (id: number) => apiSend("DELETE", `transactions/${id}`),
@@ -59,10 +66,6 @@ export function TransactionsPage({ account }: { account?: number }) {
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
-          <label className="flex items-center gap-2 text-[13px] text-ink-2">
-            <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
-            Remember a category for its merchant
-          </label>
         </div>
         {txs.isError && <ErrorText>{errorMessage(txs.error)}</ErrorText>}
         <div className="overflow-x-auto">
@@ -95,21 +98,14 @@ export function TransactionsPage({ account }: { account?: number }) {
                 {t.kind === "adjustment" ? (
                   <span />
                 ) : (
-                  <select
-                    aria-label={`Category for ${t.description}`}
-                    className="min-h-8 rounded-md border border-line bg-raised px-2 text-xs text-ink"
-                    value={t.category_id ?? ""}
-                    onChange={(e) =>
-                      update.mutate({ id: t.id, category_id: e.target.value ? Number(e.target.value) : null })
-                    }
-                  >
-                    <option value="">Not sorted</option>
-                    {(cats.data?.categories ?? []).map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
+                  <CategoryPicker
+                    label={`Category for ${t.description}`}
+                    value={t.category_id}
+                    categories={cats.data?.categories ?? []}
+                    merchant={t.remember_as || null}
+                    placeholder="Not sorted"
+                    onChange={(category_id, { remember }) => update.mutate({ id: t.id, category_id, remember })}
+                  />
                 )}
                 <span className="mono text-right" style={{ color: t.amount > 0 ? "var(--color-good)" : undefined }}>
                   {amount(t.amount, { cents: true, sign: true })}

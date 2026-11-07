@@ -11,14 +11,8 @@ import { money, monthYear } from "~/features/common/format";
 import { useToast } from "~/features/common/overlay";
 import { categoriesQuery, merchantsQuery, refresh } from "~/features/common/queries";
 import type { Category, MerchantGroup } from "~/features/common/types";
+import { CategoryPicker } from "~/features/common/CategoryPicker";
 import { Button, ErrorText, PageHead, Pill, Tile, TileTitle, cn } from "~/features/common/ui";
-
-const KIND_LABEL: Record<string, string> = {
-  spending: "Spending",
-  bills: "Bills",
-  income: "Money in",
-  transfer: "Between accounts",
-};
 
 const span = (g: MerchantGroup) => {
   const a = monthYear(g.first.slice(0, 7));
@@ -155,7 +149,6 @@ function Row({
   onSort: (category: number) => void;
 }) {
   const current = g.category_id ?? g.suggest_id;
-  const [pick, setPick] = useState<number | null>(current);
   const status = g.unsorted ? (
     <Pill tone="warn">{g.unsorted} NOT SORTED</Pill>
   ) : g.remembered ? (
@@ -163,7 +156,6 @@ function Row({
   ) : (
     <Pill tone="info">SUGGESTED</Pill>
   );
-  const kinds = Object.keys(KIND_LABEL);
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_70px_100px_180px_88px] items-center gap-3 border-t border-line py-2.5 text-[13px] first:border-t-0">
       <div className="min-w-0">
@@ -181,32 +173,16 @@ function Row({
         {g.spent ? money(g.spent) : ""}
         {g.received ? <div className="text-good">+{money(g.received)}</div> : null}
       </div>
-      <select
-        aria-label={`Category for ${g.pattern}`}
-        className="min-h-8 rounded-md border border-line bg-raised px-2 text-xs text-ink"
-        value={pick ?? ""}
-        onChange={(e) => {
-          const v = e.target.value ? Number(e.target.value) : null;
-          setPick(v);
-          if (v != null && v !== current) onSort(v);
-        }}
-      >
-        <option value="">Choose…</option>
-        {kinds.map((k) => (
-          <optgroup key={k} label={KIND_LABEL[k]}>
-            {categories
-              .filter((c) => c.kind === k)
-              .map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                  {c.id === g.suggest_id && c.id !== g.category_id ? " (suggested)" : ""}
-                </option>
-              ))}
-          </optgroup>
-        ))}
-      </select>
-      {pick != null && (pick === current || !g.unsorted) && !g.remembered ? (
-        <Button small onClick={() => onSort(pick)}>
+      <CategoryPicker
+        label={`Category for ${g.pattern}`}
+        value={g.category_id}
+        suggested={g.suggest_id}
+        categories={categories}
+        allowClear={false}
+        onChange={(v) => v != null && v !== g.category_id && onSort(v)}
+      />
+      {current != null && !g.remembered ? (
+        <Button small onClick={() => onSort(current)}>
           Looks right
         </Button>
       ) : (

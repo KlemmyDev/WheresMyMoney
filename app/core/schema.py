@@ -165,9 +165,18 @@ def _sorting(conn: sqlite3.Connection) -> None:
             conn.execute("UPDATE transactions SET merchant = ? WHERE id = ?", (now, tx_id))
 
 
+def _more_categories(conn: sqlite3.Connection) -> None:
+    """Another round of starting categories (Coffee, Alcohol, Childcare, Rent, Rego, Side income, Savings and more)
+    for a household that has its own already."""
+    from app.features.spending.service import add_missing_categories
+
+    add_missing_categories(conn)
+
+
 MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _baseline,
     _money,
     _loan_changes,
     _sorting,
+    _more_categories,
 ]

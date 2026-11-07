@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Still more categories: Coffee, Alcohol, Electronics, Hobbies, Sport & fitness, Childcare, Garden, Pharmacy, Work
+  expenses and Tax; Memberships, Rego and Rent as bills; Side income, Dividends and Refunds as money in; Savings and
+  Loan repayment between accounts. Gyms, bottle shops, chemists and the like are suggested into them.
+- A new category picker wherever a transaction is sorted (transactions, imports, sort by merchant, bills, adding
+  spending): type to find, grouped by kind with the suggestion and recent choices on top, add a new category from
+  it, and "always use it for" the merchant at its foot. It's a sheet on a phone.
 - More categories to see where money goes: Takeaway, Car, Transport, Shopping, Clothing, Holidays, Pets, Personal care,
   Education, Gifts & donations, Buy now pay later, Fees & charges; bills split into Insurance, Utilities, Phone &
   internet, Subscriptions and Rates; Government benefits, Other income and Investments. A household that has its own

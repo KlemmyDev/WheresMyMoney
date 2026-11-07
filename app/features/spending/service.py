@@ -25,34 +25,52 @@ DEFAULT_CATEGORIES: list[tuple[str, str, int | None]] = [
     ("Groceries", "spending", 120000),
     ("Eating out", "spending", 30000),
     ("Takeaway", "spending", None),
+    ("Coffee", "spending", None),
+    ("Alcohol", "spending", None),
     ("Fuel", "spending", 38000),
     ("Car", "spending", None),
     ("Transport", "spending", None),
     ("Shopping", "spending", None),
     ("Clothing", "spending", None),
+    ("Electronics", "spending", None),
     ("Fun", "spending", 25000),
+    ("Hobbies", "spending", None),
+    ("Sport & fitness", "spending", None),
     ("Holidays", "spending", None),
     ("Kids", "spending", 25000),
+    ("Childcare", "spending", None),
     ("Pets", "spending", None),
     ("Home", "spending", 25000),
+    ("Garden", "spending", None),
     ("Health", "spending", 20000),
+    ("Pharmacy", "spending", None),
     ("Personal care", "spending", None),
     ("Education", "spending", None),
     ("Gifts & donations", "spending", None),
+    ("Work expenses", "spending", None),
     ("Buy now pay later", "spending", None),
     ("Fees & charges", "spending", None),
+    ("Tax", "spending", None),
     ("Other", "spending", None),
     ("Bills", "bills", None),
     ("Insurance", "bills", None),
     ("Utilities", "bills", None),
     ("Phone & internet", "bills", None),
     ("Subscriptions", "bills", None),
+    ("Memberships", "bills", None),
+    ("Rego", "bills", None),
+    ("Rent", "bills", None),
     ("Rates", "bills", None),
     ("Pay", "income", None),
+    ("Side income", "income", None),
     ("Interest", "income", None),
+    ("Dividends", "income", None),
     ("Government benefits", "income", None),
+    ("Refunds", "income", None),
     ("Other income", "income", None),
     ("Transfer", "transfer", None),
+    ("Savings", "transfer", None),
+    ("Loan repayment", "transfer", None),
     ("Cash out", "transfer", None),
     ("Investments", "transfer", None),
 ]
@@ -274,7 +292,8 @@ class SpendingService:
     ) -> list[dict[str, Any]]:
         sql = (
             "SELECT t.id, t.account_id, t.date, t.amount, t.description, t.kind, t.category_id, c.name, c.kind, t.note,"
-            " t.rule_id, t.bill_id, t.user_id, u.display_name, u.username, t.merged FROM transactions t"
+            " t.rule_id, t.bill_id, t.user_id, u.display_name, u.username, t.merged, t.merchant, t.category_by"
+            " FROM transactions t"
             " LEFT JOIN categories c ON c.id = t.category_id LEFT JOIN users u ON u.id = t.user_id WHERE 1 = 1"
         )
         args: list[Any] = []
@@ -314,6 +333,10 @@ class SpendingService:
                 "user_id": r[12],
                 "who": (r[13] or r[14]) if r[12] else None,
                 "merged": bool(r[15]),
+                "merchant": r[16],
+                # What choosing "always" would remember it by.
+                "remember_as": merchants.learn_pattern(r[16], None, None, r[4]) if r[16] else "",
+                "category_by": r[17],
             }
             for r in rows
         ]

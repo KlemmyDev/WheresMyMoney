@@ -9,6 +9,7 @@ import { apiSend, errorMessage } from "~/features/common/api";
 import { money } from "~/features/common/format";
 import { Dialog, useToast } from "~/features/common/overlay";
 import { accountsQuery, categoriesQuery, refresh } from "~/features/common/queries";
+import { CategoryPicker } from "~/features/common/CategoryPicker";
 import type { Transaction } from "~/features/common/types";
 import { Button, ErrorText, Input, Label, Option, Select, cn } from "~/features/common/ui";
 
@@ -68,6 +69,8 @@ function AddSpendingForm({ onClose }: { onClose: () => void }) {
   });
 
   const spendingCats = (categories.data?.categories ?? []).filter((c) => c.kind === "spending");
+  // The budgeted ones as chips (the everyday ones); the rest, and a new one, from the picker.
+  const chips = spendingCats.filter((c) => c.budget || c.id === category).slice(0, 8);
   const shown = entry
     ? entry.split(".")[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",") + (entry.includes(".") ? "." + entry.split(".")[1] : "")
     : "0";
@@ -122,7 +125,7 @@ function AddSpendingForm({ onClose }: { onClose: () => void }) {
         />
       </div>
       <div role="group" aria-label="Category" className="flex flex-wrap gap-1.5">
-        {spendingCats.map((c) => (
+        {chips.map((c) => (
           <button
             key={c.id}
             type="button"
@@ -136,6 +139,17 @@ function AddSpendingForm({ onClose }: { onClose: () => void }) {
             {c.name}
           </button>
         ))}
+        <div className="w-40">
+          <CategoryPicker
+            label="Another category"
+            value={chips.some((c) => c.id === category) ? null : category}
+            categories={categories.data?.categories ?? []}
+            kinds={["spending"]}
+            placeholder="More…"
+            className="min-h-[38px] rounded-full border-line bg-raised text-[13px] text-ink"
+            onChange={(c) => setCategory(c)}
+          />
+        </div>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
