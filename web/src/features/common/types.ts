@@ -74,6 +74,8 @@ export type Transaction = {
   remember_as: string;
   /** How its category was chosen: you, rule, suggest, bill, auto, or null. */
   category_by: string | null;
+  excluded: boolean;
+  splits: { category_id: number; category: string | null; amount: number }[];
 };
 
 export type Category = { id: number; name: string; kind: string; budget: number | null; icon: string | null };
@@ -219,6 +221,7 @@ export type SpendingMonth = {
   unbudgeted: number;
   by_person: { user_id: number | null; spent: number }[];
   top_up: Rule | null;
+  owed_back: number;
 };
 
 export type Flag = {

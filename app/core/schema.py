@@ -182,6 +182,21 @@ def _goal_details(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE goals ADD COLUMN by_date TEXT")
 
 
+def _splits_and_paid_back(conn: sqlite3.Connection) -> None:
+    """splits: one transaction's amount shared across categories (`amount` in cents, positive; the parts add up to
+    the transaction's amount). A split transaction keeps its biggest part's category, with category_by 'split'.
+    transactions.`excluded`: someone's paying it back, so it isn't counted as spending (or, money in, it's them
+    paying it back)."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(transactions)")}
+    if "excluded" not in cols:
+        conn.execute("ALTER TABLE transactions ADD COLUMN excluded INTEGER NOT NULL DEFAULT 0")
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS splits (id INTEGER PRIMARY KEY, transaction_id INTEGER NOT NULL,"
+        " category_id INTEGER NOT NULL, amount INTEGER NOT NULL, sort INTEGER NOT NULL DEFAULT 0)"
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS splits_by_transaction ON splits (transaction_id)")
+
+
 MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _baseline,
     _money,
@@ -189,4 +204,5 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _sorting,
     _more_categories,
     _goal_details,
+    _splits_and_paid_back,
 ]

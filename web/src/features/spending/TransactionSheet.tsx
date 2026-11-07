@@ -7,11 +7,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiSend, errorMessage } from "~/features/common/api";
 import { ChoiceChip, Sheet } from "~/features/common/ds";
-import { longDate, money } from "~/features/common/format";
+import { longDate, money, parseMoney } from "~/features/common/format";
 import { Chip, I } from "~/features/common/icons";
 import { useToast } from "~/features/common/overlay";
 import { categoriesQuery, refresh } from "~/features/common/queries";
-import type { Transaction } from "~/features/common/types";
+import { CategoryPicker } from "~/features/common/CategoryPicker";
+import type { Category, Transaction } from "~/features/common/types";
 import { Button, ErrorText, Input, Pill, Switch } from "~/features/common/ui";
 
 const HOW: Record<Transaction["kind"], [string, "teal" | "info" | "warn"]> = {
@@ -37,9 +38,15 @@ function Body({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
   const [always, setAlways] = useState(true);
   const [note, setNote] = useState(tx.note ?? "");
   const [confirm, setConfirm] = useState(false);
+  const [mode, setMode] = useState<"view" | "split">("view");
+  const [splits, setSplits] = useState(tx.splits ?? []);
+  const [excluded, setExcluded] = useState(!!tx.excluded);
   const save = useMutation({
-    mutationFn: (body: Record<string, unknown>) => apiSend("PUT", `transactions/${tx.id}`, body),
-    onSuccess: () => refresh(qc),
+    mutationFn: (body: Record<string, unknown>) => apiSend<Transaction>("PUT", `transactions/${tx.id}`, body),
+    onSuccess: (t) => {
+      setSplits(t.splits ?? []);
+      refresh(qc);
+    },
   });
   const del = useMutation({
     mutationFn: () => apiSend("DELETE", `transactions/${tx.id}`),
@@ -52,6 +59,19 @@ function Body({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
   const [how, tone] = tx.merged ? (["Matched", "good"] as const) : HOW[tx.kind];
   const spend = (cats.data?.categories ?? []).filter((c) => c.kind !== "income" && c.kind !== "transfer");
   const removable = tx.kind !== "statement";
+  if (mode === "split")
+    return (
+      <SplitEditor
+        total={Math.abs(tx.amount)}
+        start={splits}
+        current={cat}
+        categories={spend}
+        pending={save.isPending}
+        error={save.isError ? errorMessage(save.error) : null}
+        onCancel={() => setMode("view")}
+        onSave={(parts) => save.mutate({ splits: parts }, { onSuccess: () => setMode("view") })}
+      />
+    );
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col items-center gap-1.5 text-center">
@@ -84,11 +104,25 @@ function Body({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
           <div className="text-[11px] font-semibold tracking-[0.09em] text-ink-3 uppercase">
             Category · tap to change
           </div>
+          {splits.length > 0 && (
+            <div className="flex items-center gap-3 rounded-2xl border border-line bg-tile-2 px-3.5 py-3">
+              <Chip g={I.spending} tone="grad" size="md" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-[14px] font-semibold">Split</span>
+                <span className="block text-[12px] text-ink-3">
+                  {splits.map((p) => `${p.category} ${money(p.amount, { cents: true })}`).join(" · ")}
+                </span>
+              </span>
+              <Button small onClick={() => setMode("split")}>
+                Change
+              </Button>
+            </div>
+          )}
           <div className="flex flex-wrap gap-2">
             {spend.map((c) => (
               <ChoiceChip
                 key={c.id}
-                pressed={cat === c.id}
+                pressed={!splits.length && cat === c.id}
                 onClick={() => {
                   setCat(c.id);
                   save.mutate({ category_id: c.id, always });
@@ -109,6 +143,30 @@ function Body({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
           </div>
         </div>
       )}
+      <label className="flex items-center gap-3 rounded-2xl border border-line bg-tile-2 px-3.5 py-3">
+        <span className="min-w-0 flex-1">
+          <span className="block text-[14px] font-semibold">
+            {tx.amount < 0 ? "Someone's paying us back" : "This is someone paying us back"}
+          </span>
+          <span className="block text-[12px] text-ink-3">
+            {excluded
+              ? tx.amount < 0
+                ? "Not counted as spending. Safe to spend counts it as coming back; mark their payment the same way when it lands."
+                : "Not counted as income: it squares up what was spent for them."
+              : tx.amount < 0
+                ? "Counted in this month's spending."
+                : "Counted as money in."}
+          </span>
+        </span>
+        <Switch
+          checked={excluded}
+          onChange={(v) => {
+            setExcluded(v);
+            save.mutate({ excluded: v });
+          }}
+          label="Someone's paying us back"
+        />
+      </label>
       <div className="flex flex-col gap-1.5">
         <label htmlFor="tx-note" className="text-[12px] font-semibold text-ink-2">
           Note
@@ -149,22 +207,149 @@ function Body({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
           </div>
         </div>
       ) : (
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {removable ? (
             <Button className="text-bad" onClick={() => setConfirm(true)}>
               Delete
             </Button>
           ) : (
-            <span className="flex-1 text-[12px] text-ink-3">
+            <span className="basis-full text-[12px] text-ink-3 sm:flex-1 sm:basis-auto">
               From a statement, so it stays. Change its category instead.
             </span>
           )}
           <span className="flex-1" />
+          {tx.amount < 0 && <Button onClick={() => setMode("split")}>Split it</Button>}
           <Button primary onClick={onClose}>
             Done
           </Button>
         </div>
       )}
+    </div>
+  );
+}
+
+type Part = { category_id: number | null; text: string };
+
+/** Split a transaction across categories: parts that must add up to the whole. */
+function SplitEditor({
+  total,
+  start,
+  current,
+  categories,
+  pending,
+  error,
+  onCancel,
+  onSave,
+}: {
+  total: number;
+  start: Transaction["splits"];
+  current: number | null;
+  categories: Category[];
+  pending: boolean;
+  error: string | null;
+  onCancel: () => void;
+  onSave: (parts: { category_id: number; amount: number }[]) => void;
+}) {
+  const [parts, setParts] = useState<Part[]>(() =>
+    start.length
+      ? start.map((p) => ({ category_id: p.category_id, text: (p.amount / 100).toFixed(2) }))
+      : [
+          { category_id: current, text: (total / 100).toFixed(2) },
+          { category_id: null, text: "" },
+        ],
+  );
+  const cents = parts.map((p) => parseMoney(p.text) ?? 0);
+  const left = total - cents.reduce((a, b) => a + b, 0);
+  const ok = left === 0 && parts.every((p, i) => p.category_id != null && cents[i] > 0);
+  const set = (i: number, patch: Partial<Part>) =>
+    setParts((ps) => ps.map((p, j) => (j === i ? { ...p, ...patch } : p)));
+  const even = () => {
+    const each = Math.floor(total / parts.length);
+    setParts((ps) =>
+      ps.map((p, j) => ({
+        ...p,
+        text: ((j === ps.length - 1 ? total - each * (ps.length - 1) : each) / 100).toFixed(2),
+      })),
+    );
+  };
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="m-0 text-[18px] font-semibold">Split {money(total, { cents: true })}</h3>
+        <Button small onClick={even}>
+          Split evenly
+        </Button>
+      </div>
+      <ol className="m-0 flex list-none flex-col gap-2.5 p-0">
+        {parts.map((p, i) => (
+          <li key={i} className="flex items-center gap-2 rounded-2xl border border-line bg-tile-2 p-2.5">
+            <span className="mono flex size-7 flex-none items-center justify-center rounded-full bg-raised text-[12px] text-ink-2">
+              {i + 1}
+            </span>
+            <div className="min-w-0 flex-1">
+              <CategoryPicker
+                label={`Part ${i + 1} category`}
+                value={p.category_id}
+                categories={categories}
+                kinds={["spending", "bills"]}
+                allowClear={false}
+                onChange={(c) => set(i, { category_id: c })}
+              />
+            </div>
+            <Input
+              aria-label={`Part ${i + 1} amount`}
+              inputMode="decimal"
+              className="w-24 flex-none text-right"
+              placeholder="0.00"
+              value={p.text}
+              onChange={(e) => set(i, { text: e.target.value.replace(/[^0-9.]/g, "") })}
+            />
+            {parts.length > 2 && (
+              <button
+                type="button"
+                aria-label={`Remove part ${i + 1}`}
+                onClick={() => setParts((ps) => ps.filter((_, j) => j !== i))}
+                className="flex size-9 flex-none cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-ink-3"
+              >
+                ✕
+              </button>
+            )}
+          </li>
+        ))}
+      </ol>
+      <Button
+        onClick={() => setParts((ps) => [...ps, { category_id: null, text: left > 0 ? (left / 100).toFixed(2) : "" }])}
+      >
+        Add a part
+      </Button>
+      <div
+        className="text-center text-[14px] font-semibold"
+        style={{ color: left === 0 ? "var(--color-savings)" : "var(--color-bills)" }}
+        aria-live="polite"
+      >
+        {left === 0
+          ? `All ${money(total, { cents: true })} assigned`
+          : left > 0
+            ? `${money(left, { cents: true })} still to assign`
+            : `${money(-left, { cents: true })} too much`}
+      </div>
+      {error && <ErrorText>{error}</ErrorText>}
+      <div className="flex gap-2">
+        {start.length > 0 && (
+          <Button onClick={() => onSave([])} disabled={pending}>
+            Undo split
+          </Button>
+        )}
+        <span className="flex-1" />
+        <Button onClick={onCancel}>Cancel</Button>
+        <Button
+          primary
+          disabled={!ok || pending}
+          onClick={() => onSave(parts.map((p, i) => ({ category_id: p.category_id!, amount: cents[i] })))}
+        >
+          Save split
+        </Button>
+      </div>
     </div>
   );
 }
