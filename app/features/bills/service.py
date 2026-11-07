@@ -17,8 +17,11 @@ from typing import Any
 
 from app.core import dates
 from app.core.database import Database
+from app.features.bills import detect
 
 HOW = ("auto", "manual", "estimate")
+DISMISSED = "bill_dismissed:"  # kv: a suggestion (or update) the household said no to
+LOOK_BACK_MONTHS = 25
 MAX_NAME = 60
 
 
@@ -199,3 +202,71 @@ class BillsService:
             "by_month": self.by_month(),
             "account": bills_account,
         }
+
+    # -- bills spotted in the ledger --------------------------------------------------
+
+    def _payments(self) -> tuple[list[detect.Payment], dict[int, str], set[int], dict[int, str]]:
+        since = dates.add_months(dates.today(), -LOOK_BACK_MONTHS).isoformat()
+        with self.db.reading() as conn:
+            rows = conn.execute(
+                "SELECT t.id, t.account_id, t.date, -t.amount, t.description, t.merchant, t.category_id, t.bill_id"
+                " FROM transactions t JOIN accounts a ON a.id = t.account_id LEFT JOIN categories c"
+                " ON c.id = t.category_id WHERE a.kind = 'bank' AND t.amount < 0 AND t.date >= ?"
+                " AND t.kind IN ('statement', 'manual') AND t.rule_id IS NULL AND COALESCE(c.kind, '') != 'transfer'"
+                " AND UPPER(t.description) NOT LIKE '%TRANSFER%'",
+                (since,),
+            ).fetchall()
+            ends = dict(
+                conn.execute(
+                    "SELECT account_id, MAX(date) FROM transactions WHERE kind = 'statement' GROUP BY account_id"
+                ).fetchall()
+            )
+            cats = conn.execute("SELECT id, name, kind FROM categories").fetchall()
+        payments = [detect.Payment(*r) for r in rows]
+        return payments, ends, {c[0] for c in cats if c[2] == "bills"}, {c[0]: c[1] for c in cats}
+
+    def _dismissed(self) -> set[str]:
+        with self.db.reading() as conn:
+            rows = conn.execute("SELECT key FROM kv WHERE key LIKE ?", (DISMISSED + "%",)).fetchall()
+        return {r[0][len(DISMISSED) :] for r in rows}
+
+    def spotted(self) -> dict[str, Any]:
+        """Bills the ledger suggests (not added yet, not dismissed), and bills whose price has moved."""
+        payments, ends, bill_cats, names = self._payments()
+        found = detect.find(payments, self.all(), bill_cats, names, ends, dates.today())
+        no = self._dismissed()
+        return {
+            "suggestions": [s for s in found["suggestions"] if s["key"] not in no],
+            "updates": [u for u in found["updates"] if u["key"] not in no],
+        }
+
+    def dismiss(self, key: str) -> None:
+        key = str(key or "")[:200]
+        if not key:
+            raise ValueError("Say which suggestion.")
+        with self.db.writing() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)", (DISMISSED + key, str(int(time.time())))
+            )
+
+    def accept(self, key: str, changes: dict[str, Any] | None = None) -> Bill:
+        """Add a spotted bill (with any changes the household made to it), and link the payments it was spotted
+        from, sorting those with no category into the bill's."""
+        found = next((s for s in self.spotted()["suggestions"] if s["key"] == key), None)
+        if found is None:
+            raise LookupError("That suggestion has gone: the bills page has the latest.")
+        body = {
+            k: found[k] for k in ("name", "amount", "every", "next_due", "account_id", "how", "match", "category_id")
+        }
+        bill = self.add({**body, **(changes or {})})
+        ids = found["transaction_ids"]
+        with self.db.writing() as conn:
+            marks = ",".join("?" * len(ids))
+            conn.execute(f"UPDATE transactions SET bill_id = ? WHERE id IN ({marks})", (bill.id, *ids))
+            if bill.category_id is not None:
+                conn.execute(
+                    f"UPDATE transactions SET category_id = ?, category_by = 'bill' WHERE id IN ({marks})"
+                    " AND (category_id IS NULL OR category_by IS NULL OR category_by IN ('rule', 'suggest'))",
+                    (bill.category_id, *ids),
+                )
+        return bill

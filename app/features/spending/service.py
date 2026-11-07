@@ -24,17 +24,37 @@ CATEGORY_KINDS = ("spending", "bills", "income", "transfer")
 DEFAULT_CATEGORIES: list[tuple[str, str, int | None]] = [
     ("Groceries", "spending", 120000),
     ("Eating out", "spending", 30000),
+    ("Takeaway", "spending", None),
     ("Fuel", "spending", 38000),
+    ("Car", "spending", None),
+    ("Transport", "spending", None),
+    ("Shopping", "spending", None),
+    ("Clothing", "spending", None),
     ("Fun", "spending", 25000),
+    ("Holidays", "spending", None),
     ("Kids", "spending", 25000),
+    ("Pets", "spending", None),
     ("Home", "spending", 25000),
     ("Health", "spending", 20000),
+    ("Personal care", "spending", None),
+    ("Education", "spending", None),
+    ("Gifts & donations", "spending", None),
+    ("Buy now pay later", "spending", None),
+    ("Fees & charges", "spending", None),
     ("Other", "spending", None),
     ("Bills", "bills", None),
+    ("Insurance", "bills", None),
+    ("Utilities", "bills", None),
+    ("Phone & internet", "bills", None),
+    ("Subscriptions", "bills", None),
+    ("Rates", "bills", None),
     ("Pay", "income", None),
     ("Interest", "income", None),
+    ("Government benefits", "income", None),
+    ("Other income", "income", None),
     ("Transfer", "transfer", None),
     ("Cash out", "transfer", None),
+    ("Investments", "transfer", None),
 ]
 MAX_NOTE = 200
 
@@ -44,6 +64,32 @@ def seed_categories(conn: sqlite3.Connection) -> None:
         return
     for i, (name, kind, budget) in enumerate(DEFAULT_CATEGORIES):
         conn.execute("INSERT INTO categories (name, kind, budget, sort) VALUES (?, ?, ?, ?)", (name, kind, budget, i))
+
+
+def add_missing_categories(conn: sqlite3.Connection) -> int:
+    """Give a household that already has categories the starting ones it doesn't have yet (by name), after its own.
+    A new household gets them all from seed_categories instead."""
+    if not conn.execute("SELECT 1 FROM categories LIMIT 1").fetchone():
+        return 0
+    have = {str(r[0]).lower() for r in conn.execute("SELECT name FROM categories")}
+    added = 0
+    for name, kind, budget in DEFAULT_CATEGORIES:
+        if name.lower() in have:
+            continue
+        added += 1
+        conn.execute("INSERT INTO categories (name, kind, budget, sort) VALUES (?, ?, ?, 9999)", (name, kind, budget))
+    # In order again: by kind, the starting ones in their order, then the household's own as they were.
+    order = {name.lower(): i for i, (name, _, _) in enumerate(DEFAULT_CATEGORIES)}
+    rows = conn.execute("SELECT id, name, kind, sort FROM categories").fetchall()
+    rows.sort(
+        key=lambda r: (
+            CATEGORY_KINDS.index(r[2]) if r[2] in CATEGORY_KINDS else 9,
+            order.get(str(r[1]).lower(), 1000 + int(r[3])),
+        )
+    )
+    for i, r in enumerate(rows):
+        conn.execute("UPDATE categories SET sort = ? WHERE id = ?", (i, r[0]))
+    return added
 
 
 def category_by_name(conn: sqlite3.Connection, name: str) -> int | None:
@@ -62,6 +108,39 @@ def rule_for(rules: list[tuple[str, int]], merchant_text: str) -> int | None:
         if merchants.matches(merchant_text, pattern):
             return category
     return None
+
+
+# How a transaction's category was chosen (transactions.category_by). Remembering a merchant re-sorts its
+# transactions whose category wasn't chosen by the household, or matched to a bill or a rule.
+RESORTABLE = ("rule", "suggest")
+
+
+def learn(conn: sqlite3.Connection, merchant_text: str, category_id: int, description: str = "") -> tuple[int, str]:
+    """Remember a merchant's category, and give it to that merchant's transactions that aren't sorted yet or were
+    sorted only by a suggestion or an earlier rule. Returns how many it changed, and the pattern remembered."""
+    taken = dict(conn.execute("SELECT pattern, category_id FROM merchant_rules").fetchall())
+    pattern = merchants.learn_pattern(merchant_text, taken, category_id, description)
+    if not pattern:
+        return 0, ""
+    conn.execute(
+        "INSERT INTO merchant_rules (pattern, category_id, created_at) VALUES (?, ?, ?)"
+        " ON CONFLICT (pattern) DO UPDATE SET category_id = excluded.category_id",
+        (pattern, category_id, int(time.time())),
+    )
+    # A longer pattern remembered for another category still wins for the merchants it covers.
+    longer = [p for p in taken if p != pattern and merchants.matches(p, pattern) and taken[p] != category_id]
+    changed = 0
+    for tx_id, m in conn.execute(
+        "SELECT id, merchant FROM transactions WHERE (merchant = ? OR merchant LIKE ?) AND kind != 'adjustment'"
+        " AND rule_id IS NULL AND bill_id IS NULL AND (category_id IS NULL OR category_by IS NULL"
+        f" OR category_by IN ({','.join('?' * len(RESORTABLE))})) AND COALESCE(category_id, -1) != ?",
+        (pattern, pattern + " %", *RESORTABLE, category_id),
+    ).fetchall():
+        if any(merchants.matches(m, p) for p in longer):
+            continue
+        conn.execute("UPDATE transactions SET category_id = ?, category_by = 'rule' WHERE id = ?", (category_id, tx_id))
+        changed += 1
+    return changed, pattern
 
 
 class SpendingService:
@@ -154,12 +233,26 @@ class SpendingService:
             if not conn.execute("SELECT 1 FROM accounts WHERE id = ? AND kind = 'bank'", (account_id,)).fetchone():
                 raise ValueError("Choose one of your accounts.")
             m = merchants.merchant(description)
+            by: str | None = "you"
             if category in (None, ""):
                 category = rule_for(learned(conn), m)
+                by = "rule" if category is not None else None
             cur = conn.execute(
-                "INSERT INTO transactions (account_id, date, amount, description, merchant, kind, category_id, note,"
-                " user_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (account_id, day.isoformat(), amount, description, m, kind, category, note, user_id, int(time.time())),
+                "INSERT INTO transactions (account_id, date, amount, description, merchant, kind, category_id,"
+                " category_by, note, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    account_id,
+                    day.isoformat(),
+                    amount,
+                    description,
+                    m,
+                    kind,
+                    category,
+                    by,
+                    note,
+                    user_id,
+                    int(time.time()),
+                ),
             )
             tx_id = int(cur.lastrowid or 0)
         return self.transaction(tx_id)
@@ -229,15 +322,18 @@ class SpendingService:
         """Change a transaction's category or note. With `always`, remember the category for its merchant and
         apply it to the merchant's earlier transactions that have no category yet."""
         with self.db.writing() as conn:
-            row = conn.execute("SELECT merchant, kind FROM transactions WHERE id = ?", (tx_id,)).fetchone()
+            row = conn.execute("SELECT merchant, kind, description FROM transactions WHERE id = ?", (tx_id,)).fetchone()
             if not row:
                 raise LookupError("That transaction has gone.")
             if "category_id" in body:
                 category = body["category_id"]
                 category = int(category) if category not in (None, "") else None
-                conn.execute("UPDATE transactions SET category_id = ? WHERE id = ?", (category, tx_id))
+                conn.execute(
+                    "UPDATE transactions SET category_id = ?, category_by = ? WHERE id = ?",
+                    (category, "you" if category is not None else None, tx_id),
+                )
                 if body.get("always") and category is not None and row[0]:
-                    self._learn(conn, row[0], category)
+                    learn(conn, row[0], category, row[2])
             if "note" in body:
                 conn.execute(
                     "UPDATE transactions SET note = ? WHERE id = ?", (str(body["note"] or "")[:MAX_NOTE], tx_id)
@@ -253,24 +349,92 @@ class SpendingService:
 
     def learn(self, description: str, category_id: int) -> int:
         with self.db.writing() as conn:
-            return self._learn(conn, merchants.merchant(description), category_id)
+            return learn(conn, merchants.merchant(description), category_id, description)[0]
 
-    @staticmethod
-    def _learn(conn: sqlite3.Connection, merchant_text: str, category_id: int) -> int:
-        """Remember a merchant's category, and give it to that merchant's uncategorised transactions. Returns how
-        many earlier ones it was given to."""
-        pattern = " ".join(merchant_text.split()[: merchants.WORDS])
-        if not pattern:
-            return 0
-        conn.execute(
-            "INSERT INTO merchant_rules (pattern, category_id, created_at) VALUES (?, ?, ?)"
-            " ON CONFLICT (pattern) DO UPDATE SET category_id = excluded.category_id",
-            (pattern, category_id, int(time.time())),
-        )
-        return conn.execute(
-            "UPDATE transactions SET category_id = ? WHERE category_id IS NULL AND (merchant = ? OR merchant LIKE ?)",
-            (category_id, pattern, pattern + " %"),
-        ).rowcount
+    # -- sorting by merchant ----------------------------------------------------------
+
+    def merchant_groups(self, unsorted_only: bool = True, limit: int = 200) -> list[dict[str, Any]]:
+        """Transactions grouped by the merchant they'd be remembered by, biggest first: for sorting a long history
+        a merchant at a time. `unsorted_only` keeps the merchants with something not sorted yet, or sorted only by
+        a suggestion."""
+        with self.db.reading() as conn:
+            taken = dict(conn.execute("SELECT pattern, category_id FROM merchant_rules").fetchall())
+            rows = conn.execute(
+                "SELECT t.id, t.merchant, t.description, t.amount, t.date, t.category_id, t.category_by FROM"
+                " transactions t LEFT JOIN categories c ON c.id = t.category_id WHERE t.kind != 'adjustment'"
+                " AND t.rule_id IS NULL AND t.bill_id IS NULL AND COALESCE(c.kind, '') != 'transfer'"
+                " AND t.merchant != ''"
+            ).fetchall()
+            names = {r[0]: r[1] for r in conn.execute("SELECT id, name FROM categories")}
+        groups: dict[str, dict[str, Any]] = {}
+        for tx_id, m, description, amt, day, category, by in rows:
+            key = merchants.learn_pattern(m, None, None, description)
+            g = groups.setdefault(
+                key,
+                {
+                    "pattern": key,
+                    "example": description,
+                    "transaction_id": tx_id,
+                    "count": 0,
+                    "spent": 0,
+                    "received": 0,
+                    "first": day,
+                    "last": day,
+                    "unsorted": 0,
+                    "suggested": 0,
+                    "categories": {},
+                },
+            )
+            g["count"] += 1
+            if amt < 0:
+                g["spent"] -= amt
+            else:
+                g["received"] += amt
+            g["first"] = min(g["first"], day)
+            if day >= g["last"]:
+                g["last"], g["example"], g["transaction_id"] = day, description, tx_id
+            if category is None:
+                g["unsorted"] += 1
+            elif by in (None, "suggest"):
+                g["suggested"] += 1
+            if category is not None:
+                g["categories"][category] = g["categories"].get(category, 0) + 1
+        out = []
+        for g in groups.values():
+            if unsorted_only and not (g["unsorted"] or g["suggested"]):
+                continue
+            remembered = rule_for(sorted(taken.items(), key=lambda r: -len(r[0])), g["pattern"])
+            top = max(g["categories"].items(), key=lambda kv: kv[1])[0] if g["categories"] else None
+            suggestion = merchants.suggest(g["pattern"])
+            by_name = {v.lower(): k for k, v in names.items()}
+            g["category_id"] = remembered if remembered is not None else top
+            g["category"] = names.get(g["category_id"])
+            g["remembered"] = remembered is not None
+            g["suggest_id"] = by_name.get(suggestion.lower()) if suggestion else None
+            g["categories"] = [
+                {"id": c, "name": names.get(c), "count": n}
+                for c, n in sorted(g["categories"].items(), key=lambda kv: -kv[1])
+            ]
+            out.append(g)
+        out.sort(key=lambda g: (-g["unsorted"], -g["suggested"], -g["spent"]))
+        return out[:limit]
+
+    def sort_merchant(self, transaction_id: Any, category_id: Any) -> dict[str, Any]:
+        """Remember a merchant's category (from one of its transactions) and sort the rest of its transactions."""
+        try:
+            transaction_id, category_id = int(transaction_id), int(category_id)
+        except (TypeError, ValueError):
+            raise ValueError("Choose a merchant and a category.") from None
+        with self.db.writing() as conn:
+            row = conn.execute(
+                "SELECT merchant, description FROM transactions WHERE id = ?", (transaction_id,)
+            ).fetchone()
+            if not row:
+                raise LookupError("That transaction has gone.")
+            if not conn.execute("SELECT 1 FROM categories WHERE id = ?", (category_id,)).fetchone():
+                raise ValueError("Choose one of your categories.")
+            changed, pattern = learn(conn, row[0], category_id, row[1])
+        return {"changed": changed, "pattern": pattern}
 
     def remove_transaction(self, tx_id: int) -> bool:
         """Only what was typed in (or an adjustment) can be removed: a statement's rows are the bank's."""

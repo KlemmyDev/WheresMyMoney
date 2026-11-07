@@ -22,6 +22,7 @@ import { Route as AppNetWorthRouteImport } from './routes/_app/net-worth'
 import { Route as AppRetirementRouteImport } from './routes/_app/retirement'
 import { Route as AppRulesRouteImport } from './routes/_app/rules'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
+import { Route as AppSortRouteImport } from './routes/_app/sort'
 import { Route as AppSpendingRouteImport } from './routes/_app/spending'
 import { Route as AppTransactionsRouteImport } from './routes/_app/transactions'
 
@@ -89,6 +90,11 @@ const AppSettingsRoute = AppSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AppRoute,
 } as any)
+const AppSortRoute = AppSortRouteImport.update({
+  id: '/sort',
+  path: '/sort',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppSpendingRoute = AppSpendingRouteImport.update({
   id: '/spending',
   path: '/spending',
@@ -113,6 +119,7 @@ export interface FileRoutesByFullPath {
   '/retirement': typeof AppRetirementRoute
   '/rules': typeof AppRulesRoute
   '/settings': typeof AppSettingsRoute
+  '/sort': typeof AppSortRoute
   '/spending': typeof AppSpendingRoute
   '/transactions': typeof AppTransactionsRoute
 }
@@ -128,6 +135,7 @@ export interface FileRoutesByTo {
   '/retirement': typeof AppRetirementRoute
   '/rules': typeof AppRulesRoute
   '/settings': typeof AppSettingsRoute
+  '/sort': typeof AppSortRoute
   '/spending': typeof AppSpendingRoute
   '/transactions': typeof AppTransactionsRoute
   '/': typeof AppIndexRoute
@@ -146,6 +154,7 @@ export interface FileRoutesById {
   '/_app/retirement': typeof AppRetirementRoute
   '/_app/rules': typeof AppRulesRoute
   '/_app/settings': typeof AppSettingsRoute
+  '/_app/sort': typeof AppSortRoute
   '/_app/spending': typeof AppSpendingRoute
   '/_app/transactions': typeof AppTransactionsRoute
   '/_app/': typeof AppIndexRoute
@@ -165,6 +174,7 @@ export interface FileRouteTypes {
     | '/retirement'
     | '/rules'
     | '/settings'
+    | '/sort'
     | '/spending'
     | '/transactions'
   fileRoutesByTo: FileRoutesByTo
@@ -180,6 +190,7 @@ export interface FileRouteTypes {
     | '/retirement'
     | '/rules'
     | '/settings'
+    | '/sort'
     | '/spending'
     | '/transactions'
     | '/'
@@ -197,6 +208,7 @@ export interface FileRouteTypes {
     | '/_app/retirement'
     | '/_app/rules'
     | '/_app/settings'
+    | '/_app/sort'
     | '/_app/spending'
     | '/_app/transactions'
     | '/_app/'
@@ -301,6 +313,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/sort': {
+      id: '/_app/sort'
+      path: '/sort'
+      fullPath: '/sort'
+      preLoaderRoute: typeof AppSortRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/spending': {
       id: '/_app/spending'
       path: '/spending'
@@ -328,6 +347,7 @@ interface AppRouteChildren {
   AppRetirementRoute: typeof AppRetirementRoute
   AppRulesRoute: typeof AppRulesRoute
   AppSettingsRoute: typeof AppSettingsRoute
+  AppSortRoute: typeof AppSortRoute
   AppSpendingRoute: typeof AppSpendingRoute
   AppTransactionsRoute: typeof AppTransactionsRoute
   AppIndexRoute: typeof AppIndexRoute
@@ -343,6 +363,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppRetirementRoute: AppRetirementRoute,
   AppRulesRoute: AppRulesRoute,
   AppSettingsRoute: AppSettingsRoute,
+  AppSortRoute: AppSortRoute,
   AppSpendingRoute: AppSpendingRoute,
   AppTransactionsRoute: AppTransactionsRoute,
   AppIndexRoute: AppIndexRoute,

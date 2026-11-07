@@ -10,7 +10,8 @@ import { AreaLine, Count } from "~/features/common/charts";
 import { EVERY_LABEL, editable, money, monthCaps, parseMoney, shortDate, todayIso } from "~/features/common/format";
 import { Dialog, useToast } from "~/features/common/overlay";
 import { accountsQuery, billsQuery, categoriesQuery, refresh } from "~/features/common/queries";
-import type { Account, Bill, Every } from "~/features/common/types";
+import type { Account, Bill, Every, SpottedBill } from "~/features/common/types";
+import { SpottedBills } from "~/features/bills/Spotted";
 import {
   Button,
   Dot,
@@ -30,6 +31,7 @@ const HOW = { auto: ["AUTO", "info"], manual: ["BY HAND", "warn"], estimate: ["E
 export function BillsPage() {
   const q = useQuery(billsQuery);
   const [editing, setEditing] = useState<Bill | "new" | null>(null);
+  const [spotted, setSpotted] = useState<SpottedBill | null>(null);
   const b = q.data;
   const acct = b?.account;
   const history = useQuery({
@@ -163,7 +165,8 @@ export function BillsPage() {
           <div className="text-xs text-ink-3">The heaviest months are what the buffer is there for.</div>
         </Tile>
       </div>
-      <Tile i={6} aria-labelledby="bl-all">
+      <SpottedBills i={6} onEdit={setSpotted} />
+      <Tile i={8} aria-labelledby="bl-all">
         <TileTitle id="bl-all" right={<span className="mono">{b.bills.length} BILLS</span>}>
           All bills{acct ? ` · paid from ${acct.name}` : ""}
         </TileTitle>
@@ -217,48 +220,77 @@ export function BillsPage() {
         </div>
       </Tile>
       <BillDialog bill={editing} onClose={() => setEditing(null)} />
+      <BillDialog bill={spotted ? "new" : null} spotted={spotted} onClose={() => setSpotted(null)} />
     </>
   );
 }
 
 const EVERY: Every[] = ["weekly", "fortnightly", "monthly", "quarterly", "term", "half-yearly", "yearly"];
 
-export function BillDialog({ bill, onClose }: { bill: Bill | "new" | null; onClose: () => void }) {
+export function BillDialog({
+  bill,
+  spotted,
+  onClose,
+}: {
+  bill: Bill | "new" | null;
+  /** A bill spotted in the statements, to add with any changes made here. */
+  spotted?: SpottedBill | null;
+  onClose: () => void;
+}) {
   return (
     <Dialog open={bill != null} onClose={onClose} labelledBy="bill-h">
-      {bill != null && <BillForm bill={bill} onClose={onClose} />}
+      {bill != null && <BillForm key={spotted?.key ?? "x"} bill={bill} spotted={spotted} onClose={onClose} />}
     </Dialog>
   );
 }
 
-function BillForm({ bill, onClose }: { bill: Bill | "new"; onClose: () => void }) {
+function BillForm({
+  bill,
+  spotted,
+  onClose,
+}: {
+  bill: Bill | "new";
+  spotted?: SpottedBill | null;
+  onClose: () => void;
+}) {
   const qc = useQueryClient();
   const toast = useToast();
   const accounts = useQuery(accountsQuery);
   const cats = useQuery(categoriesQuery);
   const banks: Account[] = accounts.data?.accounts ?? [];
   const [f, setF] = useState(() =>
-    bill === "new"
+    spotted
       ? {
-          name: "",
-          amount: "",
-          every: "monthly" as Every,
-          next_due: todayIso(),
-          account_id: String(banks.find((a) => a.role === "bills")?.id ?? ""),
-          how: "auto",
-          category_id: "",
-          match: "",
+          name: spotted.name,
+          amount: editable(spotted.amount),
+          every: spotted.every,
+          next_due: spotted.next_due,
+          account_id: String(spotted.account_id ?? ""),
+          how: spotted.how as string,
+          category_id: String(spotted.category_id ?? ""),
+          match: spotted.match,
         }
-      : {
-          name: bill.name,
-          amount: editable(bill.amount),
-          every: bill.every,
-          next_due: bill.next_due,
-          account_id: String(bill.account_id ?? ""),
-          how: bill.how as string,
-          category_id: String(bill.category_id ?? ""),
-          match: bill.match,
-        },
+      : bill === "new"
+        ? {
+            name: "",
+            amount: "",
+            every: "monthly" as Every,
+            next_due: todayIso(),
+            account_id: String(banks.find((a) => a.role === "bills")?.id ?? ""),
+            how: "auto",
+            category_id: "",
+            match: "",
+          }
+        : {
+            name: bill.name,
+            amount: editable(bill.amount),
+            every: bill.every,
+            next_due: bill.next_due,
+            account_id: String(bill.account_id ?? ""),
+            how: bill.how as string,
+            category_id: String(bill.category_id ?? ""),
+            match: bill.match,
+          },
   );
   const body = () => ({
     ...f,
@@ -268,7 +300,11 @@ function BillForm({ bill, onClose }: { bill: Bill | "new"; onClose: () => void }
   });
   const save = useMutation({
     mutationFn: () =>
-      bill === "new" ? apiSend("POST", "bills", body()) : apiSend("PUT", `bills/${(bill as Bill).id}`, body()),
+      spotted
+        ? apiSend("POST", "bills/spotted/accept", { key: spotted.key, changes: body() })
+        : bill === "new"
+          ? apiSend("POST", "bills", body())
+          : apiSend("PUT", `bills/${(bill as Bill).id}`, body()),
     onSuccess: () => (refresh(qc), onClose(), toast(bill === "new" ? `${f.name} added` : `${f.name} saved`)),
   });
   const remove = useMutation({
@@ -278,8 +314,14 @@ function BillForm({ bill, onClose }: { bill: Bill | "new"; onClose: () => void }
   return (
     <div className="flex flex-col gap-3 overflow-y-auto p-6">
       <h2 id="bill-h" className="m-0 text-xl font-semibold">
-        {bill === "new" ? "Add a bill" : f.name || "Bill"}
+        {spotted ? "Add a spotted bill" : bill === "new" ? "Add a bill" : f.name || "Bill"}
       </h2>
+      {spotted && (
+        <div className="text-[13px] text-ink-2">
+          Seen {spotted.seen} times, as <span className="mono">{spotted.example}</span>. Its payments are linked to the
+          bill once it&apos;s added.
+        </div>
+      )}
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <Label htmlFor="b-name">Bill</Label>
