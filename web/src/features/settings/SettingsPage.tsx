@@ -8,7 +8,23 @@ import { useState, useSyncExternalStore, type ReactNode } from "react";
 import { apiGet, apiSend, errorMessage } from "~/features/common/api";
 import { refresh, settingsQuery } from "~/features/common/queries";
 import { useToast } from "~/features/common/overlay";
-import { Button, Choice, ErrorText, Input, Label, Pill, Switch, Tile, TileTitle, cn } from "~/features/common/ui";
+import { Link } from "@tanstack/react-router";
+import { Chip, I } from "~/features/common/icons";
+import { useTheme, type ThemeChoice } from "~/features/common/theme";
+import { useHidden } from "~/features/dashboard/OverviewParts";
+import {
+  Button,
+  Choice,
+  ErrorText,
+  Input,
+  Label,
+  PageHead,
+  Pill,
+  Switch,
+  Tile,
+  TileTitle,
+  cn,
+} from "~/features/common/ui";
 import {
   browserName,
   currentSubscription,
@@ -19,39 +35,44 @@ import {
 } from "~/features/settings/push";
 
 const SECTIONS = [
-  ["household", "Household"],
-  ["notifications", "Notifications"],
-  ["developers", "Developers"],
-  ["updates", "Updates and backups"],
+  ["household", "Household", "People, accounts, pay", I.accounts, "spending"],
+  ["notifications", "Notifications", "Push, ntfy, webhook", I.bills, "bills"],
+  ["developers", "Developers", "Read-only API keys", I.rules, "offset"],
+  ["updates", "Updates and backups", "Channel, versions, restore", I.shield, "savings"],
+  ["appearance", "Appearance", "Dark, light, privacy", I.settings, "neutral"],
 ] as const;
 
 export function SettingsPage() {
   const [section, setSection] = useState<(typeof SECTIONS)[number][0]>("household");
   return (
     <>
-      <div>
-        <h1 className="m-0 text-[26px] font-semibold">Settings</h1>
-        <p className="mt-1 mb-0 text-[13px] text-ink-2">
-          Running on your home server. Nothing leaves it but update checks and the notifications you set up.
-        </p>
-      </div>
+      <PageHead over="Manage" title="Settings" />
+      <p className="-mt-2 mb-0 text-[14px] text-ink-3">
+        Running on your home server. Nothing leaves it but update checks and the notifications you set up.
+      </p>
       <div className="flex flex-wrap items-start gap-4">
         <nav
           aria-label="Settings"
           className="flex flex-[0_0_220px] flex-col gap-1 max-md:flex-[1_1_100%] max-md:flex-row max-md:flex-wrap"
         >
-          {SECTIONS.map(([id, label]) => (
+          {SECTIONS.map(([id, label, sub, g, tone]) => (
             <button
               key={id}
               type="button"
               aria-current={section === id ? "page" : undefined}
               onClick={() => setSection(id)}
               className={cn(
-                "press cursor-pointer rounded-lg border-0 px-3 py-2.5 text-left text-[14px]",
-                section === id ? "bg-raised text-ink" : "bg-transparent text-ink-3 hover:text-ink",
+                "chip-host press flex min-h-14 cursor-pointer items-center gap-3 rounded-2xl border px-3 text-left text-[14px] font-semibold max-md:min-h-11 max-md:flex-none max-md:py-1",
+                section === id
+                  ? "border-line bg-tile text-ink"
+                  : "border-transparent bg-transparent text-ink-2 hover:bg-tile-2 hover:text-ink",
               )}
             >
-              {label}
+              <Chip g={g} tone={tone} size="md" />
+              <span>
+                <span className="block">{label}</span>
+                <span className="block text-[12px] font-normal text-ink-3 max-md:hidden">{sub}</span>
+              </span>
             </button>
           ))}
         </nav>
@@ -60,6 +81,7 @@ export function SettingsPage() {
           {section === "notifications" && <Notifications />}
           {section === "developers" && <Developers />}
           {section === "updates" && <Updates />}
+          {section === "appearance" && <Appearance />}
         </div>
       </div>
     </>
@@ -728,5 +750,65 @@ function Updates() {
         </div>
       </Tile>
     </>
+  );
+}
+
+/** Dark, light or the device's choice, and whether balances start hidden. Both are per browser. */
+function Appearance() {
+  const [theme, setTheme] = useTheme();
+  const [hidden, setHidden] = useHidden();
+  const themes: { value: ThemeChoice; label: string; bg: string; card: string }[] = [
+    { value: "dark", label: "Dark", bg: "#0a0b12", card: "#171827" },
+    { value: "light", label: "Light", bg: "#ebebe7", card: "#ffffff" },
+    {
+      value: "auto",
+      label: "Match this device",
+      bg: "linear-gradient(90deg,#0a0b12 50%,#ebebe7 50%)",
+      card: "rgb(128 128 140 / 0.45)",
+    },
+  ];
+  return (
+    <Tile aria-labelledby="ap-h">
+      <TileTitle id="ap-h">Appearance</TileTitle>
+      <div role="radiogroup" aria-label="Theme" className="grid gap-3 sm:grid-cols-3">
+        {themes.map((t) => (
+          <button
+            key={t.value}
+            type="button"
+            role="radio"
+            aria-checked={theme === t.value}
+            onClick={() => setTheme(t.value)}
+            className={cn(
+              "press flex cursor-pointer flex-col gap-2.5 rounded-[18px] border bg-tile-2 p-2.5 text-left text-[14px] font-semibold",
+              theme === t.value
+                ? "border-teal text-ink shadow-[0_0_0_1px_var(--color-teal)]"
+                : "border-line text-ink-2",
+            )}
+          >
+            <span aria-hidden className="flex h-20 gap-1.5 rounded-xl p-2.5" style={{ background: t.bg }}>
+              <span className="flex-1 rounded-md" style={{ background: t.card }} />
+              <span className="flex-[2] rounded-md" style={{ background: t.card }} />
+            </span>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <Row>
+        <span>
+          <span className="block">Hide balances when the app opens</span>
+          <span className="block text-[13px] text-ink-3">Tap the eye on the Overview to show them</span>
+        </span>
+        <Switch checked={hidden} onChange={setHidden} label="Hide balances" />
+      </Row>
+      <Row>
+        <span>
+          <span className="block">Design system</span>
+          <span className="block text-[13px] text-ink-3">Every colour and component, live</span>
+        </span>
+        <Link to="/design" className="text-[14px] font-semibold text-teal no-underline">
+          Open
+        </Link>
+      </Row>
+    </Tile>
   );
 }
