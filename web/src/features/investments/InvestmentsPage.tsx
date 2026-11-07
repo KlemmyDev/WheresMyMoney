@@ -113,7 +113,7 @@ export function InvestmentsPage() {
           worth each day.
         </EmptyState>
       ) : (
-        <div className="grid gap-4 md:grid-cols-12">
+        <div className="grid gap-4 md:grid-cols-12 [&>*]:min-w-0">
           <PortfolioHero p={p} />
           <div className="flex flex-col gap-4 md:col-span-4">
             <MixCard p={p} onEdit={setFundSheet} />
@@ -199,7 +199,8 @@ function PortfolioHero({ p }: { p: Portfolio }) {
         at={(i) => (series[i] ? longDate(series[i].date) : "")}
         format={(v) => money(v)}
         height={190}
-        axis={n > 3 ? [0, Math.round((n - 1) / 3), Math.round(((n - 1) * 2) / 3), n - 1] : undefined}
+        axis={n > 2 ? [0, Math.round((n - 1) / 2), n - 1] : undefined}
+        axisAt={(i) => (series[i] ? (i === n - 1 ? "Today" : monthYear(series[i].date)) : "")}
       />
       <div className="flex gap-4 text-[13px] text-ink-3">
         <span className="inline-flex items-center gap-1.5">
@@ -566,7 +567,7 @@ function Trades({ p }: { p: Portfolio }) {
         {p.trades.slice(0, 12).map((t) => {
           const f = fund(t.fund_id);
           return (
-            <div key={t.id} className="flex items-center gap-3 border-t border-line py-2.5">
+            <div key={t.id} className="flex min-w-0 items-center gap-3 border-t border-line py-2.5">
               <span className="mono w-11 text-[13px] font-semibold" style={{ color: f ? colourOf(f) : undefined }}>
                 {t.ticker}
               </span>

@@ -48,7 +48,7 @@ export function NetWorthPage() {
   return (
     <>
       <PageHead over="Overview" title="Net worth" />
-      <div className="grid gap-4 md:grid-cols-12">
+      <div className="grid gap-4 md:grid-cols-12 [&>*]:min-w-0">
         <Hero n={n} home={home} setHome={(v) => setNoHome(!v)} range={range} setRange={setRange} />
         <div className="flex flex-col gap-4 md:col-span-4">
           <MadeOf n={n} home={home} />

@@ -76,7 +76,7 @@ export function BillsPage() {
             </div>
           </div>
         )}
-        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
           <Stat
             label="Average month"
             value={money(b.per_month)}
