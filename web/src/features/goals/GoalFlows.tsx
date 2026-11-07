@@ -7,7 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { apiSend, errorMessage } from "~/features/common/api";
-import { ChoiceChip, EmptyState, Ring, Sheet, type Role } from "~/features/common/ds";
+import { ChoiceChip, EmptyState, Ring, Sheet, useSheetTop, type Role } from "~/features/common/ds";
 import { money, monthYear, parseMoney } from "~/features/common/format";
 import { Chip, I, type Glyph, type Tone } from "~/features/common/icons";
 import { accountsQuery, loanQuery, refresh, rulesQuery } from "~/features/common/queries";
@@ -126,6 +126,7 @@ function NewGoal({ onClose }: { onClose: () => void }) {
   const [fromId, setFromId] = useState<number | null>(null);
   const [rule, setRule] = useState(true);
   const [made, setMade] = useState<{ name: string; perPay: number; rule: boolean } | null>(null);
+  const top = useSheetTop<HTMLElement>(!!made);
 
   const all = accounts.data?.accounts ?? [];
   const savings = all.find((a) => a.role === "savings");
@@ -166,7 +167,7 @@ function NewGoal({ onClose }: { onClose: () => void }) {
 
   if (accounts.data && !savings)
     return (
-      <div className="px-5 pb-6">
+      <div className="pb-2">
         <EmptyState g={I.savings} tone="savings" title="Goals live in a savings account">
           Add a savings account on the Accounts page first, then split it into goals here.
         </EmptyState>
@@ -175,7 +176,10 @@ function NewGoal({ onClose }: { onClose: () => void }) {
 
   if (made)
     return (
-      <div className="flex flex-col items-center gap-3 px-5 pt-2 pb-6 text-center">
+      <div
+        ref={top as React.RefObject<HTMLDivElement>}
+        className="flex flex-col items-center gap-3 pt-2 pb-2 text-center"
+      >
         <Chip g={GOAL_ICON[icon].g} tone={GOAL_ICON[icon].tone} size="xxl" solid />
         <h3 className="m-0 text-[22px] font-semibold">{made.name} goal made</h3>
         <p className="m-0 max-w-[400px] text-[14px] text-ink-2">
@@ -208,7 +212,8 @@ function NewGoal({ onClose }: { onClose: () => void }) {
 
   return (
     <form
-      className="flex flex-col gap-5 overflow-x-hidden overflow-y-auto px-5 pb-6"
+      ref={top as React.RefObject<HTMLFormElement>}
+      className="flex flex-col gap-5 pb-2"
       onSubmit={(e) => {
         e.preventDefault();
         make.mutate();
@@ -354,6 +359,7 @@ function TopUp({ goal, index, onClose }: { goal: Goal; index: number; onClose: (
   const accounts = useQuery(accountsQuery);
   const rules = useQuery(rulesQuery);
   const [step, setStep] = useState<1 | 2 | 3>(1);
+  const top = useSheetTop(step);
   const [amt, setAmt] = useState(10000);
   const [amtText, setAmtText] = useState("");
   const [fromId, setFromId] = useState<number | null>(null);
@@ -429,7 +435,7 @@ function TopUp({ goal, index, onClose }: { goal: Goal; index: number; onClose: (
 
   if (step === 3)
     return (
-      <div className="flex flex-col items-center gap-3 px-5 pt-2 pb-6 text-center">
+      <div ref={top} className="flex flex-col items-center gap-3 pt-2 pb-2 text-center">
         <Ring value={result} role={look.role} size={96} label={`${goal.name} ${Math.round(result)}%`}>
           <span className="num text-[18px]">{Math.round(result)}%</span>
         </Ring>
@@ -453,7 +459,7 @@ function TopUp({ goal, index, onClose }: { goal: Goal; index: number; onClose: (
 
   if (step === 2)
     return (
-      <div className="flex flex-col gap-4 overflow-x-hidden overflow-y-auto px-5 pb-6">
+      <div ref={top} className="flex flex-col gap-4 pb-2">
         {steps}
         <p className="m-0 text-[14px] text-ink-2">
           WheresMyMoney can't move money for you. Make this transfer in the uBank app, then come back.
@@ -514,7 +520,7 @@ function TopUp({ goal, index, onClose }: { goal: Goal; index: number; onClose: (
     );
 
   return (
-    <div className="flex flex-col gap-5 overflow-x-hidden overflow-y-auto px-5 pb-6">
+    <div ref={top} className="flex flex-col gap-5 pb-2">
       {steps}
       <div className="flex items-center gap-4">
         <Ring

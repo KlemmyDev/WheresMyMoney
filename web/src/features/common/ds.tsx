@@ -8,7 +8,7 @@
  * - Striped fill means it happened; hatched means it's likely (a forecast).
  * - Icon chips carry the role colour: offset blue, bills amber, spending pink, savings green, invest cyan.
  */
-import { useEffect, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Chip, type Glyph, type Tone } from "~/features/common/icons";
 import { usePresence } from "~/features/common/motion";
@@ -485,6 +485,15 @@ export function Keypad({
   );
 }
 
+/** For a flow inside a Sheet: put the ref on its root, and the sheet scrolls back to the top when `step` changes. */
+export function useSheetTop<T extends HTMLElement = HTMLDivElement>(step: unknown) {
+  const ref = useRef<T>(null);
+  useEffect(() => {
+    ref.current?.parentElement?.scrollTo({ top: 0 });
+  }, [step]);
+  return ref;
+}
+
 /**
  * A bottom sheet: handle, title and close, then its content, with an optional pinned footer. Escape, the handle and
  * the scrim close it. `phoneOnly` hides it from 640px up (for menus that are hover cards on a desktop).
@@ -553,7 +562,7 @@ export function Sheet({
             </span>
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto px-5 pb-4">{children}</div>
+        <div className="flex-1 overflow-x-hidden overflow-y-auto px-5 pb-4">{children}</div>
         {footer ? (
           <div className="flex flex-none flex-col gap-2.5 border-t border-line px-5 pt-2.5 pb-[max(env(safe-area-inset-bottom),28px)]">
             {footer}
