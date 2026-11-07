@@ -168,6 +168,7 @@ function Moved({ n, home, range }: { n: NetWorth; home: boolean; range: Range })
   const moves = [
     { name: "Accounts", v: b.accounts - a.accounts, g: I.accounts, tone: "grad" as Tone },
     { name: "Shares", v: b.shares - a.shares, g: I.invest, tone: "invest" as Tone },
+    { name: "Super", v: b.super - a.super, g: I.retire, tone: "savings" as Tone },
     ...(home
       ? [
           { name: "Home estimate", v: b.home - a.home, g: I.loan, tone: "offset" as Tone },
@@ -210,7 +211,7 @@ function Moved({ n, home, range }: { n: NetWorth; home: boolean; range: Range })
       </div>
       <p className="m-0 text-[12px] text-ink-3">
         Accounts come from check-ins and imports. Super, shares and the home are values you keep up to date, so this is
-        a picture, not a statement. Super is only known as it is now.
+        a picture, not a statement.
       </p>
     </Card>
   );

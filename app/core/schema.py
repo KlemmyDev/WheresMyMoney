@@ -270,6 +270,19 @@ def _goal_moves(conn: sqlite3.Connection) -> None:
     )
 
 
+def _super_values(conn: sqlite3.Connection) -> None:
+    """super_values: each super balance given, as of its date, so net worth can show super over time. Starts with
+    the balance each person has now."""
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS super_values (id INTEGER PRIMARY KEY, super_id INTEGER NOT NULL, date TEXT NOT NULL,"
+        " balance INTEGER NOT NULL, UNIQUE (super_id, date))"
+    )
+    conn.execute(
+        "INSERT OR IGNORE INTO super_values (super_id, date, balance) SELECT id, COALESCE(as_of, date('now')), balance"
+        " FROM super_accounts"
+    )
+
+
 MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _baseline,
     _money,
@@ -283,4 +296,5 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _assets,
     _super_fees,
     _goal_moves,
+    _super_values,
 ]

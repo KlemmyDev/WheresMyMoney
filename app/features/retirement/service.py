@@ -231,10 +231,28 @@ class RetirementService:
                     f"UPDATE super_accounts SET {', '.join(f'{k} = ?' for k in keys)} WHERE id = ?",
                     (*values, person_id),
                 )
+            if not was or balance != was["balance"] or as_of != was["as_of"]:
+                # Kept with its date, for net worth over time (a second one on the same date replaces the first).
+                conn.execute(
+                    "INSERT INTO super_values (super_id, date, balance) VALUES (?, ?, ?)"
+                    " ON CONFLICT (super_id, date) DO UPDATE SET balance = excluded.balance",
+                    (person_id, as_of, balance),
+                )
         return next(p for p in self.people() if p["id"] == person_id)
+
+    def history(self) -> dict[int, list[tuple[str, int]]]:
+        """Each person's super balances as given, oldest first: {super id: [(date, balance)]}."""
+        out: dict[int, list[tuple[str, int]]] = {}
+        with self.db.reading() as conn:
+            for super_id, day, balance in conn.execute(
+                "SELECT super_id, date, balance FROM super_values ORDER BY date, id"
+            ):
+                out.setdefault(super_id, []).append((day, balance))
+        return out
 
     def remove_person(self, person_id: int) -> bool:
         with self.db.writing() as conn:
+            conn.execute("DELETE FROM super_values WHERE super_id = ?", (person_id,))
             return conn.execute("DELETE FROM super_accounts WHERE id = ?", (person_id,)).rowcount > 0
 
     # -- what the household spends now ---------------------------------------------------------
