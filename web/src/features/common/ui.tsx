@@ -346,13 +346,14 @@ export function Field({ label, children, className }: { label: ReactNode; childr
   );
 }
 
+/** Nothing here yet: what the place is for, and the one next step (Nightfall's dashed empty card). */
 export function Empty({ title, children, action }: { title: string; children?: ReactNode; action?: ReactNode }) {
   return (
-    <Tile className="items-start">
-      <div className="text-base font-semibold">{title}</div>
-      {children && <div className="text-ink-2">{children}</div>}
-      {action}
-    </Tile>
+    <div className="flex flex-col items-center gap-2.5 rounded-[22px] border border-dashed border-line-2 bg-tile px-6 py-10 text-center">
+      <div className="text-[17px] font-semibold">{title}</div>
+      {children && <div className="max-w-[420px] text-[14px] text-ink-3">{children}</div>}
+      {action && <div className="mt-1 font-semibold">{action}</div>}
+    </div>
   );
 }
 
