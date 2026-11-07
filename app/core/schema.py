@@ -140,8 +140,34 @@ def _loan_changes(conn: sqlite3.Connection) -> None:
     )
 
 
+def _sorting(conn: sqlite3.Connection) -> None:
+    """More starting categories for a household that has its own already, and how each transaction's category was
+    chosen: transactions.`category_by` is you (the household chose it), rule (a remembered merchant), suggest (a
+    suggestion taken on import), bill, auto (a transfer, pay or interest) or NULL (not known: from before this).
+    Remembering a merchant re-sorts its transactions unless the household chose theirs. Merchants are cut down again
+    too, as the cutting got better (it drops "Direct Debit", "Payment To" and the like)."""
+    from app.features.spending import merchants
+    from app.features.spending.service import add_missing_categories
+
+    add_missing_categories(conn)
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(transactions)")}
+    if "category_by" not in cols:
+        conn.execute("ALTER TABLE transactions ADD COLUMN category_by TEXT")
+    conn.execute(
+        "UPDATE transactions SET category_by = CASE WHEN kind IN ('manual', 'cash') OR merged = 1 THEN 'you'"
+        " WHEN bill_id IS NOT NULL THEN 'bill' WHEN rule_id IS NOT NULL THEN 'auto' END"
+        " WHERE category_id IS NOT NULL AND category_by IS NULL"
+    )
+    rows = conn.execute("SELECT id, description, merchant FROM transactions").fetchall()
+    for tx_id, description, was in rows:
+        now = merchants.merchant(description)
+        if now != was:
+            conn.execute("UPDATE transactions SET merchant = ? WHERE id = ?", (now, tx_id))
+
+
 MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _baseline,
     _money,
     _loan_changes,
+    _sorting,
 ]

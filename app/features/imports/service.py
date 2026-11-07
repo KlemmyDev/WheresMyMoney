@@ -43,7 +43,7 @@ from app.features.imports import loan as loan_rows
 from app.features.imports.statement import Columns, Row, Statement, StatementError, parse, recognise, signature, table
 from app.features.rules.service import RulesService
 from app.features.spending import merchants
-from app.features.spending.service import category_by_name, learned, rule_for
+from app.features.spending.service import category_by_name, learn, learned, rule_for
 
 KEEP = 3600
 MERGE_DAYS = 3  # a hand entry this many days before the statement's row still matches it
@@ -56,26 +56,42 @@ NAME_KEY = "csv_account:"  # a bank's name for an account → the household's ac
 BANK_CATEGORIES = {
     "groceries": "Groceries",
     "eating & drinking out": "Eating out",
-    "food delivery & takeaway": "Eating out",
+    "food delivery & takeaway": "Takeaway",
     "alcohol": "Eating out",
     "petrol": "Fuel",
-    "parking & vehicle expenses": "Fuel",
+    "parking & vehicle expenses": "Car",
+    "public transport": "Transport",
+    "taxis & rideshare": "Transport",
     "entertainment": "Fun",
     "hobbies, books & games": "Fun",
-    "holidays & travel": "Fun",
+    "holidays & travel": "Holidays",
     "children & family": "Kids",
+    "pets": "Pets",
+    "education": "Education",
     "home renovations & maintenance": "Home",
     "furniture & homewares": "Home",
     "health & medical": "Health",
-    "beauty & grooming": "Health",
+    "beauty & grooming": "Personal care",
     "utilities, phone & internet": "Bills",
-    "insurance": "Bills",
-    "subscriptions & apps": "Bills",
+    "insurance": "Insurance",
+    "subscriptions & apps": "Subscriptions",
+    "buy now pay later": "Buy now pay later",
+    "donations": "Gifts & donations",
+    "gifts": "Gifts & donations",
+    "fees & interest": "Fees & charges",
+    "taxes": "Fees & charges",
+    "investments": "Investments",
     "salary": "Pay",
-    "general shopping": "Other",
-    "clothing & accessories": "Other",
-    "electronics": "Other",
+    "government benefits": "Government benefits",
+    "general shopping": "Shopping",
+    "clothing & accessories": "Clothing",
+    "electronics": "Shopping",
+    "other spending": "Other",
 }
+
+
+# How a row's category was chosen (transactions.category_by), from why the review gave it.
+_BY = {"merged": "you", "rule": "rule", "bill": "bill", "transfer": "auto", "pay": "auto", "interest": "auto"}
 
 
 @dataclass
@@ -498,13 +514,17 @@ class ImportService:
                 if x["status"] in ("duplicate", "note"):
                     continue
                 category = chosen.get(x["index"], x.get("category_id"))
-                if x["index"] not in chosen and category is None and accept:
-                    category = x.get("suggest_id")
+                by = _BY.get(x.get("why") or "") if category is not None else None
+                if x["index"] in chosen:
+                    by = "you" if category is not None else None
+                elif category is None and accept and x.get("suggest_id") is not None:
+                    category, by = x.get("suggest_id"), "suggest"
                 m = x.get("merchant") or merchants.merchant(x["description"])
                 if x["status"] == "merge":
                     conn.execute(
                         "UPDATE transactions SET kind = 'statement', date = ?, description = ?, merchant = ?,"
                         " balance = ?, import_id = ?, merged = 1, category_id = COALESCE(?, category_id),"
+                        " category_by = CASE WHEN ? IS NULL THEN category_by ELSE ? END,"
                         " rule_id = ?, bill_id = ? WHERE id = ?",
                         (
                             x["date"],
@@ -513,6 +533,8 @@ class ImportService:
                             x["balance"],
                             import_id,
                             category,
+                            category,
+                            by,
                             x.get("rule_id"),
                             x.get("bill_id"),
                             x["merge_id"],
@@ -522,8 +544,8 @@ class ImportService:
                 else:
                     conn.execute(
                         "INSERT INTO transactions (account_id, date, amount, description, merchant, kind,"
-                        " category_id, balance, import_id, rule_id, bill_id, created_at)"
-                        " VALUES (?, ?, ?, ?, ?, 'statement', ?, ?, ?, ?, ?, ?)",
+                        " category_id, category_by, balance, import_id, rule_id, bill_id, created_at)"
+                        " VALUES (?, ?, ?, ?, ?, 'statement', ?, ?, ?, ?, ?, ?, ?)",
                         (
                             account_id,
                             x["date"],
@@ -531,6 +553,7 @@ class ImportService:
                             x["description"],
                             m,
                             category,
+                            by,
                             x["balance"],
                             import_id,
                             x.get("rule_id"),
@@ -540,9 +563,7 @@ class ImportService:
                     )
                     added += 1
                 if x["index"] in always and category is not None and m:
-                    from app.features.spending.service import SpendingService
-
-                    learned_count += SpendingService._learn(conn, m, category)
+                    learned_count += learn(conn, m, category, x["description"])[0]
             # Hand entries the statement didn't have: spent as cash.
             for t in analysis["kept_cash"]:
                 conn.execute("UPDATE transactions SET kind = 'cash' WHERE id = ? AND kind = 'manual'", (t["id"],))
@@ -599,7 +620,13 @@ class ImportService:
             "closing": st.closing,
             "gap": (st.closing - through) if st.closing is not None else None,
             "loan": loan_update,
+            "spotted": self._spotted(),
         }
+
+    def _spotted(self) -> dict[str, int]:
+        """How many bills the ledger now suggests, and bills whose price has moved (for the Bills page)."""
+        found = self.bills.spotted()
+        return {"suggestions": len(found["suggestions"]), "updates": len(found["updates"])}
 
     @staticmethod
     def _save_loan_changes(

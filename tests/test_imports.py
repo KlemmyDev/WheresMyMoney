@@ -10,7 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.features.imports.statement import StatementError, cents, parse, read_name
-from app.features.spending.merchants import merchant, pattern, suggest
+from app.features.spending.merchants import learn_pattern, merchant, pattern, suggest
 from tests.conftest import dollars, ok
 
 HEADER = '"Date","Description","Debit","Credit","Balance"\n'
@@ -82,7 +82,25 @@ def test_merchants_are_cut_down_for_matching() -> None:
     assert pattern("WOOLWORTHS 1234 MITCHELTON") == "WOOLWORTHS MITCHELTON"
     assert suggest("STEAMGAMES") == "Fun"
     assert suggest("MITCHELTON MARKETS") == "Groceries"
-    assert suggest("AMAZON AU MARKETPLACE") is None
+    assert suggest("AMAZON AU MARKETPLACE") == "Shopping"
+    assert suggest("ZZ UNHEARD OF") is None
+    # How it was paid, and where, aren't the merchant.
+    assert merchant("Direct Debit Danger Close Mar - Ezypayid") == "DANGER CLOSE MAR EZYPAYID"
+    assert merchant("Payment To MEGAN SMITH") == "MEGAN SMITH"
+    assert merchant("Woolworths 2867\\redbank Plai QLD AU") == "WOOLWORTHS REDBANK PLAI"
+    assert merchant("Refund From Apple.com/bill Sydney AU") == "APPLE COM BILL SYDNEY"
+    assert merchant("Internet BPay") == "INTERNET BPAY"
+
+
+def test_a_merchant_is_remembered_by_its_brand_or_first_distinctive_word() -> None:
+    assert learn_pattern("WOOLWORTHS REDBANK PLAI") == "WOOLWORTHS"
+    assert learn_pattern("BEST & LESS SPRINGFIEL") == "BEST & LESS"
+    assert learn_pattern("SUSHIRIA REDBANK PLAINAU") == "SUSHIRIA"
+    assert learn_pattern("THE ACORN PANTRY") == "THE ACORN"
+    assert learn_pattern("MEGAN SMITH", description="Payment To MEGAN SMITH") == "MEGAN SMITH"
+    # A first word already remembered for another category: told apart by one word more.
+    assert learn_pattern("SUSHIRIA TAKEAWAY", {"SUSHIRIA": 1}, 2) == "SUSHIRIA TAKEAWAY"
+    assert learn_pattern("SUSHIRIA TAKEAWAY", {"SUSHIRIA": 1}, 1) == "SUSHIRIA"
 
 
 # -- what it does to the account ----------------------------------------------------------------
@@ -175,7 +193,7 @@ def test_import_merges_hand_entries_replaces_check_ins_and_matches_the_top_up(
     rules = {r["label"]: r for r in ok(client.get("/api/rules"))["rules"]}
     assert rules["Monthly top-up"]["last_status"] == "differed"
     names = [r["pattern"] for r in ok(client.get("/api/categories"))["merchant_rules"]]
-    assert "MITCHELTON MARKETS" in names
+    assert "MITCHELTON" in names
 
 
 def test_importing_the_same_file_again_skips_every_row(client: TestClient, household: dict) -> None:
@@ -318,7 +336,7 @@ def test_the_export_marks_transfers_suggests_ubanks_category_and_remembers_its_a
     a = ok(client.post(f"/api/imports/{opened['token']}/analyse", json={"account_id": household["Spending"]}))
     by = {r["description"]: r for r in a["rows"]}
     assert by["Transfer Deposit"]["why"] == "transfer" and by["Internal transfer"]["why"] == "transfer"
-    assert by["Domino's Estore Edens Crosredbank Plainau"]["suggest"] == "Eating out"
+    assert by["Domino's Estore Edens Crosredbank Plainau"]["suggest"] == "Takeaway"
     ok(client.post(f"/api/imports/{opened['token']}/commit", json={"account_id": household["Spending"]}))
     again = upload(client, export(), EXPORT_NAME)
     assert again["account_id"] == household["Spending"]

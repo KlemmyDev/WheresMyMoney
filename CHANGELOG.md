@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- More categories to see where money goes: Takeaway, Car, Transport, Shopping, Clothing, Holidays, Pets, Personal care,
+  Education, Gifts & donations, Buy now pay later, Fees & charges; bills split into Insurance, Utilities, Phone &
+  internet, Subscriptions and Rates; Government benefits, Other income and Investments. A household that has its own
+  categories already gets the ones it's missing, sorted in with them. uBank's own categories map onto them.
+- Merchants are told apart better: "Direct Debit", "Payment To" and the like, and a trailing "QLD AU", are dropped, and
+  a merchant is remembered by its brand or first distinctive word, so one choice covers every Woolworths store.
+  Remembering a merchant re-sorts its transactions that only had a suggestion, never ones you chose yourself.
+- Sort by merchant (from Spending): every merchant with something to sort, biggest first, sorted and remembered in
+  one go. Choosing a category in an import gives it to the same merchant's other rows and remembers it.
+- Bills spotted in the statements: regular payments to one merchant (weekly to yearly, with price rises followed)
+  are suggested on the Bills page with their frequency, amount and next due date, to add, edit first or wave away. A
+  bill whose payments changed price (an insurer's yearly rise, say) is flagged with the new amount to use.
+
 ## 2026.11.7 (alpha)
 
 The first version: everything a household needs to run their money from it day to day.

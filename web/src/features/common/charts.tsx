@@ -207,9 +207,9 @@ export function AreaLine({
 }
 
 /** A small trend line for a table row. */
-export function Spark({ values, colour }: { values: number[]; colour: string }) {
+export function Spark({ values, colour, floor }: { values: number[]; colour: string; floor?: number }) {
   if (values.length < 2) return <svg width="90" height="24" aria-hidden />;
-  const y = scale(values, 24, 3);
+  const y = scale(values, 24, 3, floor != null ? Math.min(floor, ...values) : undefined);
   const step = 90 / (values.length - 1);
   const d = values.map((v, i) => `${i ? "L" : "M"}${(i * step).toFixed(1)} ${y(v).toFixed(1)}`).join("");
   return (

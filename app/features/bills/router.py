@@ -29,6 +29,27 @@ async def add(svc: ServicesDep, body: JsonBody):
     return await _overview(svc)
 
 
+@router.get("/spotted")
+async def spotted(svc: ServicesDep):
+    """Bills spotted in the imported statements (regular payments to the same merchant) and bills whose price has
+    moved: {"suggestions": [...], "updates": [...]}."""
+    return await run(svc.bills.spotted)
+
+
+@router.post("/spotted/accept")
+async def accept(svc: ServicesDep, body: JsonBody):
+    """Add a spotted bill: {"key": "NETFLIX|monthly|3", "changes": {"name": "Netflix"}}."""
+    await run(svc.bills.accept, str(body.get("key") or ""), body.get("changes") or {})
+    return await _overview(svc)
+
+
+@router.post("/spotted/dismiss")
+async def dismiss(svc: ServicesDep, body: JsonBody):
+    """Stop suggesting a spotted bill or an update: {"key": "..."}."""
+    await run(svc.bills.dismiss, body.get("key"))
+    return {"dismissed": True}
+
+
 @router.put("/{bill_id}")
 async def update(svc: ServicesDep, bill_id: int, body: JsonBody):
     await run(svc.bills.update, bill_id, body)
