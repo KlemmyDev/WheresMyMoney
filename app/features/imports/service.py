@@ -374,7 +374,9 @@ class ImportService:
         are remembered for their merchant; `accept_suggestions` takes every suggestion not chosen otherwise;
         `opening` adds an opening balance so the ledger matches the statement."""
         p = self._get(token)
-        analysis = p.analysis.get(account_id) or self.analyse(token, account_id)
+        # Looked at again, not taken from the review: statements reviewed together are imported one after another,
+        # so an earlier one may since have brought in rows (or merged hand entries) that this one shares.
+        analysis = self.analyse(token, account_id)
         st = p.statement
         chosen = {int(k): (int(v) if v not in (None, "") else None) for k, v in (body.get("categories") or {}).items()}
         always = {int(i) for i in body.get("always") or []}

@@ -233,3 +233,15 @@ def test_after_an_import_an_opening_balance_closes_the_gap(client: TestClient, h
     assert done["gap"] == dollars(292.75)
     opening = ok(client.post(f"/api/accounts/{ids['Spending']}/opening", json={"amount": done["gap"]}))
     assert opening["date"] == "2026-10-23" and opening["amount"] == dollars(292.75)
+
+
+def test_statements_reviewed_together_dont_import_their_overlap_twice(client: TestClient, household: dict) -> None:
+    ids = household
+    # Both looked at before either is imported, as one review of several files does.
+    october = upload(client, ubank(OCTOBER))
+    overlap = upload(client, ubank([*OCTOBER[-2:], ("01 Nov 2026", "COLES 0882 KEPERRA", "$20.00", "", "+$3,015.15")]))
+    for f in (october, overlap):
+        ok(client.post(f"/api/imports/{f['token']}/analyse", json={"account_id": ids["Spending"]}))
+    ok(client.post(f"/api/imports/{october['token']}/commit", json={"account_id": ids["Spending"]}))
+    done = ok(client.post(f"/api/imports/{overlap['token']}/commit", json={"account_id": ids["Spending"]}))
+    assert done["added"] == 1 and done["skipped"] == 2
