@@ -316,11 +316,12 @@ def seed(db: Database, today: dt.date | None = None) -> bool:
     return True
 
 
-# The demo's ETFs: ticker, name, group, target, today's price (dollars), its yearly growth, its management fee.
+# The demo's holdings: ticker, name, group, target, today's price (dollars), its yearly growth, its management fee.
 FUNDS = [
     ("VAS", "Vanguard Australian Shares", "aus", 0.5, 101.20, 0.07, 0.0007),
     ("VGS", "Vanguard International Shares", "intl", 0.35, 138.40, 0.10, 0.0018),
     ("VAF", "Vanguard Australian Fixed Interest", "bonds", 0.15, 44.975, 0.005, 0.001),
+    ("BTC", "Bitcoin", "crypto", None, 165000.0, 0.3, None),
 ]
 
 
@@ -329,18 +330,30 @@ def _investments(conn: sqlite3.Connection, today: dt.date, rng: random.Random, n
     daily closes that end at today's price."""
     first = today - dt.timedelta(days=round(4.6 * 365))
     for n, (ticker, name, group, target, end, growth, mer) in enumerate(FUNDS):
+        crypto = group == "crypto"
         cur = conn.execute(
-            "INSERT INTO funds (ticker, name, grp, target, fee_pct, sort, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (ticker, name, group, target, mer, n, now),
+            "INSERT INTO funds (ticker, name, grp, target, fee_pct, platform, kind, sort, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                ticker,
+                name,
+                group,
+                target,
+                mer,
+                "CoinSpot" if crypto else "Vanguard Personal Investor",
+                "crypto" if crypto else "etf",
+                n,
+                now,
+            ),
         )
         fund_id = int(cur.lastrowid or 0)
         closes: dict[str, float] = {}
         day = today - dt.timedelta(days=5 * 365)
         wobble = 0.0
         while day <= today:
-            if day.weekday() < 5:
+            if day.weekday() < 5 or crypto:
                 years_back = (today - day).days / 365.25
-                wobble = wobble * 0.97 + rng.gauss(0, 0.006 if group != "bonds" else 0.002)
+                wobble = wobble * 0.97 + rng.gauss(0, 0.02 if crypto else 0.006 if group != "bonds" else 0.002)
                 dip = -0.12 if group != "bonds" and 1.6 < years_back < 2.1 else 0.0
                 closes[day.isoformat()] = round(end * 100 * (1 + growth) ** -years_back * (1 + wobble + dip), 2)
             day += dt.timedelta(days=1)
@@ -355,10 +368,14 @@ def _investments(conn: sqlite3.Connection, today: dt.date, rng: random.Random, n
         dates_known = sorted(closes)
         buy = first + dt.timedelta(days=14 * n)
         while buy < today - dt.timedelta(days=20):
-            if rng.random() < (0.8 if group != "bonds" else 0.5):
+            if rng.random() < (0.4 if crypto else 0.8 if group != "bonds" else 0.5):
                 on = next((d for d in dates_known if d >= buy.isoformat()), dates_known[-1])
                 price = closes[on]
-                units = max(1, round(200000 * (0.5 if group == "bonds" else 1) / price))
+                units = (
+                    round(50000 / price, 4)
+                    if crypto
+                    else max(1, round(200000 * (0.5 if group == "bonds" else 1) / price))
+                )
                 conn.execute(
                     "INSERT INTO trades (fund_id, date, side, units, price, fee, created_at) VALUES (?, ?, ?, ?, ?, 0,"
                     " ?)",
