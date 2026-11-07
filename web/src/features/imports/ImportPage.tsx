@@ -1,8 +1,9 @@
 /**
  * Importing statements (designs: Import1 "upload and match", Import2 "review and categorise").
  *
- * 1. Drop one CSV or several. uBank's are recognised by name (account and month) and header; another bank's columns
- *    are matched once. The aside says what it'll do before anything's written: rows, duplicates skipped, hand entries
+ * 1. Drop one CSV or several. uBank's are recognised by name (account and month) and header, and so is uBank's longer
+ *    export of a date range (its rows name the account, which is remembered once it's imported); another bank's
+ *    columns are matched once. The aside says what it'll do before anything's written: rows, duplicates skipped, hand entries
  *    merged, new ones, the closing balance, and a rough check-in it'll replace.
  * 2. Check the categories, for every file at once: what was sorted automatically, what needs you, transfers between
  *    accounts and merges. Choosing a category can be remembered for the merchant.
@@ -52,6 +53,8 @@ type FileInfo = {
   balance_problems: number[];
   reversed: boolean;
   date_format: string | null;
+  account_names?: string[];
+  zero_rows?: number;
   sample: { index: number; date: string; description: string; amount: number; balance: number | null }[];
 };
 
@@ -693,6 +696,9 @@ function FileRow({
                 {single && info.last4 && info.month
                   ? ` · ACCOUNT ••${info.last4} AND MONTH (${monthYear(info.month).toUpperCase()}) READ FROM THE NAME`
                   : ""}
+                {single && info.bank === "ubank-export" && info.account_names?.length
+                  ? ` · UBANK CALLS IT ${info.account_names.join(" / ").toUpperCase()}`
+                  : ""}
                 {!single && analysis
                   ? ` · ${analysis.counts.new - shared} NEW${analysis.counts.duplicates + shared ? ` · ${analysis.counts.duplicates + shared} ALREADY HERE` : ""}`
                   : ""}
@@ -741,13 +747,19 @@ function Columns({ info }: { info: FileInfo }) {
       <div className="tt">
         <span id="im-cols">Columns</span>
         <span className="mono tracking-normal">
-          {info.bank === "ubank" ? "UBANK FORMAT · RECOGNISED" : "YOUR SAVED FORMAT · RECOGNISED"}
+          {info.bank === "ubank"
+            ? "UBANK FORMAT · RECOGNISED"
+            : info.bank === "ubank-export"
+              ? "UBANK EXPORT · RECOGNISED"
+              : "YOUR SAVED FORMAT · RECOGNISED"}
         </span>
       </div>
       <div className="text-ink-2">
         {info.bank === "ubank"
           ? "Matched from a saved bank format. Another bank's file asks you to match the columns once, then it's remembered."
-          : "Matched from the columns you chose for this bank's files."}
+          : info.bank === "ubank-export"
+            ? "uBank's longer export: a date range of one account, newest first, without a balance. The account it's imported to is remembered for the next one."
+            : "Matched from the columns you chose for this bank's files."}
       </div>
       <div className="overflow-x-auto">
         <table className="mono w-full min-w-[560px] border-collapse text-[13px]">
@@ -780,7 +792,13 @@ function Columns({ info }: { info: FileInfo }) {
         </table>
       </div>
       <div className="flex flex-wrap gap-2 text-[13px]">
-        <Check label="Dates">{info.date_format === "%d %b %Y" ? "02 Oct 2026 style" : info.date_format}</Check>
+        <Check label="Dates">
+          {info.date_format === "%d %b %Y"
+            ? "02 Oct 2026 style"
+            : info.date_format === "%H:%M %d-%m-%y"
+              ? "13:04 07-11-26 style, time dropped"
+              : info.date_format}
+        </Check>
         <Check label="Amounts">
           {info.columns.amount != null ? "One signed column" : "Separate out and in columns, $ and commas stripped"}
         </Check>
@@ -791,7 +809,18 @@ function Columns({ info }: { info: FileInfo }) {
               ? "Signed, checked row by row"
               : `${info.balance_problems.length} rows don't follow on`}
         </Check>
+        {info.zero_rows ? (
+          <Check label="Left out">
+            {info.zero_rows} $0.00 {info.zero_rows === 1 ? "row" : "rows"} (a card being checked)
+          </Check>
+        ) : null}
       </div>
+      {info.bank === "ubank-export" && (
+        <div className="text-ink-2">
+          Its payment type marks transfers between your accounts, and uBank's own category is offered as a suggestion
+          when a merchant is new here. With no balance in the file, add a check-in afterwards to see the ledger matches.
+        </div>
+      )}
       {info.bank === "ubank" && (
         <div className="text-ink-2">
           uBank labels every transfer just "Transfer", so transfers are matched to your rules by amount and date

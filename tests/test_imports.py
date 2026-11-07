@@ -245,3 +245,82 @@ def test_statements_reviewed_together_dont_import_their_overlap_twice(client: Te
     ok(client.post(f"/api/imports/{october['token']}/commit", json={"account_id": ids["Spending"]}))
     done = ok(client.post(f"/api/imports/{overlap['token']}/commit", json={"account_id": ids["Spending"]}))
     assert done["added"] == 1 and done["skipped"] == 2
+
+
+# -- uBank's longer export (a date range of one account) ------------------------------------------------
+
+EXPORT_HEADER = (
+    '"Date and time","Description","Debit","Credit","From account","To account","Payment type","Category",'
+    '"Receipt number","Transaction ID","Tags"\n'
+)
+EXPORT_NAME = "Ubank transactions 07-11-2025 - 07-11-2026.csv"
+# Newest first, as uBank writes it.
+EXPORT = [
+    (
+        "13:04 30-10-26",
+        "Domino's Estore Edens Crosredbank Plainau",
+        "$120.00",
+        "",
+        "Pay Account",
+        "",
+        "Visa",
+        "Food delivery & takeaway",
+    ),
+    ("20:08 29-10-26", "Visa Provisioning Service AU", "", "$0.00", "Pay Account", "", "Visa", "Uncategorised"),
+    (
+        "19:32 28-10-26",
+        "Internal transfer",
+        "$2,000.00",
+        "",
+        "Pay Account",
+        "Savings account - shared",
+        "Internal Transfer",
+        "Internal transfer",
+    ),
+    (
+        "09:33 28-10-26",
+        "Transfer Deposit",
+        "",
+        "$2,600.00",
+        "Save Account",
+        "Spend account - shared",
+        "Internal Transfer",
+        "Internal transfer",
+    ),
+    ("08:17 27-10-26", "Kmart 1283 Yamanto AU", "$48.00", "", "Pay Account", "", "eftpos", "General shopping"),
+]
+
+
+def export(rows: list[tuple[str, ...]] = EXPORT) -> bytes:
+    lines = [",".join(f'"{c}"' for c in (*r, "", str(n), "")) for n, r in enumerate(rows)]
+    return (EXPORT_HEADER + "\n".join(lines) + "\n").encode()
+
+
+def test_ubanks_longer_export_is_read_oldest_first_without_its_zero_rows() -> None:
+    st = parse(EXPORT_NAME, export())
+    assert st.columns.bank == "ubank-export" and st.reversed and st.zero_rows == 1
+    assert [(r.date, r.amount) for r in st.rows] == [
+        ("2026-10-27", -4800),
+        ("2026-10-28", 260000),
+        ("2026-10-28", -200000),
+        ("2026-10-30", -12000),
+    ]
+    assert st.rows[0].kind == "eftpos" and st.rows[0].bank_category == "General shopping"
+    assert st.balance_ok is None and st.closing is None and st.last4 is None
+    assert st.account_names == ["Pay Account", "Spend account - shared"]
+
+
+def test_the_export_marks_transfers_suggests_ubanks_category_and_remembers_its_account(
+    client: TestClient, household: dict
+) -> None:
+    opened = upload(client, export(), EXPORT_NAME)
+    assert opened["bank"] == "ubank-export" and opened["rows"] == 4 and opened["account_id"] is None
+    a = ok(client.post(f"/api/imports/{opened['token']}/analyse", json={"account_id": household["Spending"]}))
+    by = {r["description"]: r for r in a["rows"]}
+    assert by["Transfer Deposit"]["why"] == "transfer" and by["Internal transfer"]["why"] == "transfer"
+    assert by["Domino's Estore Edens Crosredbank Plainau"]["suggest"] == "Eating out"
+    ok(client.post(f"/api/imports/{opened['token']}/commit", json={"account_id": household["Spending"]}))
+    again = upload(client, export(), EXPORT_NAME)
+    assert again["account_id"] == household["Spending"]
+    b = ok(client.post(f"/api/imports/{again['token']}/analyse", json={"account_id": household["Spending"]}))
+    assert b["counts"]["duplicates"] == 4 and b["counts"]["new"] == 0
