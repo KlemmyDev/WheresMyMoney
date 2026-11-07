@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { apiGet, apiSend, errorMessage } from "~/features/common/api";
-import { Mark } from "~/features/common/layout";
+import { Logo } from "~/features/common/brand";
 import { Button, ErrorText, Input, Label, Tile } from "~/features/common/ui";
 
 export type Session = {
@@ -38,8 +38,7 @@ export function LoginPage({ redirectTo }: { redirectTo?: string }) {
     <div className="flex min-h-screen items-center justify-center px-4">
       <Tile i={0} className="w-full max-w-[400px] gap-4 p-7">
         <div className="flex items-center gap-2.5">
-          <Mark size={28} />
-          <span className="text-lg font-semibold">WheresMyMoney</span>
+          <Logo />
         </div>
         <div>
           <h1 className="m-0 text-xl font-semibold">{setup ? "Make the first account" : "Sign in"}</h1>

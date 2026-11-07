@@ -5,9 +5,6 @@ import appCss from "~/styles/app.css?url";
 import { ToastProvider } from "~/features/common/overlay";
 import type { RouterContext } from "~/router";
 
-const FAVICON =
-  "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect width='24' height='24' rx='6' fill='%230d1117'/><g fill='none' stroke='%232dd4bf' stroke-width='2' stroke-linecap='round'><circle cx='12' cy='12' r='8'/><path d='M12 12L16 8'/></g></svg>";
-
 export const Route = createRootRouteWithContext<RouterContext>()({
   head: () => ({
     meta: [
@@ -16,11 +13,12 @@ export const Route = createRootRouteWithContext<RouterContext>()({
       { title: "WheresMyMoney" },
       { name: "theme-color", content: "#0d1117" },
       { name: "color-scheme", content: "dark" },
-      { name: "apple-mobile-web-app-title", content: "WheresMyMoney" },
+      { name: "apple-mobile-web-app-title", content: "Money" },
       { name: "mobile-web-app-capable", content: "yes" },
     ],
     links: [
-      { rel: "icon", href: FAVICON },
+      { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
+      { rel: "icon", href: "/favicon-32.png", sizes: "32x32", type: "image/png" },
       { rel: "manifest", href: "/manifest.json" },
       { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
       // The fonts come with it (@fontsource, in app.css), not from Google Fonts.

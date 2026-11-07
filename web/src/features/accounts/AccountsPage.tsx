@@ -7,6 +7,7 @@
  * exact balance adds a "Balance adjustment" for the difference: as an opening balance before the history starts, so
  * the charts stay right, or today, for a one-off that can't be found.
  */
+import { Loading } from "~/features/common/brand";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState, type CSSProperties } from "react";
@@ -82,7 +83,7 @@ export function AccountsPage({ selected }: { selected?: number }) {
   const all = data ? [...data.accounts, ...(data.loan ? [data.loan] : [])] : [];
   const sel = all.find((a) => a.id === selected) ?? data?.accounts[0];
   if (q.isError) return <ErrorText>{errorMessage(q.error)}</ErrorText>;
-  if (!data) return <div className="h-[60vh]" aria-busy />;
+  if (!data) return <Loading />;
   const offsetting = data.accounts.filter((a) => a.offsets_loan);
   const last = data.accounts
     .map((a) => a.known?.date)

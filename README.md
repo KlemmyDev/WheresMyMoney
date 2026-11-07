@@ -1,5 +1,7 @@
 # WheresMyMoney
 
+<img src="brand/wmm-logo-dark.svg" alt="WheresMyMoney" width="340">
+
 A self-hosted money app for a household: the accounts that offset the home loan, quick balance check-ins, statement
 imports, bills and spending. It runs on your own home server in Docker, keeps everything in a small SQLite database, and
 serves a web app for desktop and phone.

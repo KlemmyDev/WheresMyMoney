@@ -2,6 +2,7 @@
  * Bills (design: CkBills): the bills account against its target, what an average month and the next 30 days hold,
  * the months ahead as a heat strip, and every bill with how often, when next, and how it's paid.
  */
+import { Loading } from "~/features/common/brand";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type CSSProperties } from "react";
 import { apiGet, apiSend, errorMessage } from "~/features/common/api";
@@ -37,7 +38,7 @@ export function BillsPage() {
     enabled: !!acct,
   });
   if (q.isError) return <ErrorText>{errorMessage(q.error)}</ErrorText>;
-  if (!b) return <div className="h-[60vh]" aria-busy />;
+  if (!b) return <Loading />;
   const t = acct?.target?.kind === "months" ? acct.target : null;
   const held = t?.held ?? 0;
   const maxMonth = Math.max(1, ...b.by_month.map((m) => m.total));

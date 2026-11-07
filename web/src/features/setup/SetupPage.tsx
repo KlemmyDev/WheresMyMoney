@@ -9,7 +9,7 @@ import { useState, type CSSProperties } from "react";
 import { apiSend, errorMessage } from "~/features/common/api";
 import { CoverageRing } from "~/features/common/charts";
 import { EVERY_LABEL, editable, money, parseMoney, pct, ROLE_LABEL, todayIso } from "~/features/common/format";
-import { Mark } from "~/features/common/layout";
+import { Logo } from "~/features/common/brand";
 import { accountsQuery, billsQuery, refresh } from "~/features/common/queries";
 import type { Account, Every, Role } from "~/features/common/types";
 import { Button, Choice, Dot, ErrorText, Input, Label, Option, Select, Tile, cn } from "~/features/common/ui";
@@ -68,8 +68,7 @@ export function SetupPage() {
     <div className="mx-auto flex min-h-screen max-w-[1100px] flex-col gap-6 px-4 py-8 sm:px-7">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <span className="flex items-center gap-2.5">
-          <Mark />
-          <span className="font-semibold">WheresMyMoney</span>
+          <Logo />
         </span>
         <ol className="m-0 flex list-none flex-wrap gap-4 p-0 text-[13px]" aria-label="Set-up steps">
           {STEPS.map((s, i) => (

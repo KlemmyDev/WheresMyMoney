@@ -1,6 +1,6 @@
 {
   "name": "WheresMyMoney",
-  "short_name": "WheresMyMoney",
+  "short_name": "Money",
   "description": "The household's money: accounts, the loan, bills and spending.",
   "start_url": "/",
   "scope": "/",

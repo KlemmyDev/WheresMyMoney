@@ -3,6 +3,7 @@
  * day, the pace against an even month, where it'll be at the next top-up (what's left rolls into the offset), each day's
  * spending, each category against its budget (the tick is the pace to date), who spent it, and the latest spending.
  */
+import { Loading } from "~/features/common/brand";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState, type CSSProperties } from "react";
@@ -19,7 +20,7 @@ export function SpendingPage() {
   const actions = useActions();
   const [budgets, setBudgets] = useState(false);
   if (q.isError) return <ErrorText>{errorMessage(q.error)}</ErrorText>;
-  if (!q.data) return <div className="h-[60vh]" aria-busy />;
+  if (!q.data) return <Loading />;
   const m = q.data.month;
   if (!m)
     return (

@@ -3,6 +3,7 @@
  * app. The next payday step by step with each account before and after; the monthly top-up and sweep; and every rule
  * with how it went at the last check-in or import. The app never moves money itself.
  */
+import { Loading } from "~/features/common/brand";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiSend, errorMessage } from "~/features/common/api";
@@ -52,7 +53,7 @@ export function RulesPage() {
     onSuccess: () => refresh(qc),
   });
   if (q.isError) return <ErrorText>{errorMessage(q.error)}</ErrorText>;
-  if (!q.data || !accounts.data) return <div className="h-[60vh]" aria-busy />;
+  if (!q.data || !accounts.data) return <Loading />;
   const banks = accounts.data.accounts;
   const names = Object.fromEntries(banks.map((a) => [a.id, a.name]));
   const colours = Object.fromEntries(banks.map((a) => [a.id, a.colour]));

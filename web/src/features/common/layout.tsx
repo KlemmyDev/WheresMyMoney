@@ -7,6 +7,7 @@ import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { CheckinDialog } from "~/features/checkins/CheckinDialog";
 import { dayDate } from "~/features/common/format";
+import { Logo } from "~/features/common/brand";
 import { Dialog } from "~/features/common/overlay";
 import { Button, cn } from "~/features/common/ui";
 import { AddSpending } from "~/features/spending/AddSpending";
@@ -33,24 +34,6 @@ const PHONE_TABS = [
 type Actions = { checkin: () => void; addSpending: () => void };
 const ActionsContext = createContext<Actions>({ checkin: () => {}, addSpending: () => {} });
 export const useActions = () => useContext(ActionsContext);
-
-export function Mark({ size = 24 }: { size?: number }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width={size}
-      height={size}
-      fill="none"
-      stroke="var(--color-teal)"
-      strokeWidth="2"
-      strokeLinecap="round"
-      aria-hidden
-    >
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 12L17 7M12 3v2M21 12h-2M12 21v-2M3 12h2" />
-    </svg>
-  );
-}
 
 function useClock() {
   const [now, setNow] = useState(() => new Date());
@@ -79,8 +62,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <header className="sticky top-0 z-30 border-b border-line bg-tile">
           <div className="mx-auto flex min-h-[60px] max-w-[1360px] flex-wrap items-center gap-6 px-4 sm:px-7">
             <Link to="/" className="flex items-center gap-2.5 text-ink no-underline">
-              <Mark />
-              <span className="text-base font-semibold">WheresMyMoney</span>
+              <Logo />
             </Link>
             <TabNav active={active} />
             <div className="ml-auto flex items-center gap-3">

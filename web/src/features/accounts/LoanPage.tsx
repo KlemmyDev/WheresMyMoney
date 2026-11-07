@@ -4,6 +4,7 @@
  * rules) with the date they meet and the goal; each account's share of the coverage; and what extra a month would do.
  * Estimates at today's rate, for the household's own planning.
  */
+import { Loading } from "~/features/common/brand";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState, type CSSProperties } from "react";
@@ -16,7 +17,7 @@ export function LoanPage() {
   const q = useQuery(loanQuery);
   const [mode, setMode] = useState<"recent" | "planned">("recent");
   if (q.isError) return <ErrorText>{errorMessage(q.error)}</ErrorText>;
-  if (q.data === undefined) return <div className="h-[60vh]" aria-busy />;
+  if (q.data === undefined) return <Loading />;
   const v = q.data;
   if (!v)
     return (

@@ -2,6 +2,7 @@
  * The dashboard (design: DirB, and CkPhone on a phone): loan coverage, interest avoided, the bills buffer and the
  * spending month as gauges, savings goals, cash flow, the accounts, the payday rules and the bills due.
  */
+import { Loading } from "~/features/common/brand";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState, type CSSProperties } from "react";
@@ -26,7 +27,7 @@ export function DashboardPage() {
   const actions = useActions();
   if (q.isError) return <ErrorText>{errorMessage(q.error)}</ErrorText>;
   const d = q.data;
-  if (!d) return <div className="h-[60vh]" aria-busy />;
+  if (!d) return <Loading />;
   if (!d.accounts.length)
     return (
       <Empty
