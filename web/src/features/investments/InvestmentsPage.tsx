@@ -595,6 +595,7 @@ function FundForm({
   const [name, setName] = useState(fund?.name ?? "");
   const [group, setGroup] = useState(fund?.group ?? "aus");
   const [target, setTarget] = useState(fund?.target != null ? String(Math.round(fund.target * 100)) : "");
+  const [fee, setFee] = useState(fund?.fee_pct != null ? String(Math.round(fund.fee_pct * 100000) / 1000) : "");
   const save = useMutation({
     mutationFn: () =>
       apiSend(fund ? "PUT" : "POST", fund ? `investments/funds/${fund.id}` : "investments/funds", {
@@ -602,6 +603,7 @@ function FundForm({
         name,
         group,
         target: target === "" ? null : Number(target) / 100,
+        fee_pct: fee === "" ? null : Number(fee) / 100,
       }),
     onSuccess: () => {
       refresh(qc);
@@ -653,6 +655,15 @@ function FundForm({
           placeholder="Leave empty for no target"
           value={target}
           onChange={(e) => setTarget(e.target.value.replace(/[^0-9]/g, ""))}
+        />
+      </label>
+      <label className="flex flex-col gap-1.5">
+        <span className="eyebrow">Management fee (% a year)</span>
+        <Input
+          inputMode="decimal"
+          placeholder="Like 0.07, from the fund's fact sheet"
+          value={fee}
+          onChange={(e) => setFee(e.target.value.replace(/[^0-9.]/g, ""))}
         />
       </label>
       {(save.isError || remove.isError) && <ErrorText>{errorMessage(save.error ?? remove.error)}</ErrorText>}

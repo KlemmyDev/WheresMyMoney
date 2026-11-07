@@ -1,17 +1,32 @@
 /**
- * The retirement estimate, a year at a time in today's dollars (so growth is after fees and inflation).
+ * The retirement estimate, a year at a time in today's dollars.
  *
- * While working: each person's super grows and takes their employer's contributions (and any extra) less 15% tax going
- * in; the ETFs grow and take what's been going in lately. Everyone stops in the same year, when the first person
- * reaches the age chosen. Once stopped, each year's spending (plus the loan's repayments until it's gone) comes from
- * the ETFs first, then from the super of anyone 60 or over. If there's still a shortfall while someone's super is
- * locked, that's a gap before super opens; if not, the money has run out. The age pension isn't counted, so it errs
- * on the careful side. Money in cents.
+ * Each person's super grows at its fund's return (its investment options' returns weighted by their shares, or the
+ * household's assumption), less its fees: those on the balance (admin, investment) come off as a share, those in
+ * dollars (admin, insurance) come off each year while there's a balance. Inflation is taken out, so every figure is
+ * in today's dollars (dollar fees and salaries are taken to rise with prices). While working, super takes the
+ * employer's contributions (and any extra) less the tax on money going in; the ETFs grow at their return less their
+ * management fees and take what's been going in lately.
+ *
+ * Everyone stops in the same year, when the first person reaches the age chosen. Once stopped, each year's spending
+ * (plus the loan's repayments until it's gone) comes from the ETFs first, then from the super of anyone 60 or over.
+ * A shortfall while someone's super is locked is a gap before super opens; otherwise the money has run out. The age
+ * pension isn't counted, so it errs on the careful side. Money in cents; rates as fractions (0.07 is 7%).
  */
 
-export type Person = { age: number; balance: number; salary: number; rate: number };
+export type Fee = { name: string; kind: "pct" | "fixed"; amount: number };
+export type Option = { name: string; share: number; return_pct: number | null; fee_pct: number };
+export type Person = { age: number; balance: number; salary: number; rate: number; fees: Fee[]; options: Option[] };
 
-export type Inputs = {
+export type Assumptions = {
+  superReturn: number;
+  etfReturn: number;
+  etfFee: number;
+  inflation: number;
+  contribTax: number;
+};
+
+export type Inputs = Assumptions & {
   people: Person[];
   etfs: number;
   etfPerYear: number;
@@ -23,7 +38,6 @@ export type Inputs = {
   spending: number;
   extraMonth: number;
   countEtfs: boolean;
-  growth: number;
   planTo: number;
   preservation: number;
 };
@@ -31,11 +45,26 @@ export type Inputs = {
 export type Row = { year: number; age: number; super: number; etfs: number };
 export type Result = { rows: Row[]; out: number | null; gap: number | null; ok: boolean; atRetire: Row | null };
 
+/** A fund's terms: its return before fees, fees on the balance (a share a year), fees in dollars a year, and what
+ * a dollar grows by in a year after fees on the balance and inflation (dollar fees aside). */
+export function fundTerms(p: Pick<Person, "fees" | "options">, a: Assumptions) {
+  const ret = p.options.length
+    ? p.options.reduce((s, o) => s + o.share * (o.return_pct ?? a.superReturn), 0)
+    : a.superReturn;
+  const pct =
+    p.fees.filter((f) => f.kind === "pct").reduce((s, f) => s + f.amount, 0) +
+    p.options.reduce((s, o) => s + o.share * o.fee_pct, 0);
+  const fixed = p.fees.filter((f) => f.kind === "fixed").reduce((s, f) => s + f.amount, 0);
+  return { ret, pct, fixed, real: (1 + ret - pct) / (1 + a.inflation) - 1 };
+}
+
 const LAST = 100;
 
 export function project(i: Inputs, retireAge = i.retireAge): Result {
   if (!i.people.length) return { rows: [], out: null, gap: null, ok: false, atRetire: null };
   const lead = i.people[0];
+  const terms = i.people.map((p) => fundTerms(p, i));
+  const etfGrowth = (1 + i.etfReturn - i.etfFee) / (1 + i.inflation);
   const supers = i.people.map((p) => p.balance);
   let etfs = i.countEtfs ? i.etfs : 0;
   const rows: Row[] = [];
@@ -54,10 +83,12 @@ export function project(i: Inputs, retireAge = i.retireAge): Result {
       ),
       etfs: Math.max(0, etfs),
     });
-    supers.forEach((s, k) => (supers[k] = s * (1 + i.growth)));
-    etfs *= 1 + i.growth;
+    supers.forEach((s, k) => {
+      supers[k] = s > 0 ? Math.max(0, s * (1 + terms[k].real) - terms[k].fixed) : s;
+    });
+    etfs *= etfGrowth;
     if (age < retireAge) {
-      i.people.forEach((p, k) => (supers[k] += (p.salary * p.rate + extraEach) * 0.85));
+      i.people.forEach((p, k) => (supers[k] += (p.salary * p.rate + extraEach) * (1 - i.contribTax)));
       if (i.countEtfs) etfs += i.etfPerYear;
       continue;
     }

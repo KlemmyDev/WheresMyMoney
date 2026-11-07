@@ -1,9 +1,10 @@
 /**
  * Settings (design: CkHousehold): the household and who's in it, check-ins, notifications (this device, ntfy, a
- * webhook, and what to be told), developers' API keys, and updates and backups.
+ * webhook, and what to be told), developers' API keys, updates and backups, the retirement estimate's assumptions
+ * and each super fund's fees and options, and appearance.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useState, useSyncExternalStore, type ReactNode } from "react";
 import { apiGet, apiSend, errorMessage } from "~/features/common/api";
 import { refresh, settingsQuery } from "~/features/common/queries";
@@ -12,6 +13,7 @@ import { Link } from "@tanstack/react-router";
 import { Chip, I } from "~/features/common/icons";
 import { useTheme, type ThemeChoice } from "~/features/common/theme";
 import { useHidden } from "~/features/dashboard/OverviewParts";
+import { RetirementSettingsPanel } from "~/features/retirement/Assumptions";
 import {
   Button,
   Choice,
@@ -39,11 +41,15 @@ const SECTIONS = [
   ["notifications", "Notifications", "Push, ntfy, webhook", I.bills, "bills"],
   ["developers", "Developers", "Read-only API keys", I.rules, "offset"],
   ["updates", "Updates and backups", "Channel, versions, restore", I.shield, "savings"],
+  ["retirement", "Retirement", "Returns, fees, inflation", I.retire, "savings"],
   ["appearance", "Appearance", "Dark, light, privacy", I.settings, "neutral"],
 ] as const;
 
 export function SettingsPage() {
-  const [section, setSection] = useState<(typeof SECTIONS)[number][0]>("household");
+  const search = useSearch({ from: "/_app/settings" });
+  const [section, setSection] = useState<(typeof SECTIONS)[number][0]>(
+    SECTIONS.find(([id]) => id === search.section)?.[0] ?? "household",
+  );
   return (
     <>
       <PageHead over="Manage" title="Settings" />
@@ -81,6 +87,7 @@ export function SettingsPage() {
           {section === "notifications" && <Notifications />}
           {section === "developers" && <Developers />}
           {section === "updates" && <Updates />}
+          {section === "retirement" && <RetirementSettingsPanel />}
           {section === "appearance" && <Appearance />}
         </div>
       </div>

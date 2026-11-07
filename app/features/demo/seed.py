@@ -9,6 +9,7 @@ years of statement transactions generated to fit, ending at a rough check-in.
 from __future__ import annotations
 
 import datetime as dt
+import json
 import random
 import sqlite3
 import time
@@ -253,27 +254,63 @@ def seed(db: Database, today: dt.date | None = None) -> bool:
                 "INSERT INTO asset_values (asset_id, date, value) VALUES (?, ?, ?)",
                 (home, dates.add_months(today, -months_back).isoformat(), value),
             )
-        for n, (person, age, fund, balance, salary) in enumerate(
+        supers = (
             (
-                ("Alex", 38, "AustralianSuper · Balanced", 11260000, 12000000),
-                ("Sam", 36, "Hostplus · Balanced", 7380000, 8500000),
-            )
-        ):
+                "Alex",
+                38,
+                "AustralianSuper",
+                11260000,
+                12000000,
+                [
+                    {"name": "Admin fee", "kind": "fixed", "amount": 5200},
+                    {"name": "Admin fee (on the balance)", "kind": "pct", "amount": 0.001},
+                    {"name": "Insurance (death and TPD)", "kind": "fixed", "amount": 31200},
+                ],
+                [
+                    {"name": "High Growth", "share": 0.7, "return_pct": 0.085, "fee_pct": 0.0056},
+                    {"name": "Balanced", "share": 0.3, "return_pct": 0.075, "fee_pct": 0.0051},
+                ],
+            ),
+            (
+                "Sam",
+                36,
+                "Hostplus",
+                7380000,
+                8500000,
+                [
+                    {"name": "Admin fee", "kind": "fixed", "amount": 7800},
+                    {"name": "Investment fee", "kind": "pct", "amount": 0.0067},
+                ],
+                [],
+            ),
+        )
+        for n, (person, age, fund, balance, salary, fees, options) in enumerate(supers):
             conn.execute(
-                "INSERT INTO super_accounts (person, born, fund, balance, as_of, salary, rate, sort, created_at)"
-                " VALUES (?, ?, ?, ?, ?, ?, 0.12, ?, ?)",
-                (person, today.year - age, fund, balance, dates.add_months(today, -1).isoformat(), salary, n, now),
+                "INSERT INTO super_accounts (person, born, fund, balance, as_of, salary, rate, fees, options, sort,"
+                " created_at) VALUES (?, ?, ?, ?, ?, ?, 0.12, ?, ?, ?, ?)",
+                (
+                    person,
+                    today.year - age,
+                    fund,
+                    balance,
+                    dates.add_months(today, -1).isoformat(),
+                    salary,
+                    json.dumps(fees),
+                    json.dumps(options),
+                    n,
+                    now,
+                ),
             )
         conn.execute("INSERT OR REPLACE INTO kv (key, value) VALUES ('setting:setup_done', 'true')")
         conn.execute("INSERT OR REPLACE INTO kv (key, value) VALUES ('setting:household', '\"Demo household\"')")
     return True
 
 
-# The demo's ETFs: ticker, name, group, target, today's price (dollars), its yearly growth.
+# The demo's ETFs: ticker, name, group, target, today's price (dollars), its yearly growth, its management fee.
 FUNDS = [
-    ("VAS", "Vanguard Australian Shares", "aus", 0.5, 101.20, 0.07),
-    ("VGS", "Vanguard International Shares", "intl", 0.35, 138.40, 0.10),
-    ("VAF", "Vanguard Australian Fixed Interest", "bonds", 0.15, 44.975, 0.005),
+    ("VAS", "Vanguard Australian Shares", "aus", 0.5, 101.20, 0.07, 0.0007),
+    ("VGS", "Vanguard International Shares", "intl", 0.35, 138.40, 0.10, 0.0018),
+    ("VAF", "Vanguard Australian Fixed Interest", "bonds", 0.15, 44.975, 0.005, 0.001),
 ]
 
 
@@ -281,10 +318,10 @@ def _investments(conn: sqlite3.Connection, today: dt.date, rng: random.Random, n
     """Three ETFs bought most quarters for four and a half years (one sold down once), with five years of made-up
     daily closes that end at today's price."""
     first = today - dt.timedelta(days=round(4.6 * 365))
-    for n, (ticker, name, group, target, end, growth) in enumerate(FUNDS):
+    for n, (ticker, name, group, target, end, growth, mer) in enumerate(FUNDS):
         cur = conn.execute(
-            "INSERT INTO funds (ticker, name, grp, target, sort, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (ticker, name, group, target, n, now),
+            "INSERT INTO funds (ticker, name, grp, target, fee_pct, sort, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (ticker, name, group, target, mer, n, now),
         )
         fund_id = int(cur.lastrowid or 0)
         closes: dict[str, float] = {}

@@ -245,6 +245,21 @@ def _assets(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS asset_values_by_asset ON asset_values (asset_id, date)")
 
 
+def _super_fees(conn: sqlite3.Connection) -> None:
+    """super_accounts.`fees`: the fund's fees as a JSON list, each {"name", "kind", "amount"}: kind pct is a share of
+    the balance a year (0.001 is 0.10%), fixed is cents a year (admin fees, insurance). super_accounts.`options`: how
+    the balance is invested, a JSON list of {"name", "share", "return_pct", "fee_pct"} (return before fees, NULL for
+    the household's assumption; the option's own investment fee). funds.`fee_pct`: an ETF's management fee a year."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(super_accounts)")}
+    if "fees" not in cols:
+        conn.execute("ALTER TABLE super_accounts ADD COLUMN fees TEXT NOT NULL DEFAULT '[]'")
+    if "options" not in cols:
+        conn.execute("ALTER TABLE super_accounts ADD COLUMN options TEXT NOT NULL DEFAULT '[]'")
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(funds)")}
+    if "fee_pct" not in cols:
+        conn.execute("ALTER TABLE funds ADD COLUMN fee_pct REAL")
+
+
 MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _baseline,
     _money,
@@ -256,4 +271,5 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _investments,
     _retirement,
     _assets,
+    _super_fees,
 ]
