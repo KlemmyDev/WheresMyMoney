@@ -7,7 +7,7 @@
  */
 import { Loading } from "~/features/common/brand";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useState, type CSSProperties, type KeyboardEvent } from "react";
 import { errorMessage } from "~/features/common/api";
 import { Count } from "~/features/common/charts";
@@ -376,11 +376,21 @@ function Timeline({ m, hover, setHover }: { m: Month; hover: number | null; setH
       </div>
       <div className="flex flex-wrap gap-[18px]">
         <div
-          className="relative min-w-0 flex-[999_1_560px] rounded-lg outline-offset-4"
+          className="relative min-w-0 flex-[999_1_560px] cursor-ew-resize touch-pan-y rounded-lg outline-offset-4 select-none"
           tabIndex={0}
           role="group"
-          aria-label="The month day by day. Use the left and right arrow keys to move between days."
+          aria-label="The month day by day. Drag across it, or use the left and right arrow keys, to move between days."
           onKeyDown={onKey}
+          // Drag along the month (finger or mouse) to read any day; vertical swipes still scroll the page.
+          onPointerDown={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            setHover(Math.min(n - 1, Math.max(0, Math.floor(((e.clientX - r.left) / r.width) * n))));
+          }}
+          onPointerMove={(e) => {
+            if (e.pointerType === "mouse" && e.buttons === 0) return;
+            const r = e.currentTarget.getBoundingClientRect();
+            setHover(Math.min(n - 1, Math.max(0, Math.floor(((e.clientX - r.left) / r.width) * n))));
+          }}
           onMouseLeave={() => setHover(null)}
           onBlur={() => setHover(null)}
         >
@@ -544,6 +554,7 @@ function DayDetail({ m, i }: { m: Month; i: number }) {
 }
 
 function Categories({ s }: { s: SpendingMonth }) {
+  const navigate = useNavigate();
   const [hover, setHover] = useState<number | null>(null);
   const cats = [
     ...s.categories
@@ -611,8 +622,9 @@ function Categories({ s }: { s: SpendingMonth }) {
               onMouseEnter={() => setHover(i)}
               onFocus={() => setHover(i)}
               onBlur={() => setHover(null)}
+              onClick={() => navigate({ to: "/spending" })}
               className={cn(
-                "flex cursor-default flex-col gap-1.5 rounded-lg border-0 px-2 py-[7px] text-left text-ink transition-colors duration-150",
+                "press flex min-h-11 cursor-pointer flex-col justify-center gap-1.5 rounded-lg border-0 px-2 py-[7px] text-left text-ink transition-colors duration-150",
                 hover === i ? "bg-raised" : "bg-transparent",
               )}
             >
@@ -644,6 +656,7 @@ function Categories({ s }: { s: SpendingMonth }) {
 }
 
 function StillToCome({ m, hover, setHover }: { m: Month; hover: number | null; setHover: (i: number | null) => void }) {
+  const navigate = useNavigate();
   const rows = m.events.flatMap((evs, i) => (i > m.today ? evs.map((e) => ({ ...e, i })) : []));
   const bills = rows.filter((r) => r.kind === "bill");
   return (
@@ -672,8 +685,9 @@ function StillToCome({ m, hover, setHover }: { m: Month; hover: number | null; s
               onMouseEnter={() => setHover(r.i)}
               onFocus={() => setHover(r.i)}
               onBlur={() => setHover(null)}
+              onClick={() => navigate({ to: r.kind === "bill" ? "/bills" : "/rules" })}
               className={cn(
-                "flex cursor-default items-center gap-3 rounded-[9px] border-0 px-2 py-[9px] text-left text-ink transition-colors duration-150",
+                "press flex min-h-14 cursor-pointer items-center gap-3 rounded-[9px] border-0 px-2 py-[9px] text-left text-ink transition-colors duration-150",
                 hover === r.i ? "bg-raised" : "bg-transparent",
               )}
             >

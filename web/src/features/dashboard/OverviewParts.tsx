@@ -2,8 +2,9 @@
  * The Overview's new pieces (Nightfall): the balance hero with account filter and hide toggle, quick actions, accounts
  * with trend lines, and savings goals as rings. Built only from the design system (ds.tsx, icons.tsx).
  */
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, type KeyboardEvent, type PointerEvent } from "react";
 import {
   BigNumber,
   Card,
@@ -16,12 +17,13 @@ import {
   Ring,
   type Role as DsRole,
 } from "~/features/common/ds";
-import { money, pct } from "~/features/common/format";
+import { dayDate, money, pct, todayIso } from "~/features/common/format";
+import { dashboardQuery } from "~/features/common/queries";
 import { Chip, I, type Glyph, type Tone } from "~/features/common/icons";
 import { useActions } from "~/features/common/layout";
 import { useStoredFlag } from "~/features/common/theme";
 import type { Dashboard, Role } from "~/features/common/types";
-import { Pill, cn } from "~/features/common/ui";
+import { Pill, Segmented, cn } from "~/features/common/ui";
 
 const ROLE_DS: Record<Role, DsRole> = {
   offset: "offset",
@@ -65,24 +67,74 @@ function line(points: number[], w: number, h: number, pad = 6) {
     .join(" ");
 }
 
+const SPAN = { "30d": 30, "6m": 182, "1y": 365 } as const;
+type Range = keyof typeof SPAN;
+
+/** The day `daysAgo` days before today, as "Sat 7 Nov". */
+function ago(daysAgo: number) {
+  const d = new Date(`${todayIso()}T12:00:00`);
+  d.setDate(d.getDate() - daysAgo);
+  return dayDate(
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`,
+  );
+}
+
+const EYE_OPEN = (
+  <>
+    <path
+      d="M2.5 12C3.5 10.5 7 6 12 6s8.5 4.5 9.5 6c-1 1.5-4.5 6-9.5 6s-8.5-4.5-9.5-6z"
+      fill="currentColor"
+      fillOpacity={0.15}
+    />
+    <path d="M9.5 12a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0" />
+  </>
+);
+const EYE_SHUT = (
+  <path d="M3 3l18 18M10.6 6.1A9.8 9.8 0 0 1 12 6c5 0 8.5 4.5 9.5 6-.5.8-1.6 2.3-3.2 3.6M6.4 7.5C4.6 8.8 3.2 10.7 2.5 12c1 1.5 4.5 6 9.5 6 1.6 0 3-.4 4.3-1" />
+);
+
 export function BalanceHero({ d }: { d: Dashboard }) {
   const [hide, setHide] = useHidden();
   const [pick, setPick] = useState<number | "all">("all");
+  const [range, setRange] = useState<Range>("30d");
+  const [pt, setPt] = useState<number | null>(null);
+  // A longer trend comes from the same endpoint; the rest of the page keeps this month's figures.
+  const longer = useQuery({ ...dashboardQuery(range), enabled: range !== "30d", placeholderData: keepPreviousData });
+  const src = range === "30d" ? d : (longer.data ?? d);
   const accounts = d.accounts;
+  const sparkOf = (id: number) => src.accounts.find((a) => a.id === id)?.spark ?? [];
   const sel = pick === "all" ? null : (accounts.find((a) => a.id === pick) ?? null);
   const total = sel ? sel.balance : accounts.reduce((t, a) => t + a.balance, 0);
-  const len = Math.min(...accounts.map((a) => a.spark.length).filter((n) => n > 0), Infinity);
+  const sparks = accounts.map((a) => sparkOf(a.id));
+  const len = Math.min(...sparks.map((s) => s.length).filter((n) => n > 0), Infinity);
   const spark = sel
-    ? sel.spark
+    ? sparkOf(sel.id)
     : Number.isFinite(len)
-      ? Array.from({ length: len }, (_, i) =>
-          accounts.reduce((t, a) => t + (a.spark[a.spark.length - len + i] ?? 0), 0),
-        )
+      ? Array.from({ length: len }, (_, i) => sparks.reduce((t, s) => t + (s[s.length - len + i] ?? 0), 0))
       : [];
   const path = line(spark, 600, 140);
   const colour = sel ? ROLE[ROLE_DS[sel.role]] : ROLE.accent;
   const positive = accounts.filter((a) => a.balance > 0);
   const positiveTotal = positive.reduce((t, a) => t + a.balance, 0) || 1;
+  const n = spark.length;
+  const step = n > 1 ? (SPAN[range] - 1) / (n - 1) : 0;
+  const lo = n ? Math.min(...spark) : 0;
+  const hi = n ? Math.max(...spark) : 1;
+  const yAt = (v: number) => 134 - ((v - lo) / (hi - lo || 1)) * 128;
+  const at = pt != null && pt < n ? pt : null;
+  const shown = at ?? n - 1;
+  // Drag (or hover) along the chart to read any point; vertical swipes still scroll the page.
+  const scrub = (e: PointerEvent<HTMLDivElement>) => {
+    if (n < 2) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    setPt(Math.min(n - 1, Math.max(0, Math.round(((e.clientX - r.left) / r.width) * (n - 1)))));
+  };
+  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    setPt(Math.min(n - 1, Math.max(0, shown + (e.key === "ArrowRight" ? 1 : -1))));
+  };
+  const rangeName = range === "30d" ? "month" : range === "6m" ? "6 months" : "year";
   return (
     <Card lit aria-labelledby="hero" className="md:col-span-8">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -112,18 +164,7 @@ export function BalanceHero({ d }: { d: Dashboard }) {
             strokeLinecap="round"
             aria-hidden
           >
-            {hide ? (
-              <path d="M3 3l18 18M10.6 6.1A9.8 9.8 0 0 1 12 6c5 0 8.5 4.5 9.5 6-.5.8-1.6 2.3-3.2 3.6M6.4 7.5C4.6 8.8 3.2 10.7 2.5 12c1 1.5 4.5 6 9.5 6 1.6 0 3-.4 4.3-1" />
-            ) : (
-              <>
-                <path
-                  d="M2.5 12C3.5 10.5 7 6 12 6s8.5 4.5 9.5 6c-1 1.5-4.5 6-9.5 6s-8.5-4.5-9.5-6z"
-                  fill="currentColor"
-                  fillOpacity={0.15}
-                />
-                <path d="M9.5 12a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0" />
-              </>
-            )}
+            {hide ? EYE_SHUT : EYE_OPEN}
           </svg>
         </IconButton>
       </div>
@@ -144,30 +185,88 @@ export function BalanceHero({ d }: { d: Dashboard }) {
           </ChoiceChip>
         ))}
       </div>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[13px] text-ink-3">Drag across the chart to read any day</span>
+        <Segmented<Range>
+          label="Range"
+          value={range}
+          onChange={(r) => {
+            setRange(r);
+            setPt(null);
+          }}
+          options={[
+            { value: "30d", label: "1M" },
+            { value: "6m", label: "6M" },
+            { value: "1y", label: "1Y" },
+          ]}
+        />
+      </div>
       {path && (
-        <svg
-          viewBox="0 0 600 140"
-          preserveAspectRatio="none"
-          className="block h-[120px] w-full sm:h-[150px]"
-          role="img"
-          aria-label={`${sel ? sel.name : "Total"} over recent weeks`}
+        <div
+          role="slider"
+          tabIndex={0}
+          aria-label={`${sel ? sel.name : "Total"} over the last ${rangeName}`}
+          aria-valuemin={1}
+          aria-valuemax={n}
+          aria-valuenow={shown + 1}
+          aria-valuetext={`${ago(Math.round((n - 1 - shown) * step))}: ${hide ? "hidden" : money(spark[shown])}`}
+          onPointerDown={scrub}
+          onPointerMove={scrub}
+          onPointerLeave={(e) => e.pointerType === "mouse" && setPt(null)}
+          onKeyDown={onKey}
+          className="relative h-[130px] cursor-ew-resize touch-pan-y rounded-xl outline-offset-4 select-none sm:h-[160px]"
         >
-          <defs>
-            <linearGradient id="hero-g" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor={colour} stopOpacity={0.4} />
-              <stop offset="1" stopColor={colour} stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <path d={`${path} L600 140 L0 140 Z`} fill="url(#hero-g)" />
-          <path
-            d={path}
-            fill="none"
-            stroke={colour}
-            strokeWidth={2.6}
-            vectorEffect="non-scaling-stroke"
-            strokeLinejoin="round"
-          />
-        </svg>
+          <svg
+            viewBox="0 0 600 140"
+            preserveAspectRatio="none"
+            className="absolute inset-0 block h-full w-full"
+            aria-hidden
+          >
+            <defs>
+              <linearGradient id="hero-g" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stopColor={colour} stopOpacity={0.4} />
+                <stop offset="1" stopColor={colour} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <path d={`${path} L600 140 L0 140 Z`} fill="url(#hero-g)" />
+            <path
+              d={path}
+              fill="none"
+              stroke={colour}
+              strokeWidth={2.6}
+              vectorEffect="non-scaling-stroke"
+              strokeLinejoin="round"
+            />
+          </svg>
+          {at != null && (
+            <>
+              <span
+                aria-hidden
+                className="pointer-events-none absolute top-0 bottom-0 w-px bg-ink-3"
+                style={{ left: `${(at / (n - 1)) * 100}%` }}
+              />
+              <span
+                aria-hidden
+                className="pointer-events-none absolute size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white"
+                style={{
+                  left: `${(at / (n - 1)) * 100}%`,
+                  top: `${(yAt(spark[at]) / 140) * 100}%`,
+                  boxShadow: `0 0 0 4px ${colour}`,
+                }}
+              />
+              <span
+                aria-hidden
+                className="pointer-events-none absolute top-1 -translate-x-1/2 rounded-xl border border-line-2 bg-raised px-2.5 py-1.5 whitespace-nowrap shadow-[var(--shadow-float)]"
+                style={{ left: `clamp(64px, ${(at / (n - 1)) * 100}%, calc(100% - 64px))` }}
+              >
+                <span className="block text-[11px] text-ink-3">{ago(Math.round((n - 1 - at) * step))}</span>
+                <span className="num block text-[14px] text-ink">
+                  {hide ? "••••••" : money(spark[at], { cents: true })}
+                </span>
+              </span>
+            </>
+          )}
+        </div>
       )}
       {!sel && positive.length > 1 && (
         <div>
@@ -184,12 +283,17 @@ export function BalanceHero({ d }: { d: Dashboard }) {
               />
             ))}
           </div>
-          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-ink-3">
+          <div className="mt-1.5 flex flex-wrap gap-x-2 gap-y-0.5">
             {positive.map((a) => (
-              <span key={a.id} className="inline-flex items-center gap-1.5">
+              <button
+                key={a.id}
+                type="button"
+                onClick={() => setPick(a.id)}
+                className="press inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-full border-0 bg-transparent px-1.5 text-[12px] text-ink-3 hover:text-ink"
+              >
                 <span aria-hidden className="size-2 rounded-full" style={{ background: ROLE[ROLE_DS[a.role]] }} />
                 {a.name} {Math.round((a.balance / positiveTotal) * 100)}%
-              </span>
+              </button>
             ))}
           </div>
         </div>
