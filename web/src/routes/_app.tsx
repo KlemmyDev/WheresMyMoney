@@ -9,7 +9,8 @@ export const Route = createFileRoute("/_app")({
   beforeLoad: async ({ context, location }) => {
     const session = await context.queryClient.ensureQueryData(sessionQuery);
     if (!session.authenticated) throw redirect({ to: "/login", search: { redirect: location.href }, replace: true });
-    const setup = await context.queryClient.ensureQueryData(setupQuery).catch(() => null);
+    // fetchQuery, not ensureQueryData: finishing the guide marks this stale, and the stale answer would loop back to it.
+    const setup = await context.queryClient.fetchQuery({ ...setupQuery, staleTime: 60_000 }).catch(() => null);
     if (setup?.show) throw redirect({ to: "/setup", replace: true });
   },
   component: AppLayout,
