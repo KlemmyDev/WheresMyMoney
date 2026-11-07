@@ -14,6 +14,7 @@ import { Logo } from "~/features/common/brand";
 import { Chip, I, type Glyph, type Tone } from "~/features/common/icons";
 import { Sheet } from "~/features/common/ds";
 import { Button, cn } from "~/features/common/ui";
+import { NewGoalSheet } from "~/features/goals/GoalFlows";
 import { AddSpending } from "~/features/spending/AddSpending";
 
 type Page = { to: string; label: string; sub: string; g: Glyph; tone: Tone; soon?: true; also?: readonly string[] };
@@ -78,8 +79,8 @@ function locate(path: string): { section: number; page: Page | null } {
   return { section: -1, page: null };
 }
 
-type Actions = { checkin: () => void; addSpending: () => void };
-const ActionsContext = createContext<Actions>({ checkin: () => {}, addSpending: () => {} });
+type Actions = { checkin: () => void; addSpending: () => void; newGoal: () => void };
+const ActionsContext = createContext<Actions>({ checkin: () => {}, addSpending: () => {}, newGoal: () => {} });
 export const useActions = () => useContext(ActionsContext);
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -88,6 +89,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const [checkin, setCheckin] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [goal, setGoal] = useState(false);
   const [sheet, setSheet] = useState<string | null>(null);
   const { section, page } = locate(path);
   // A route change closes any open sheet.
@@ -99,7 +101,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   const sheetSection = SECTIONS.find((s) => s.id === sheet);
 
   return (
-    <ActionsContext.Provider value={{ checkin: () => setCheckin(true), addSpending: () => setAdding(true) }}>
+    <ActionsContext.Provider
+      value={{ checkin: () => setCheckin(true), addSpending: () => setAdding(true), newGoal: () => setGoal(true) }}
+    >
       <div className="min-h-screen pb-[120px] sm:pb-0">
         <header className="sticky top-0 z-30 hidden px-4 pt-4 sm:block sm:px-7">
           <div className="mx-auto flex min-h-16 max-w-[1360px] items-center gap-6 rounded-[20px] border border-line bg-tile py-2 pr-3 pl-5 shadow-[var(--shadow-card)]">
@@ -209,6 +213,23 @@ export function AppShell({ children }: { children: ReactNode }) {
             sub="A uBank statement"
             onClick={() => navigate({ to: "/import" })}
           />
+          <ActionTile
+            g={I.savings}
+            tone="savings"
+            label="New goal"
+            sub="Save up for something"
+            onClick={() => {
+              setSheet(null);
+              setGoal(true);
+            }}
+          />
+          <ActionTile
+            g={I.loan}
+            tone="loan"
+            label="Rate changed"
+            sub="The loan's rate moved"
+            onClick={() => navigate({ to: "/loan", search: { rate: 1 } })}
+          />
         </div>
       </Sheet>
 
@@ -225,6 +246,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         }}
       />
       <AddSpending open={adding} onClose={() => setAdding(false)} />
+      <NewGoalSheet open={goal} onClose={() => setGoal(false)} />
     </ActionsContext.Provider>
   );
 }

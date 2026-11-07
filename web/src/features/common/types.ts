@@ -34,7 +34,15 @@ export type Account = {
   target?: Target | null;
 };
 
-export type Goal = { id: number; account_id: number; name: string; target: number; saved: number };
+export type Goal = {
+  id: number;
+  account_id: number;
+  name: string;
+  target: number;
+  saved: number;
+  icon: string | null;
+  by_date: string | null;
+};
 
 export type AccountsOverview = {
   accounts: Account[];

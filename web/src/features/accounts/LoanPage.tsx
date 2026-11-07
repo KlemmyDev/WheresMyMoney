@@ -6,17 +6,31 @@
  */
 import { Loading } from "~/features/common/brand";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useState, type CSSProperties } from "react";
 import { errorMessage } from "~/features/common/api";
-import { colour, money, monthYear, pct } from "~/features/common/format";
+import { colour, daysBetween, money, monthYear, pct, todayIso } from "~/features/common/format";
 import { loanQuery } from "~/features/common/queries";
 import { Dot, Empty, ErrorText, PageHead, Segmented, Tile, TileTitle } from "~/features/common/ui";
 import { LoanSimulator } from "~/features/accounts/LoanSimulator";
+import { RateChangeSheet, type Spotted } from "~/features/accounts/RateChange";
+import { Banner } from "~/features/common/ds";
+import { I } from "~/features/common/icons";
+import { useStoredFlag } from "~/features/common/theme";
+import { Button } from "~/features/common/ui";
 
 export function LoanPage() {
   const q = useQuery(loanQuery);
   const [mode, setMode] = useState<"recent" | "planned">("recent");
+  const search = useSearch({ from: "/_app/loan" });
+  const navigate = useNavigate();
+  const [rateOpen, setRateOpen] = useState(false);
+  // A new rate an imported statement showed in the last two months, until it's been looked at.
+  const latest = q.data?.changes.find((c) => c.field === "rate");
+  const fresh =
+    latest && latest.description !== "Changed in the app" && daysBetween(latest.date, todayIso()) < 61 ? latest : null;
+  const [seen, setSeen] = useStoredFlag(`wmm:rate-seen:${fresh?.date}:${fresh?.value}`);
+  const spotted: Spotted = fresh && !seen ? { date: fresh.date, value: fresh.value, was: fresh.was } : null;
   if (q.isError) return <ErrorText>{errorMessage(q.error)}</ErrorText>;
   if (q.data === undefined) return <Loading />;
   const v = q.data;
@@ -42,16 +56,50 @@ export function LoanPage() {
         over={`HOME LOAN${lo.rate_bp != null ? ` · ${(lo.rate_bp / 100).toFixed(2)}%` : ""}${goal ? ` · GOAL ${monthYear(goal).toUpperCase()}` : ""}`}
         title="Loan and offset"
         actions={
-          <Segmented
-            label="Pace"
-            options={[
-              { value: "recent", label: "Recent pace" },
-              { value: "planned", label: "Planned saving" },
-            ]}
-            value={mode}
-            onChange={setMode}
-          />
+          <span className="flex flex-wrap items-center gap-2">
+            <Button onClick={() => setRateOpen(true)}>Rate changed?</Button>
+            <Segmented
+              label="Pace"
+              options={[
+                { value: "recent", label: "Recent pace" },
+                { value: "planned", label: "Planned saving" },
+              ]}
+              value={mode}
+              onChange={setMode}
+            />
+          </span>
         }
+      />
+      {spotted && (
+        <Banner
+          g={I.loan}
+          tone="loan"
+          title={`The rate changed to ${(spotted.value / 100).toFixed(2)}%`}
+          action={
+            <span className="flex gap-2">
+              <Button onClick={() => setSeen(true)}>Dismiss</Button>
+              <Button primary onClick={() => setRateOpen(true)}>
+                Check what changes
+              </Button>
+            </span>
+          }
+        >
+          Spotted in a statement from {monthYear(spotted.date)}
+          {spotted.was != null
+            ? `, ${spotted.value > spotted.was ? "up" : "down"} from ${(spotted.was / 100).toFixed(2)}%`
+            : ""}
+          .
+        </Banner>
+      )}
+      <RateChangeSheet
+        open={rateOpen || !!search.rate}
+        onClose={() => {
+          setRateOpen(false);
+          if (spotted) setSeen(true);
+          if (search.rate) navigate({ to: "/loan", search: {}, replace: true });
+        }}
+        v={v}
+        spotted={spotted}
       />
       <div className="grid grid-cols-[repeat(auto-fit,minmax(210px,1fr))] gap-4">
         <Fig

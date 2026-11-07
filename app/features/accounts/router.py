@@ -115,3 +115,29 @@ async def update_goal(svc: ServicesDep, goal_id: int, body: JsonBody):
 @router.delete("/goals/{goal_id}")
 async def remove_goal(svc: ServicesDep, goal_id: int):
     return {"removed": await run(svc.accounts.remove_goal, goal_id)}
+
+
+@router.post("/goals/{goal_id}/top_up")
+async def top_up_goal(svc: ServicesDep, goal_id: int, body: JsonBody):
+    """Add to what a goal has saved: {"amount": 10000}."""
+    try:
+        amount = int(body.get("amount"))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=422, detail="Enter how much.") from None
+    return await run(svc.accounts.top_up_goal, goal_id, amount)
+
+
+@router.post("/loan/rate")
+async def change_rate(svc: ServicesDep, body: JsonBody):
+    """The rate changed: {"rate_bp": 637, "repayment": 324000, "since": "2026-11-01"}. The repayment is optional."""
+    try:
+        rate_bp = int(body.get("rate_bp"))  # type: ignore[arg-type]
+        repayment = int(body["repayment"]) if body.get("repayment") not in (None, "") else None
+    except (TypeError, ValueError):
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=422, detail="Enter the new rate.") from None
+    since = str(body.get("since") or "")
+    return await run(svc.accounts.change_rate, rate_bp, repayment, since)
