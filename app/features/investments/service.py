@@ -92,8 +92,10 @@ class InvestmentsService:
     # -- funds and trades -------------------------------------------------------------------------
 
     def _funds(self, conn: sqlite3.Connection) -> list[dict[str, Any]]:
-        rows = conn.execute("SELECT id, ticker, name, grp, target FROM funds ORDER BY sort, id").fetchall()
-        return [{"id": r[0], "ticker": r[1], "name": r[2], "group": r[3], "target": r[4]} for r in rows]
+        rows = conn.execute("SELECT id, ticker, name, grp, target, fee_pct FROM funds ORDER BY sort, id").fetchall()
+        return [
+            {"id": r[0], "ticker": r[1], "name": r[2], "group": r[3], "target": r[4], "fee_pct": r[5]} for r in rows
+        ]
 
     def _trades(self, conn: sqlite3.Connection) -> dict[int, list[tuple[str, str, float, float, int]]]:
         out: dict[int, list[tuple[str, str, float, float, int]]] = {}
@@ -108,10 +110,12 @@ class InvestmentsService:
         with self.db.writing() as conn:
             was: dict[str, Any] = {}
             if fund_id is not None:
-                row = conn.execute("SELECT ticker, name, grp, target FROM funds WHERE id = ?", (fund_id,)).fetchone()
+                row = conn.execute(
+                    "SELECT ticker, name, grp, target, fee_pct FROM funds WHERE id = ?", (fund_id,)
+                ).fetchone()
                 if row is None:
                     raise LookupError("That fund has gone.")
-                was = dict(zip(("ticker", "name", "group", "target"), row, strict=True))
+                was = dict(zip(("ticker", "name", "group", "target", "fee_pct"), row, strict=True))
             body = {**was, **body}
             ticker = str(body.get("ticker") or "").strip().upper()[:12]
             if not ticker or not all(c.isalnum() or c == "." for c in ticker):
@@ -127,20 +131,27 @@ class InvestmentsService:
                 raise ValueError("The target is a share of the portfolio, like 0.5 for half.") from None
             if target is not None and not 0 <= target <= 1:
                 raise ValueError("The target is a share of the portfolio, between 0 and 1.")
+            fee = body.get("fee_pct")
+            try:
+                fee = None if fee in (None, "") else float(fee)
+            except (TypeError, ValueError):
+                raise ValueError("The management fee is a share a year, like 0.0007 for 0.07%.") from None
+            if fee is not None and not 0 <= fee <= 0.03:
+                raise ValueError("The management fee is between 0% and 3% a year.")
             taken = conn.execute("SELECT 1 FROM funds WHERE ticker = ? AND id != ?", (ticker, fund_id or 0)).fetchone()
             if taken:
                 raise ValueError(f"{ticker} is already here.")
             if fund_id is None:
                 cur = conn.execute(
-                    "INSERT INTO funds (ticker, name, grp, target, sort, created_at) VALUES (?, ?, ?, ?,"
+                    "INSERT INTO funds (ticker, name, grp, target, fee_pct, sort, created_at) VALUES (?, ?, ?, ?, ?,"
                     " (SELECT COALESCE(MAX(sort), 0) + 1 FROM funds), ?)",
-                    (ticker, name, group, target, int(time.time())),
+                    (ticker, name, group, target, fee, int(time.time())),
                 )
                 fund_id = int(cur.lastrowid or 0)
             else:
                 conn.execute(
-                    "UPDATE funds SET ticker = ?, name = ?, grp = ?, target = ? WHERE id = ?",
-                    (ticker, name, group, target, fund_id),
+                    "UPDATE funds SET ticker = ?, name = ?, grp = ?, target = ?, fee_pct = ? WHERE id = ?",
+                    (ticker, name, group, target, fee, fund_id),
                 )
         return next(f for f in self.overview()["funds"] if f["id"] == fund_id)
 

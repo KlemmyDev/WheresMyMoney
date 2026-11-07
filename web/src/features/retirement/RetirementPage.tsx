@@ -4,6 +4,7 @@
  * An estimate to plan with, not advice.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { apiSend, errorMessage } from "~/features/common/api";
 import { Loading } from "~/features/common/brand";
@@ -22,7 +23,10 @@ import {
 } from "~/features/common/queries";
 import { ScrubChart } from "~/features/common/ScrubChart";
 import { Button, ErrorText, Input, PageHead, Pill, Switch } from "~/features/common/ui";
-import { earliest, project, type Inputs } from "~/features/retirement/model";
+import { assumptionsOf, etfFeeOf } from "~/features/retirement/Assumptions";
+import { earliest, fundTerms, project, type Inputs } from "~/features/retirement/model";
+
+const pct = (f: number, dp = 2) => `${(f * 100).toFixed(dp).replace(/\.?0+$/, "")}%`;
 
 const AVATARS = [
   "linear-gradient(135deg, #8b7bff, #f472b6)",
@@ -67,6 +71,7 @@ export function RetirementPage() {
           r={r}
           etfs={inv.data?.total ?? 0}
           etfPerYear={etfPace(inv.data?.trades ?? [])}
+          etfFee={etfFeeOf(inv.data?.funds, r.settings.etf_fee)}
           loanEnds={loan.data ? Number((loan.data.recent.date ?? "").slice(0, 4)) || null : null}
           loanRepayment={(loan.data?.loan.repayment ?? 0) * 12}
           goals={accounts.data?.goals ?? []}
@@ -93,6 +98,7 @@ function Plan({
   r,
   etfs,
   etfPerYear,
+  etfFee,
   loanEnds,
   loanRepayment,
   goals,
@@ -101,6 +107,7 @@ function Plan({
   r: RetirementData;
   etfs: number;
   etfPerYear: number;
+  etfFee: number;
   loanEnds: number | null;
   loanRepayment: number;
   goals: { name: string; by_date: string | null }[];
@@ -125,7 +132,15 @@ function Plan({
   const people = data.people;
   const lead = people[0];
   const inputs: Inputs = {
-    people: people.map((p) => ({ age: p.age, balance: p.balance, salary: p.salary, rate: p.rate })),
+    ...assumptionsOf(s, etfFee),
+    people: people.map((p) => ({
+      age: p.age,
+      balance: p.balance,
+      salary: p.salary,
+      rate: p.rate,
+      fees: p.fees,
+      options: p.options,
+    })),
     etfs,
     etfPerYear,
     loanRepaymentYear: loanRepayment,
@@ -135,7 +150,6 @@ function Plan({
     spending: s.spending,
     extraMonth: s.extra,
     countEtfs: s.count_etfs,
-    growth: s.growth,
     planTo: s.plan_to,
     preservation: data.preservation,
   };
@@ -384,10 +398,36 @@ function Plan({
       </Card>
 
       <Card aria-labelledby="rt-assume" className="flex flex-col gap-1 md:col-span-5">
-        <CardHead id="rt-assume" title="What the estimate assumes" />
+        <CardHead
+          id="rt-assume"
+          title="What the estimate assumes"
+          right={
+            <Link
+              to="/settings"
+              search={{ section: "retirement" }}
+              className="text-[13px] font-semibold text-teal no-underline"
+            >
+              Change in Settings
+            </Link>
+          }
+        />
+        <p className="m-0 -mt-1 text-[12px] text-ink-3">A year. The right-hand figure is after fees and inflation.</p>
         {[
-          ["Growth after fees and inflation", "Balanced funds, long run", `${(s.growth * 100).toFixed(1)}%`],
-          ["Tax on money going in", "Employer and extra contributions", "15%"],
+          ...people.map((p) => {
+            const t = fundTerms(p, inputs);
+            return [
+              `${p.person}'s super${p.fund ? `, ${p.fund}` : ""}`,
+              `${pct(t.ret)} before fees · ${pct(t.pct)} + ${money(t.fixed)} a year in fees`,
+              `${pct(t.real, 1)}`,
+            ];
+          }),
+          [
+            "ETFs",
+            `${pct(inputs.etfReturn)} before fees · ${pct(etfFee)} in fees`,
+            pct((1 + inputs.etfReturn - etfFee) / (1 + inputs.inflation) - 1, 1),
+          ],
+          ["Inflation", "Taken out, so it's all in today's dollars", pct(inputs.inflation)],
+          ["Tax on money going in", "Employer and extra contributions", pct(inputs.contribTax)],
           ["Into ETFs while working", "Your pace over the last year", `${k(etfPerYear)}/yr`],
           ["Loan repayments until gone", "From Loan and offset", loanEnds ? `${k(loanRepayment)}/yr` : "No loan"],
           ["Plan to", "How long the money should last", `Age ${s.plan_to}`],
@@ -519,6 +559,16 @@ function PersonForm({ p, onClose }: { p: SuperAccount | null; onClose: () => voi
           <Input inputMode="decimal" value={rate} onChange={(e) => setRate(e.target.value.replace(/[^0-9.]/g, ""))} />
         </label>
       </div>
+      {p && (
+        <Link
+          to="/settings"
+          search={{ section: "retirement" }}
+          onClick={onClose}
+          className="text-[13px] font-semibold text-teal no-underline"
+        >
+          Fees and how it's invested are in Settings → Retirement
+        </Link>
+      )}
       {(save.isError || remove.isError) && <ErrorText>{errorMessage(save.error ?? remove.error)}</ErrorText>}
       <div className="flex gap-2">
         {p && (

@@ -185,6 +185,7 @@ export type Fund = {
   group: string;
   group_name: string;
   target: number | null;
+  fee_pct: number | null;
   units: number;
   price: number | null;
   price_date: string | null;
@@ -254,6 +255,8 @@ export type SuperAccount = {
   salary: number;
   rate: number;
   opens: number;
+  fees: { name: string; kind: "pct" | "fixed"; amount: number }[];
+  options: { name: string; share: number; return_pct: number | null; fee_pct: number }[];
 };
 
 export type RetirementSettings = {
@@ -261,8 +264,12 @@ export type RetirementSettings = {
   spending: number;
   extra: number;
   count_etfs: boolean;
-  growth: number;
   plan_to: number;
+  super_return: number;
+  etf_return: number;
+  etf_fee: number;
+  inflation: number;
+  contrib_tax: number;
 };
 
 export type RetirementData = {

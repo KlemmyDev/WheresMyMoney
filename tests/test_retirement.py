@@ -50,3 +50,30 @@ def test_spending_now_leaves_out_transfers_the_loan_and_paid_back(client: TestCl
     )
     ok(client.put(f"/api/transactions/{paid['id']}", json={"excluded": True}))
     assert ok(client.get("/api/retirement"))["spending_now"] == before + dollars(100)
+
+
+def test_assumptions_fees_and_options(client: TestClient) -> None:
+    s = ok(client.put("/api/retirement/settings", json={"super_return": 0.085, "inflation": 0.025, "etf_fee": 0.0007}))
+    assert s["super_return"] == 0.085 and s["inflation"] == 0.025 and s["etf_fee"] == 0.0007
+    r = client.put("/api/retirement/settings", json={"super_return": 7})  # 700%: meant 7%
+    assert r.status_code == 422 and "super return" in r.text
+    p = ok(client.post("/api/retirement/people", json={"person": "Sam", "born": 1990, "balance": dollars(73800)}))
+    assert [f["name"] for f in p["fees"]] == ["Admin fee", "Admin fee (on the balance)", "Investment fee"]
+    fees = [
+        {"name": "Admin fee", "kind": "fixed", "amount": 5200},
+        {"name": "Insurance", "kind": "fixed", "amount": 31200},
+        {"name": "Admin fee (on the balance)", "kind": "pct", "amount": 0.001},
+    ]
+    options = [
+        {"name": "High Growth", "share": 0.7, "return_pct": 0.085, "fee_pct": 0.0056},
+        {"name": "Balanced", "share": 0.3, "fee_pct": 0.0051},
+    ]
+    p = ok(client.put(f"/api/retirement/people/{p['id']}", json={"fees": fees, "options": options}))
+    assert p["fees"] == fees and p["options"][1]["return_pct"] is None
+    p = ok(client.put(f"/api/retirement/people/{p['id']}", json={"balance": dollars(80000)}))
+    assert p["fees"] == fees  # kept
+    bad = [{**options[0], "share": 0.5}, options[1]]
+    r = client.put(f"/api/retirement/people/{p['id']}", json={"options": bad})
+    assert r.status_code == 422 and "100%" in r.text
+    r = client.put(f"/api/retirement/people/{p['id']}", json={"fees": [{"name": "X", "kind": "pct", "amount": 0.2}]})
+    assert r.status_code == 422
