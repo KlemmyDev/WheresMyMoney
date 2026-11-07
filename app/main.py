@@ -99,10 +99,12 @@ def create_app(config: Config | None = None, *, serve_web: bool = True) -> FastA
             await services.updates.start()  # asks GitHub for a newer version every few hours, unless turned off
             await services.notifications.start()  # check-in reminders and alerts
             await services.backups.start()  # a backup each night at 3am
-            await services.investments.start()  # fund prices, once a day after the market shuts
+            if not config.demo:  # the demo's made-up prices stay as they are (Look up prices still works)
+                await services.investments.start()  # fund prices, once a day after the market shuts
         yield
         if config.background:
-            await services.investments.stop()
+            if not config.demo:
+                await services.investments.stop()
             await services.backups.stop()
             await services.notifications.stop()
             await services.updates.stop()
