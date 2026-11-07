@@ -77,8 +77,9 @@ export function ActivityChart({
   const pickedAt = picked ? bs.findIndex((b) => b.start === picked.start && b.end === picked.end) : -1;
   const sel = hover ?? (pickedAt >= 0 ? pickedAt : n - 1);
   const c = colour(account.colour);
-  const upC = loan ? "var(--color-warn)" : "var(--color-good)";
-  const downC = loan ? "var(--color-teal)" : "var(--color-out)";
+  // Money in is the savings green (striped), money out the spending pink; on the loan, owing more is the warning.
+  const upC = loan ? "var(--color-bills-fill)" : "var(--color-savings-fill)";
+  const downC = loan ? "var(--color-accent-fill)" : "var(--color-spending-fill)";
   const words = {
     line: loan ? "Owed" : "Balance",
     up: loan ? "Interest added" : "Money in",
@@ -219,11 +220,11 @@ export function ActivityChart({
                       <div key={bk.start} className="relative h-full flex-1">
                         {bk.in > 0 && (
                           <i
-                            className="absolute inset-x-0 bottom-[66px] block grow rounded-t-[3px] transition-[filter] duration-150"
+                            className="striped absolute inset-x-0 bottom-[66px] block grow rounded-t-[5px] transition-[filter] duration-150"
                             style={
                               {
                                 height: Math.max(2, (bk.in / topIn) * 62),
-                                background: upC,
+                                backgroundColor: upC,
                                 filter: on ? "brightness(1.25)" : undefined,
                                 "--i": Math.min(i, 8),
                               } as CSSProperties
@@ -232,11 +233,11 @@ export function ActivityChart({
                         )}
                         {bk.out > 0 && (
                           <i
-                            className="grow-down absolute inset-x-0 top-[67px] block rounded-b-[3px] transition-[filter] duration-150"
+                            className="striped grow-down absolute inset-x-0 top-[67px] block rounded-b-[5px] transition-[filter] duration-150"
                             style={
                               {
                                 height: Math.max(2, (bk.out / topOut) * 62),
-                                background: downC,
+                                backgroundColor: downC,
                                 filter: on ? "brightness(1.35)" : undefined,
                                 "--i": Math.min(i, 8),
                               } as CSSProperties

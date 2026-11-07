@@ -9,6 +9,7 @@
  * the charts stay right, or today, for a one-off that can't be found.
  */
 import { Loading } from "~/features/common/brand";
+import { Chip, I, type Glyph, type Tone } from "~/features/common/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState, type CSSProperties } from "react";
@@ -163,13 +164,17 @@ function Readouts({ data }: { data: AccountsOverview }) {
       <Tile
         i={0}
         aria-labelledby="ac-off"
-        className="border-teal/35 bg-[linear-gradient(160deg,color-mix(in_srgb,var(--color-accent-fill)_14%,transparent),color-mix(in_srgb,var(--color-accent-fill)_3%,transparent)_60%),var(--color-tile)]"
+        className="lit"
+        style={{
+          background:
+            "radial-gradient(420px 260px at 0% 0%, color-mix(in srgb, var(--color-accent-fill) 18%, transparent), transparent 70%), var(--color-tile)",
+        }}
       >
         <div className="flex items-center gap-2 text-[13px] text-ink-2">
           <span aria-hidden className="pulse-ring size-2 rounded-full bg-teal" />
           <span id="ac-off">{loan ? "Offsetting the loan" : "In your accounts"}</span>
         </div>
-        <div className="mono text-[40px] leading-tight font-semibold">
+        <div className="mono text-[40px] leading-[46px] font-semibold tracking-[-0.045em] sm:text-[48px] sm:leading-[54px]">
           <Count k="acct:off" value={loan ? data.offsetting : data.total} format={(v) => money(v)} />
         </div>
         <div className="text-[12.5px] text-ink-3">
@@ -185,7 +190,9 @@ function Readouts({ data }: { data: AccountsOverview }) {
         >
           Last 30 days
         </TileTitle>
-        <div className="mono text-[30px] font-semibold">{money(moved, { sign: true })}</div>
+        <div className="mono text-[34px] leading-10 font-semibold tracking-[-0.04em]">
+          {money(moved, { sign: true })}
+        </div>
         <div
           className="flex h-2 gap-0.5 overflow-hidden rounded-full"
           role="img"
@@ -198,7 +205,7 @@ function Readouts({ data }: { data: AccountsOverview }) {
               style={
                 {
                   flex: `${Math.abs(a.change_30d)} 1 0`,
-                  background: a.change_30d >= 0 ? colour(a.colour) : "var(--color-out)",
+                  backgroundColor: a.change_30d >= 0 ? colour(a.colour) : "var(--color-out)",
                   "--i": i,
                 } as CSSProperties
               }
@@ -222,7 +229,7 @@ function Readouts({ data }: { data: AccountsOverview }) {
             Interest it saves
           </TileTitle>
           <div className="flex items-baseline gap-2">
-            <span className="mono text-[30px] font-semibold">
+            <span className="mono text-[34px] leading-10 font-semibold tracking-[-0.04em]">
               <Count k="acct:int" value={perDay} format={(v) => money(v, { cents: true })} />
             </span>
             <span className="text-[13px] text-ink-3">a day</span>
@@ -275,46 +282,100 @@ function AccountCard({
   const loan = a.kind === "loan";
   const j = job(a, offsetting);
   const better = loan ? a.change_30d <= 0 : a.change_30d >= 0;
-  const c = colour(a.colour);
+  const role = loan ? "loan" : a.role;
+  const c = loan ? "var(--color-bad)" : ROLE_FILL[a.role];
+  // The spending account is the one with cards, so it wears the card art.
+  const art = !loan && a.role === "spending";
   return (
     <button
       type="button"
       aria-pressed={on}
       onClick={onPick}
       className={cn(
-        "press rise flex w-full cursor-pointer flex-col gap-2.5 rounded-tile border bg-tile p-4 text-left text-ink transition-[border-color,box-shadow,transform,background-color] duration-200 hover:-translate-y-0.5",
+        "chip-host press rise relative flex min-h-[176px] w-full cursor-pointer flex-col gap-2 overflow-hidden rounded-[22px] border p-[18px] text-left transition-[box-shadow,transform] duration-200 hover:-translate-y-0.5",
+        art ? "border-transparent text-white" : "text-ink",
         loan && "border-dashed",
-        on
-          ? "border-[var(--c)] bg-tile-2 shadow-[0_0_0_3px_color-mix(in_srgb,var(--c)_16%,transparent)]"
-          : loan
-            ? "border-line-2"
-            : "border-line",
       )}
-      style={{ "--i": i + 3, "--c": c } as CSSProperties}
+      style={
+        {
+          "--i": i + 3,
+          "--c": c,
+          borderColor: art ? "transparent" : `color-mix(in srgb, ${c} 35%, var(--color-line))`,
+          background: art
+            ? "var(--card-art)"
+            : `linear-gradient(160deg, color-mix(in srgb, ${c} 16%, var(--color-tile)) 0%, var(--color-tile) 72%)`,
+          boxShadow: on
+            ? `0 0 0 2px ${c}, 0 18px 40px -18px ${c}`
+            : art
+              ? "0 18px 40px -20px var(--color-spending-fill)"
+              : undefined,
+        } as CSSProperties
+      }
     >
-      <span className="flex w-full items-center gap-2">
-        <i className="size-2.5 flex-none rounded-[3px]" style={{ background: c }} />
-        <b className="min-w-0 truncate text-sm font-semibold">{a.name}</b>
-        <span className="mono ml-auto rounded-full bg-raised px-2 py-0.5 text-[10.5px] font-semibold tracking-[0.05em] whitespace-nowrap text-ink-2">
+      <span className="flex w-full items-center gap-2.5">
+        <Chip
+          g={ROLE_GLYPH[role]}
+          tone={art ? "" : ROLE_TONE[role]}
+          size="md"
+          className={art ? "!bg-white/20 !text-white" : ""}
+        />
+        <b className="min-w-0 flex-1 truncate text-[15px] font-semibold">{a.name}</b>
+        <span
+          className={cn(
+            "rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap",
+            art ? "bg-white/20" : "bg-raised text-ink-2",
+          )}
+        >
           {roleBadge(a, goals)}
         </span>
       </span>
-      <span className="flex w-full items-baseline gap-2">
-        <span className="mono text-[22px] font-semibold">{loan ? money(-a.balance) : money(a.balance)}</span>
-        <span className={cn("mono ml-auto text-xs whitespace-nowrap", better ? "text-good" : "text-ink-3")}>
-          {money(a.change_30d, { sign: true })} 30D
+      <span className="mt-auto flex w-full items-baseline gap-2">
+        <span className="mono text-[28px] leading-8 font-semibold tracking-[-0.035em]">
+          {loan ? money(-a.balance) : money(a.balance)}
+        </span>
+        <span
+          className={cn(
+            "mono ml-auto text-xs whitespace-nowrap",
+            art ? "text-white/85" : better ? "text-good" : "text-ink-3",
+          )}
+        >
+          {money(a.change_30d, { sign: true })} 30d
         </span>
       </span>
-      <span className="block h-1.5 w-full overflow-hidden rounded-full bg-raised">
+      <span className={cn("block h-1.5 w-full overflow-hidden rounded-full", art ? "bg-white/25" : "bg-raised")}>
         <i
-          className="grow-x block h-full rounded-full"
-          style={{ width: `${Math.min(Math.max(j.share, 0), 1) * 100}%`, background: c }}
+          className="striped grow-x block h-full rounded-full"
+          style={{ width: `${Math.min(Math.max(j.share, 0), 1) * 100}%`, backgroundColor: art ? "#fff" : c }}
         />
       </span>
-      <span className="w-full truncate text-xs text-ink-3">{j.text}</span>
+      <span className={cn("w-full truncate text-[12.5px]", art ? "text-white/85" : "text-ink-3")}>{j.text}</span>
     </button>
   );
 }
+
+const ROLE_FILL: Record<string, string> = {
+  offset: "var(--color-offset-fill)",
+  bills: "var(--color-bills-fill)",
+  spending: "var(--color-spending-fill)",
+  savings: "var(--color-savings-fill)",
+  track: "var(--color-ink-3)",
+};
+const ROLE_TONE: Record<string, Tone> = {
+  offset: "offset",
+  bills: "bills",
+  spending: "spending",
+  savings: "savings",
+  track: "neutral",
+  loan: "loan",
+};
+const ROLE_GLYPH: Record<string, Glyph> = {
+  offset: I.offset,
+  bills: I.bills,
+  spending: I.accounts,
+  savings: I.savings,
+  track: I.list,
+  loan: I.loan,
+};
 
 function Detail({ account, goals }: { account: Account; goals: Goal[] }) {
   const qc = useQueryClient();

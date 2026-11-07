@@ -264,13 +264,13 @@ export function FlowBars({
               style={{ opacity: m.partial ? 0.55 : 1 }}
             >
               <div
-                className="w-[min(30px,4vw)] grow rounded-t-sm bg-teal"
+                className="striped w-[min(30px,4vw)] grow rounded-t-md bg-savings-fill"
                 style={
                   { height: `${(m.in / ticks[ticks.length - 1]) * 100}%`, ["--i" as string]: i * 2 } as CSSProperties
                 }
               />
               <div
-                className="w-[min(30px,4vw)] grow rounded-t-sm bg-out"
+                className="w-[min(30px,4vw)] grow rounded-t-md bg-raised shadow-[inset_0_0_0_1px_var(--color-line-2)]"
                 style={
                   {
                     height: `${(m.out / ticks[ticks.length - 1]) * 100}%`,
