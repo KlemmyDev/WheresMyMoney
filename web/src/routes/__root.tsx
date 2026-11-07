@@ -62,7 +62,7 @@ function RootDocument({ children }: { children: ReactNode }) {
 }
 
 /**
- * No pinch-to-zoom: it should feel like an app on a phone. The viewport meta asks browsers not to zoom, but Safari on
+ * No pinch-to-zoom and no long-press menus: it should feel like an app on a phone. The viewport meta asks browsers not to zoom, but Safari on
  * iPhone ignores that for pinches, so its gesture events are turned down too. (Double-tap zoom is off through
  * touch-action in app.css.)
  */
@@ -70,6 +70,13 @@ function useNoPinchZoom() {
   useEffect(() => {
     const stop = (e: Event) => e.preventDefault();
     const pinch = (e: TouchEvent) => e.touches.length > 1 && e.preventDefault();
+    // A long press on a touch screen opens no browser menu (copy link, open in new tab), except in text fields.
+    const coarse = window.matchMedia("(pointer: coarse)");
+    const menu = (e: Event) => {
+      const el = e.target as HTMLElement | null;
+      if (coarse.matches && !el?.closest("input, textarea, [contenteditable='true'], .selectable")) e.preventDefault();
+    };
+    document.addEventListener("contextmenu", menu);
     document.addEventListener("gesturestart", stop);
     document.addEventListener("gesturechange", stop);
     document.addEventListener("touchmove", pinch, { passive: false });
@@ -77,6 +84,7 @@ function useNoPinchZoom() {
       document.removeEventListener("gesturestart", stop);
       document.removeEventListener("gesturechange", stop);
       document.removeEventListener("touchmove", pinch);
+      document.removeEventListener("contextmenu", menu);
     };
   }, []);
 }

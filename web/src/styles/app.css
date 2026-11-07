@@ -760,3 +760,33 @@ body {
   background: #fff;
   border: 0;
 }
+
+/*
+ * Feel like an app, not a web page: no grey flash on tap, no text-selection handles or link callouts on a long press,
+ * no dragging images, and no rubber-band pull at the edges. Text you type (and anything marked .selectable) can still
+ * be selected.
+ */
+html {
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+img,
+svg {
+  -webkit-user-drag: none;
+}
+@media (hover: none) and (pointer: coarse) {
+  body {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  input,
+  textarea,
+  select,
+  [contenteditable="true"],
+  .selectable {
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
+  }
+}
