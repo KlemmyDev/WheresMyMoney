@@ -1,0 +1,33 @@
+/* Step-by-step flows (common/steps.tsx): the next step slides in from the side you're heading. */
+@keyframes step-fwd {
+  from {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes step-back {
+  from {
+    opacity: 0;
+    transform: translateX(-28px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.step-fwd {
+  animation: step-fwd 320ms var(--ease-enter) both;
+}
+.step-back {
+  animation: step-back 320ms var(--ease-enter) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .step-fwd,
+  .step-back {
+    animation: fade 240ms linear both;
+  }
+}

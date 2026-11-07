@@ -7,6 +7,7 @@
  * own mask id, as the page can show more than one.
  */
 import { useId, type CSSProperties } from "react";
+import { cn } from "~/features/common/ui";
 
 const PATH = "M13 23L22.5 42L32 27L41.5 42L48 27";
 
@@ -52,11 +53,19 @@ export function Mark({ size = 28, draw = false, light = false }: { size?: number
 }
 
 /** The mark with the wordmark, which is live text in Sora SemiBold (the interface itself stays in IBM Plex). */
-export function Logo({ size = 28 }: { size?: number }) {
+export function Logo({ size = 28, compact = false }: { size?: number; compact?: boolean }) {
   return (
     <span className="flex items-center gap-2">
       <Mark size={size} />
-      <span className="font-brand text-base font-semibold tracking-[-0.02em] text-ink">WheresMyMoney</span>
+      {/* `compact` (the header): just the mark until there's room for the name beside the tabs. */}
+      <span
+        className={cn(
+          "font-brand text-[15px] font-semibold tracking-[-0.02em] whitespace-nowrap text-ink",
+          compact && "sm:hidden md:inline",
+        )}
+      >
+        WheresMyMoney
+      </span>
     </span>
   );
 }
