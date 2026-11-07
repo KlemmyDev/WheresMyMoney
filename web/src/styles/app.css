@@ -71,6 +71,8 @@
 html {
   color-scheme: dark;
   background: var(--color-page);
+  /* No double-tap zoom (and no pinch zoom where browsers honour it): see useNoPinchZoom in routes/__root.tsx. */
+  touch-action: pan-x pan-y;
 }
 
 body {

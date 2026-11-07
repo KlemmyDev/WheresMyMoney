@@ -1,6 +1,6 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createRootRouteWithContext, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import appCss from "~/styles/app.css?url";
 import { ToastProvider } from "~/features/common/overlay";
 import type { RouterContext } from "~/router";
@@ -9,7 +9,10 @@ export const Route = createRootRouteWithContext<RouterContext>()({
   head: () => ({
     meta: [
       { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
+      {
+        name: "viewport",
+        content: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+      },
       { title: "WheresMyMoney" },
       { name: "theme-color", content: "#0d1117" },
       { name: "color-scheme", content: "dark" },
@@ -31,6 +34,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 
 function Root() {
   const { queryClient } = Route.useRouteContext();
+  useNoPinchZoom();
   return (
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
@@ -52,4 +56,24 @@ function RootDocument({ children }: { children: ReactNode }) {
       </body>
     </html>
   );
+}
+
+/**
+ * No pinch-to-zoom: it should feel like an app on a phone. The viewport meta asks browsers not to zoom, but Safari on
+ * iPhone ignores that for pinches, so its gesture events are turned down too. (Double-tap zoom is off through
+ * touch-action in app.css.)
+ */
+function useNoPinchZoom() {
+  useEffect(() => {
+    const stop = (e: Event) => e.preventDefault();
+    const pinch = (e: TouchEvent) => e.touches.length > 1 && e.preventDefault();
+    document.addEventListener("gesturestart", stop);
+    document.addEventListener("gesturechange", stop);
+    document.addEventListener("touchmove", pinch, { passive: false });
+    return () => {
+      document.removeEventListener("gesturestart", stop);
+      document.removeEventListener("gesturechange", stop);
+      document.removeEventListener("touchmove", pinch);
+    };
+  }, []);
 }
