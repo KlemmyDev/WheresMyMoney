@@ -86,6 +86,8 @@ export type Transaction = {
   merchant_name: string;
   /** The household's note about the merchant ("car insurance for the Mazda"). */
   merchant_note: string;
+  /** Its statement line doesn't say who was paid (BPAY): its merchant is chosen payment by payment. */
+  merchant_unnamed: boolean;
   splits: { category_id: number; category: string | null; amount: number }[];
 };
 
@@ -162,6 +164,9 @@ export type MerchantSummary = {
   /** How many statement names belong to it. */
   names: number;
   note: string;
+  /** Its own sorting: the default category's name, if one is set, and how many amount rules it has. */
+  default_category: string | null;
+  rules: number;
 };
 
 export type MerchantDetail = {
@@ -185,7 +190,12 @@ export type MerchantDetail = {
   category: string | null;
   months: { month: string; spent: number }[];
   /** Statement names that belong to it; `mapped` when the household put it here. */
-  names: { text: string; count: number; last: string; transaction_id: number; mapped: boolean }[];
+  /** `unnamed`: a BPAY line, which is placed payment by payment rather than moved as a whole. */
+  names: { text: string; count: number; last: string; transaction_id: number; mapped: boolean; unnamed: boolean }[];
+  /** BPAY payments put here by their amount (cents). */
+  amounts: { text: string; amount: number }[];
+  /** The catch-all for BPAY payments nobody has named yet. */
+  unnamed: boolean;
   transactions: Transaction[];
 };
 

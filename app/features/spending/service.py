@@ -395,7 +395,9 @@ class SpendingService:
                 "remember_as": merchants.learn_pattern(r[16], None, None, r[4]) if r[16] else "",
                 "category_by": r[17],
                 # The merchant it belongs to (its own, or the one the household mapped its statement name to).
-                "merchant_key": (key := book.key(r[16], r[4])) if r[16] else "",
+                "merchant_key": (key := book.key(r[16], r[4], r[3], r[0], r[11])) if r[16] else "",
+                # A statement line that doesn't say who was paid (BPAY): its merchant is set payment by payment.
+                "merchant_unnamed": directory.is_unnamed(r[16] or ""),
                 "merchant_name": book.name(key) if r[16] else "",
                 "merchant_note": noted.get(key, "") if r[16] else "",
                 "excluded": bool(r[18]),
@@ -469,6 +471,12 @@ class SpendingService:
 
     def assign_merchant(self, body: dict[str, Any]) -> dict[str, Any]:
         with self.db.writing() as conn:
+            if body.get("transaction_id") is not None and body.get("scope") in ("this", "amount"):
+                try:
+                    tx_id = int(body["transaction_id"])
+                except (TypeError, ValueError):
+                    raise ValueError("Which transaction?") from None
+                return directory.assign_payment(conn, tx_id, str(body["scope"]), body.get("key"), body.get("name"))
             return directory.assign(conn, str(body.get("text") or ""), body.get("key"), body.get("name"))
 
     def merge_merchants(self, body: dict[str, Any]) -> dict[str, Any]:
@@ -482,9 +490,9 @@ class SpendingService:
         with self.db.writing() as conn:
             return directory.save_settings(conn, key, body)
 
-    def forget_merchant(self, text: str) -> dict[str, Any]:
+    def forget_merchant(self, text: str, amount: Any = None) -> dict[str, Any]:
         with self.db.writing() as conn:
-            return directory.forget(conn, text)
+            return directory.forget(conn, text, int(amount) if amount not in (None, "") else None)
 
     def rename_merchant(self, key: str, name: str) -> dict[str, Any]:
         with self.db.writing() as conn:

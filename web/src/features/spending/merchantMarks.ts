@@ -335,6 +335,9 @@ export const MARKS: Record<string, Mark> = {
   "DAN MURPHYS": { bg: "#0f4c2e", art: [word("DM", "#f2e6c9", 10, 19.6, 700)] },
   BWS: { bg: "#e4002b", art: [word("BWS", W, 9)] },
   LIQUORLAND: { bg: "#c8102e", art: [{ d: "M14 8h4v4l2 3v9h-8v-9l2-3z", fill: W }] },
+  // -- Payments that don't say who to
+  BPAY: { bg: "#1d2f6f", art: [{ d: "M7 10h18v12H7z", fill: "#5a3bd6" }, word("BPAY", W, 6.4, 18.3)] },
+  "INTERNET BPAY": { bg: "#1d2f6f", art: [{ d: "M7 10h18v12H7z", fill: "#5a3bd6" }, word("BPAY", W, 6.4, 18.3)] },
   // -- Subscriptions, games and online
   NETFLIX: { bg: "#000000", art: [{ d: "M10.5 7h3.8l3.4 9.5V7h3.8v18h-3.8l-3.4-9.5V25h-3.8z", fill: "#e50914" }] },
   SPOTIFY: {

@@ -50,20 +50,64 @@ def auto_key(merchant_text: str, description: str = "") -> str:
     return " ".join(merchant_text.split()[: merchants.WORDS])
 
 
+# Statement names that don't say who was paid: every BPAY looks the same on a uBank statement.
+_UNNAMED = re.compile(r"^(?:(?:INTERNET|MOBILE|ONLINE|APP)\s+)?BPAY(?:\s+(?:PAYMENT|PMT|TRANSFER))?$")
+UNNAMED_KEY = "BPAY"
+UNNAMED_NAME = "BPAY (who to?)"
+
+
+def is_unnamed(merchant_text: str) -> bool:
+    return bool(_UNNAMED.match(" ".join((merchant_text or "").upper().split())))
+
+
 class Book:
     """The household's merchant mappings and names, read once."""
 
     def __init__(self, conn: sqlite3.Connection):
         self.aliases: dict[str, str] = dict(conn.execute("SELECT text, key FROM merchant_aliases").fetchall())
         self.names: dict[str, str] = dict(conn.execute("SELECT key, name FROM merchant_names").fetchall())
+        self.by_amount: dict[tuple[str, int], str] = {
+            (t, a): k for t, a, k in conn.execute("SELECT text, amount, key FROM merchant_amount_aliases").fetchall()
+        }
+        self.overrides: dict[int, str] = dict(
+            conn.execute(
+                "SELECT id, merchant_override FROM transactions WHERE merchant_override IS NOT NULL"
+            ).fetchall()
+        )
+        # A bill paid by BPAY is the bill's merchant: its name, as a key.
+        self.bills: dict[int, str] = {}
+        self.bill_names: dict[str, str] = {}
+        for bill_id, name in conn.execute("SELECT id, name FROM bills").fetchall():
+            k = key_of(name)
+            if k:
+                self.bills[bill_id] = k
+                self.bill_names.setdefault(k, name)
 
-    def key(self, merchant_text: str, description: str = "") -> str:
+    def key(
+        self,
+        merchant_text: str,
+        description: str = "",
+        amount: int = 0,
+        tx_id: int | None = None,
+        bill_id: int | None = None,
+    ) -> str:
+        if tx_id is not None and tx_id in self.overrides:
+            return self.overrides[tx_id]
         if not merchant_text:
             return ""
+        if is_unnamed(merchant_text):
+            return (
+                self.by_amount.get((merchant_text, abs(amount)))
+                or (self.bills.get(bill_id) if bill_id is not None else None)
+                or self.aliases.get(merchant_text)
+                or UNNAMED_KEY
+            )
         return self.aliases.get(merchant_text) or auto_key(merchant_text, description)
 
     def name(self, key: str) -> str:
-        return self.names.get(key) or pretty(key)
+        if key == UNNAMED_KEY and key not in self.names:
+            return UNNAMED_NAME
+        return self.names.get(key) or self.bill_names.get(key) or pretty(key)
 
 
 def _month(d: str) -> str:
@@ -83,7 +127,7 @@ def _months_back(today: dt.date, n: int) -> list[str]:
 
 # Money out at a shop: not transfers between our accounts, money in, balance fixes or uBank's automatic rules.
 _SPENDING = (
-    "SELECT t.id, t.merchant, t.description, t.amount, t.date, c.name FROM transactions t"
+    "SELECT t.id, t.merchant, t.description, t.amount, t.date, c.name, t.bill_id FROM transactions t"
     " LEFT JOIN categories c ON c.id = t.category_id WHERE t.kind != 'adjustment' AND t.rule_id IS NULL"
     " AND COALESCE(c.kind, 'spending') IN ('spending', 'bills') AND t.merchant != ''"
 )
@@ -91,8 +135,8 @@ _SPENDING = (
 
 def _gather(conn: sqlite3.Connection, book: Book) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
-    for tx_id, text, description, amount, day, category in conn.execute(_SPENDING).fetchall():
-        key = book.key(text, description)
+    for tx_id, text, description, amount, day, category, bill_id in conn.execute(_SPENDING).fetchall():
+        key = book.key(text, description, amount, tx_id, bill_id)
         g = out.setdefault(
             key,
             {"key": key, "spent": 0, "count": 0, "first": day, "last": day, "by_month": {}, "cats": {}, "texts": {}},
@@ -116,6 +160,11 @@ def directory(conn: sqlite3.Connection, today: dt.date) -> list[dict[str, Any]]:
     """Every merchant with money out, the most spent at over the last year first."""
     book = Book(conn)
     noted = notes(conn)
+    cat_names = dict(conn.execute("SELECT id, name FROM categories").fetchall())
+    defaults = {
+        k: cat_names.get(c) for k, c in conn.execute("SELECT key, category_id FROM merchant_settings").fetchall() if c
+    }
+    rule_counts = dict(conn.execute("SELECT key, COUNT(*) FROM merchant_amount_rules GROUP BY key").fetchall())
     months = _months_back(today, LIST_MONTHS)
     out = []
     for g in _gather(conn, book).values():
@@ -135,6 +184,9 @@ def directory(conn: sqlite3.Connection, today: dt.date) -> list[dict[str, Any]]:
                 "category": max(g["cats"].items(), key=lambda kv: kv[1])[0] if g["cats"] else None,
                 "names": len(g["texts"]),
                 "note": noted.get(g["key"], ""),
+                # Its own sorting: the default category's name (or None) and how many amount rules.
+                "default_category": defaults.get(g["key"]),
+                "rules": rule_counts.get(g["key"], 0),
             }
         )
     out.sort(key=lambda m: (-m["spent_year"], -m["spent"]))
@@ -153,7 +205,7 @@ def detail(conn: sqlite3.Connection, key: str, today: dt.date) -> dict[str, Any]
     ids = [
         r[0]
         for r in conn.execute(_SPENDING + " ORDER BY t.date DESC, t.id DESC").fetchall()
-        if book.key(r[1], r[2]) == key
+        if book.key(r[1], r[2], r[3], r[0], r[6]) == key
     ]
     year = sum(g["by_month"].get(m, 0) for m in months[-12:])
     active = max(1, min(12, len([m for m in months[-12:] if m >= first])))
@@ -172,11 +224,56 @@ def detail(conn: sqlite3.Connection, key: str, today: dt.date) -> dict[str, Any]
         "category": max(g["cats"].items(), key=lambda kv: kv[1])[0] if g["cats"] else None,
         "months": [{"month": m, "spent": g["by_month"].get(m, 0)} for m in shown],
         "names": [
-            {**t, "mapped": t["text"] in book.aliases}
+            {**t, "mapped": t["text"] in book.aliases, "unnamed": is_unnamed(t["text"])}
             for t in sorted(g["texts"].values(), key=lambda t: (-t["count"], t["text"]))
         ],
         "transaction_ids": ids[:200],
+        # Payments that don't name who they were to, put here by amount ("BPAY of $98.00").
+        "amounts": [
+            {"text": t, "amount": a}
+            for (t, a), k in sorted(book.by_amount.items(), key=lambda kv: kv[0][1])
+            if k == key
+        ],
+        "unnamed": key == UNNAMED_KEY,
     }
+
+
+def _named(conn: sqlite3.Connection, key: str | None, name: str | None) -> str | None:
+    """The key to use: the one given, or a new merchant's key from its name (remembering the name as typed)."""
+    if name and name.strip():
+        key = key_of(name)
+        if not key:
+            raise ValueError("Give the merchant a name.")
+        if pretty(key) != name.strip():
+            conn.execute(
+                "INSERT INTO merchant_names (key, name) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET name = excluded.name",
+                (key, " ".join(name.split())[:60]),
+            )
+    return key
+
+
+def assign_payment(
+    conn: sqlite3.Connection, tx_id: int, scope: str, key: str | None, name: str | None
+) -> dict[str, Any]:
+    """Say who one payment was to (`scope` "this"), or every payment with its statement name and amount ("amount").
+    With no merchant, "this" clears what was said for that payment."""
+    row = conn.execute("SELECT merchant, amount FROM transactions WHERE id = ?", (tx_id,)).fetchone()
+    if row is None:
+        raise LookupError("That transaction has gone.")
+    text, amount = row
+    key = _named(conn, key, name)
+    if scope == "amount":
+        if not key:
+            raise ValueError("Pick a merchant, or name a new one.")
+        conn.execute(
+            "INSERT INTO merchant_amount_aliases (text, amount, key) VALUES (?, ?, ?)"
+            " ON CONFLICT (text, amount) DO UPDATE SET key = excluded.key",
+            (text, abs(amount), key),
+        )
+        conn.execute("UPDATE transactions SET merchant_override = NULL WHERE id = ?", (tx_id,))
+        return {"text": text, "amount": abs(amount), "key": key}
+    conn.execute("UPDATE transactions SET merchant_override = ? WHERE id = ?", (key or None, tx_id))
+    return {"text": text, "key": key or Book(conn).key(text, "", amount, tx_id)}
 
 
 def assign(conn: sqlite3.Connection, text: str, key: str | None, name: str | None) -> dict[str, Any]:
@@ -220,11 +317,13 @@ class Sorter:
         ).fetchall():
             self.rules.setdefault(key, []).append((bool(over), amount, category))
 
-    def category(self, merchant_text: str, description: str, amount: int) -> int | None:
+    def category(
+        self, merchant_text: str, description: str, amount: int, tx_id: int | None = None, bill_id: int | None = None
+    ) -> int | None:
         """The category this merchant's settings give a transaction, or None (fall back to learned rules)."""
         if not merchant_text or (not self.default and not self.rules):
             return None
-        key = self.book.key(merchant_text, description)
+        key = self.book.key(merchant_text, description, amount, tx_id, bill_id)
         spent = abs(amount)
         for over, limit, category in self.rules.get(key, []):
             if (spent > limit) if over else (spent < limit):
@@ -292,14 +391,15 @@ def save_settings(conn: sqlite3.Connection, key: str, body: dict[str, Any]) -> d
     sorter = Sorter(conn)
     changed = 0
     for tx_id, text, description, amount, current in conn.execute(
-        "SELECT id, merchant, description, amount, category_id FROM transactions WHERE merchant != ''"
+        "SELECT id, merchant, description, amount, category_id FROM transactions WHERE (merchant != ''"
+        " OR merchant_override IS NOT NULL)"
         " AND kind != 'adjustment' AND rule_id IS NULL AND bill_id IS NULL"
         f" AND (category_id IS NULL OR category_by IS NULL OR category_by IN ({','.join('?' * len(_RESORTABLE))}))",
         _RESORTABLE,
     ).fetchall():
-        if sorter.book.key(text, description) != key:
+        if sorter.book.key(text, description, amount, tx_id) != key:
             continue
-        cat = sorter.category(text, description, amount)
+        cat = sorter.category(text, description, amount, tx_id)
         if cat is not None and cat != current:
             conn.execute("UPDATE transactions SET category_id = ?, category_by = 'rule' WHERE id = ?", (cat, tx_id))
             changed += 1
@@ -324,20 +424,30 @@ def merge(conn: sqlite3.Connection, sources: list[str], key: str | None, name: s
     if not key:
         raise ValueError("Pick the merchant to merge into, or name a new one.")
     book = Book(conn)
-    texts = {
-        text
-        for text, description in conn.execute(
-            "SELECT DISTINCT merchant, description FROM transactions WHERE merchant != ''"
-        ).fetchall()
-        if book.key(text, description) in sources
-    }
+    texts: set[str] = set()
+    payments: list[int] = []
+    for tx_id, text, description, amount, bill_id in conn.execute(
+        "SELECT id, merchant, description, amount, bill_id FROM transactions WHERE merchant != ''"
+    ).fetchall():
+        if book.key(text, description, amount, tx_id, bill_id) not in sources:
+            continue
+        # A payment that doesn't name who it was to moves on its own, so every other BPAY stays where it is.
+        if is_unnamed(text) or tx_id in book.overrides:
+            payments.append(tx_id)
+        else:
+            texts.add(text)
     for text in texts:
         assign(conn, text, key, None)
-    return {"key": key, "moved": len(texts)}
+    conn.executemany("UPDATE transactions SET merchant_override = ? WHERE id = ?", [(key, i) for i in payments])
+    return {"key": key, "moved": len(texts) + len(payments)}
 
 
-def forget(conn: sqlite3.Connection, text: str) -> dict[str, Any]:
-    """Undo a mapping: the statement name goes back to the merchant it would get by itself."""
+def forget(conn: sqlite3.Connection, text: str, amount: int | None = None) -> dict[str, Any]:
+    """Undo a mapping: the statement name (or, with `amount`, its payments of that amount) goes back to the merchant
+    it would get by itself."""
+    if amount is not None:
+        conn.execute("DELETE FROM merchant_amount_aliases WHERE text = ? AND amount = ?", (text, abs(amount)))
+        return {"text": text, "amount": abs(amount)}
     conn.execute("DELETE FROM merchant_aliases WHERE text = ?", (text,))
     return {"text": text, "key": auto_key(text)}
 

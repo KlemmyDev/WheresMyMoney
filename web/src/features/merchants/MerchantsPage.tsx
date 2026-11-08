@@ -25,6 +25,7 @@ export function MerchantsPage() {
   const q = useQuery(merchantDirectoryQuery);
   const [find, setFind] = useState("");
   const [sort, setSort] = useState<keyof typeof SORTS>("spent");
+  const [unset, setUnset] = useState(false);
   // Picking merchants to merge: Select, tick a few, then Merge into one.
   const [selecting, setSelecting] = useState(false);
   const [picked, setPicked] = useState<string[]>([]);
@@ -40,7 +41,9 @@ export function MerchantsPage() {
   const needle = find.trim().toLowerCase();
   const shown = q.data
     .filter((m) => !needle || m.name.toLowerCase().includes(needle) || m.key.toLowerCase().includes(needle))
+    .filter((m) => !unset || !m.default_category)
     .sort(SORTS[sort].by);
+  const unsetCount = q.data.filter((m) => !m.default_category).length;
   const year = q.data.reduce((a, m) => a + m.spent_year, 0);
   return (
     <>
@@ -73,6 +76,9 @@ export function MerchantsPage() {
                   {SORTS[k].label}
                 </ChoiceChip>
               ))}
+              <ChoiceChip pressed={unset} onClick={() => setUnset((u) => !u)}>
+                No default yet · {unsetCount}
+              </ChoiceChip>
             </div>
             <span className="hidden flex-1 sm:block" />
             <Button small onClick={() => (selecting ? stop() : setSelecting(true))}>
@@ -141,7 +147,25 @@ function MerchantRow({ m, picked, onPick }: { m: MerchantSummary; picked?: boole
       )}
       <MerchantMark name={m.key} />
       <span className="min-w-0 flex-1">
-        <span className="block truncate font-semibold">{m.name}</span>
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="min-w-0 truncate font-semibold">{m.name}</span>
+          {m.default_category ? (
+            <span
+              className="flex-none rounded-full bg-teal/15 px-2 py-px text-[11px] font-semibold text-teal"
+              title={`Sorted to ${m.default_category} by default`}
+            >
+              {m.default_category}
+              {m.rules ? ` +${m.rules} ${m.rules === 1 ? "rule" : "rules"}` : ""}
+            </span>
+          ) : (
+            <span
+              className="flex-none rounded-full border border-dashed border-line-2 px-2 py-px text-[11px] text-ink-3"
+              title="No default category set"
+            >
+              {m.rules ? `${m.rules} ${m.rules === 1 ? "rule" : "rules"}` : "No default"}
+            </span>
+          )}
+        </span>
         <span className="block truncate text-[13px] text-ink-3">
           {m.count} {m.count === 1 ? "visit" : "visits"} · last{" "}
           {m.last.startsWith(thisYear) ? dayDate(m.last) : longDate(m.last)}

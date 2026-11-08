@@ -17,7 +17,7 @@ import { billsQuery, categoriesQuery, refresh } from "~/features/common/queries"
 import { BillDialog } from "~/features/bills/BillsPage";
 import { CategoryPicker } from "~/features/common/CategoryPicker";
 import type { Category, Transaction } from "~/features/common/types";
-import { Button, ErrorText, Input, Pill, Switch } from "~/features/common/ui";
+import { Button, ErrorText, Input, Pill, Switch, cn } from "~/features/common/ui";
 
 const HOW: Record<Transaction["kind"], [string, "teal" | "info" | "warn"]> = {
   manual: ["Entered", "teal"],
@@ -250,7 +250,9 @@ function Body({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
           <div className="flex min-w-0 items-center gap-3">
             <MerchantMark name={tx.merchant_key} size="md" />
             <span className="min-w-0 flex-1">
-              <span className="block text-[12px] text-ink-3">Merchant</span>
+              <span className={cn("block text-[12px]", tx.merchant_key === "BPAY" ? "text-warn" : "text-ink-3")}>
+                {tx.merchant_key === "BPAY" ? "Who was this BPAY to?" : "Merchant"}
+              </span>
               <Link
                 to="/merchants/$key"
                 params={{ key: tx.merchant_key }}
@@ -262,10 +264,17 @@ function Body({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
               {tx.merchant_note && <span className="block truncate text-[12px] text-ink-3">{tx.merchant_note}</span>}
             </span>
             <Button small onClick={() => setPicking((p) => !p)}>
-              {picking ? "Close" : "Change"}
+              {picking ? "Close" : tx.merchant_key === "BPAY" ? "Say who" : "Change"}
             </Button>
           </div>
-          {picking && <MerchantPicker text={tx.merchant} current={tx.merchant_key} onDone={() => setPicking(false)} />}
+          {picking && (
+            <MerchantPicker
+              text={tx.merchant}
+              current={tx.merchant_key}
+              payment={tx.merchant_unnamed ? { id: tx.id, amount: tx.amount } : undefined}
+              onDone={() => setPicking(false)}
+            />
+          )}
         </div>
       )}
       {tx.amount < 0 && !excluded && (

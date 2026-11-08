@@ -100,7 +100,8 @@ async def merchant_directory(svc: ServicesDep):
 
 @router.post("/merchants/assign")
 async def assign_merchant(svc: ServicesDep, body: JsonBody):
-    """Map a statement name to a merchant: {"text": "DOMINOS KEPERRA", "key": "DOMINOS"} or {"text", "name": "New"}."""
+    """Map a statement name to a merchant: {"text": "DOMINOS KEPERRA", "key": "DOMINOS"} or {"text", "name": "New"}.
+    For a payment that doesn't say who it was to (BPAY): {"transaction_id": 9, "scope": "this" | "amount", "key"}."""
     return await run(svc.spending.assign_merchant, body)
 
 
@@ -113,7 +114,7 @@ async def merge_merchants(svc: ServicesDep, body: JsonBody):
 @router.post("/merchants/forget")
 async def forget_merchant(svc: ServicesDep, body: JsonBody):
     """Undo a mapping: {"text": "DOMINOS KEPERRA"} goes back to the merchant it gets by itself."""
-    return await run(svc.spending.forget_merchant, str(body.get("text") or ""))
+    return await run(svc.spending.forget_merchant, str(body.get("text") or ""), body.get("amount"))
 
 
 @router.get("/merchants/directory/{key:path}")

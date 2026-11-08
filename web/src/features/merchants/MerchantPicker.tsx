@@ -6,13 +6,15 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiSend, errorMessage } from "~/features/common/api";
 import { merchantDirectoryQuery, refresh } from "~/features/common/queries";
-import { Button, ErrorText, Input } from "~/features/common/ui";
+import { money } from "~/features/common/format";
+import { Button, ErrorText, Input, Segmented } from "~/features/common/ui";
 import { MerchantMark } from "~/features/spending/MerchantIcon";
 
 export function MerchantPicker({
   text = "",
   current,
   merge,
+  payment,
   onDone,
 }: {
   /** The statement name being placed. */
@@ -21,17 +23,22 @@ export function MerchantPicker({
   current?: string;
   /** Merchant keys to merge into the one chosen, instead of placing a statement name. */
   merge?: string[];
+  /** A payment that doesn't say who it was to (BPAY): place just it, or every one of its amount. */
+  payment?: { id: number; amount: number };
   /** Called with the merchant chosen, or nothing when cancelled. */
   onDone: (key?: string) => void;
 }) {
   const qc = useQueryClient();
   const all = useQuery(merchantDirectoryQuery);
   const [find, setFind] = useState("");
+  const [scope, setScope] = useState<"amount" | "this">("amount");
   const assign = useMutation({
     mutationFn: (body: { key?: string; name?: string }) =>
       merge
         ? apiSend<{ key: string }>("POST", "merchants/merge", { from: merge, into: body.key, name: body.name })
-        : apiSend<{ key: string }>("POST", "merchants/assign", { text, ...body }),
+        : payment
+          ? apiSend<{ key: string }>("POST", "merchants/assign", { transaction_id: payment.id, scope, ...body })
+          : apiSend<{ key: string }>("POST", "merchants/assign", { text, ...body }),
     onSuccess: (r) => {
       refresh(qc);
       onDone(r.key);
@@ -45,6 +52,17 @@ export function MerchantPicker({
   const exact = (all.data ?? []).some((m) => m.name.toLowerCase() === needle);
   return (
     <div className="flex flex-col gap-2 rounded-2xl border border-line bg-tile-2 p-2.5">
+      {payment && (
+        <Segmented
+          label="Which payments"
+          value={scope}
+          options={[
+            { value: "amount", label: `Every BPAY of ${money(Math.abs(payment.amount), { cents: true })}` },
+            { value: "this", label: "Just this one" },
+          ]}
+          onChange={setScope}
+        />
+      )}
       <Input
         autoFocus
         aria-label="Find or name a merchant"
@@ -82,7 +100,11 @@ export function MerchantPicker({
         <span className="min-w-0 text-[12px] text-ink-3">
           {merge
             ? `All their transactions and statement names move into the one you pick.`
-            : `Every “${text}” transaction moves with it.`}
+            : payment
+              ? scope === "amount"
+                ? `This one, and every BPAY of that amount from now on.`
+                : `Only this payment. Other BPAY payments stay as they are.`
+              : `Every “${text}” transaction moves with it.`}
         </span>
         <Button small onClick={() => onDone()}>
           Cancel

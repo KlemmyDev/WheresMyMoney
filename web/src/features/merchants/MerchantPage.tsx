@@ -58,6 +58,19 @@ export function MerchantPage({ merchantKey }: { merchantKey: string }) {
         <Title d={d} />
       </div>
 
+      {d.unnamed && (
+        <Card className="flex flex-col gap-1.5" aria-label="About BPAY payments">
+          <p className="m-0 text-[15px] text-ink">
+            uBank's statements don't say who a BPAY payment went to, so these {d.count} are waiting for a name.
+          </p>
+          <p className="m-0 text-[14px] text-ink-2">
+            Open one below and choose <b className="text-ink">Say who</b>. Pick "Every BPAY of $98.00" and future
+            payments of that amount follow by themselves. A BPAY matched to one of your bills takes the bill's name
+            automatically.
+          </p>
+        </Card>
+      )}
+
       <Card lit tint="spending" className="flex flex-col gap-2" aria-label={`${d.name} in a sentence`}>
         <p className="m-0 text-[17px] leading-relaxed text-ink">
           We've spent <b>{money(d.spent_year)}</b> at {d.name} over the last 12 months, about{" "}
@@ -239,7 +252,7 @@ function Names({ d }: { d: MerchantDetail }) {
   const qc = useQueryClient();
   const [moving, setMoving] = useState<string | null>(null);
   const forget = useMutation({
-    mutationFn: (text: string) => apiSend("POST", "merchants/forget", { text }),
+    mutationFn: (body: { text: string; amount?: number }) => apiSend("POST", "merchants/forget", body),
     onSuccess: () => refresh(qc),
   });
   return (
@@ -252,6 +265,28 @@ function Names({ d }: { d: MerchantDetail }) {
       <p className="m-0 text-[13px] text-ink-3">
         How {d.name} shows up on statements. Move one if it belongs to another merchant.
       </p>
+      {d.amounts.length > 0 && (
+        <ul className="m-0 flex list-none flex-col p-0">
+          {d.amounts.map((a) => (
+            <li
+              key={`${a.text}-${a.amount}`}
+              className="flex flex-wrap items-center gap-2 border-b border-line py-2.5 last:border-b-0"
+            >
+              <span className="mono min-w-0 flex-1 truncate text-[13px]">
+                BPAY of {money(a.amount, { cents: true })}
+              </span>
+              <Pill tone="teal">By amount</Pill>
+              <Button
+                small
+                onClick={() => forget.mutate({ text: a.text, amount: a.amount })}
+                disabled={forget.isPending}
+              >
+                Undo
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
       <ul className="m-0 flex list-none flex-col p-0">
         {d.names.map((n) => (
           <li key={n.text} className="flex flex-col gap-1.5 border-b border-line py-2.5 last:border-b-0">
@@ -262,16 +297,26 @@ function Names({ d }: { d: MerchantDetail }) {
               <span className="flex-none text-[12px] text-ink-3">×{n.count}</span>
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
-              {n.mapped ? <Pill tone="teal">Mapped by you</Pill> : <Pill tone="mute">Found by itself</Pill>}
+              {n.unnamed ? (
+                <span className="text-[12px] text-ink-3">
+                  {d.unnamed ? "Open a payment below to say who it was to" : "BPAY, placed payment by payment"}
+                </span>
+              ) : n.mapped ? (
+                <Pill tone="teal">Mapped by you</Pill>
+              ) : (
+                <Pill tone="mute">Found by itself</Pill>
+              )}
               <span className="flex-1" />
-              {n.mapped && (
-                <Button small onClick={() => forget.mutate(n.text)} disabled={forget.isPending}>
+              {n.mapped && !n.unnamed && (
+                <Button small onClick={() => forget.mutate({ text: n.text })} disabled={forget.isPending}>
                   Undo
                 </Button>
               )}
-              <Button small onClick={() => setMoving(moving === n.text ? null : n.text)}>
-                Move
-              </Button>
+              {!n.unnamed && (
+                <Button small onClick={() => setMoving(moving === n.text ? null : n.text)}>
+                  Move
+                </Button>
+              )}
             </div>
             {moving === n.text && <MerchantPicker text={n.text} current={d.key} onDone={() => setMoving(null)} />}
           </li>
