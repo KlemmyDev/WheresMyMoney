@@ -185,6 +185,27 @@ export type BillsOverview = {
   next30: { total: number; count: number; by_hand: number; items: Due[] };
   by_month: { month: string; total: number; count: number }[];
   account: Account | null;
+  /** The bills that come a few times a year or less, and setting money aside for them. */
+  set_aside: {
+    items: {
+      bill_id: number;
+      name: string;
+      amount: number;
+      every: Every;
+      how: Bill["how"];
+      account_id: number | null;
+      next_due: string;
+      days: number;
+      per_month: number;
+      /** How much should be put aside for it by now. */
+      built: number;
+    }[];
+    per_year: number;
+    per_month: number;
+    built: number;
+  };
+  /** What the rules move into the bills account in a usual month. */
+  into_account?: number;
 };
 
 export type Rule = {

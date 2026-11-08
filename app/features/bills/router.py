@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
+from app.core import dates
 from app.dependencies import JsonBody, ServicesDep, run
 
 router = APIRouter(prefix="/api/bills")
@@ -12,7 +13,18 @@ router = APIRouter(prefix="/api/bills")
 async def _overview(svc: ServicesDep):
     ov = await run(svc.accounts.overview)
     acct = next((a for a in ov["accounts"] if a["role"] == "bills"), None)
-    return await run(svc.bills.overview, acct)
+    out = await run(svc.bills.overview, acct)
+    # What the rules move into the bills account in a usual month, to set against what the bills come to.
+    if acct:
+        rules = await run(svc.rules.all)
+        out["into_account"] = round(
+            sum(
+                r.amount * dates.PER_YEAR[r.every] / 12
+                for r in rules
+                if r.enabled and r.kind == "transfer" and r.to_account == acct["id"]
+            )
+        )
+    return out
 
 
 @router.get("")
