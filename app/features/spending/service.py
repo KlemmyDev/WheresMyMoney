@@ -494,6 +494,18 @@ class SpendingService:
         with self.db.writing() as conn:
             return directory.save_settings(conn, key, body)
 
+    def merge_suggestions(self) -> list[dict[str, Any]]:
+        with self.db.reading() as conn:
+            return directory.suggestions(conn)
+
+    def dismiss_merge_suggestion(self, keys: list[str]) -> dict[str, Any]:
+        with self.db.writing() as conn:
+            return directory.dismiss_suggestion(conn, keys)
+
+    def price_changes(self) -> list[dict[str, Any]]:
+        with self.db.reading() as conn:
+            return directory.price_changes(conn, dates.today())
+
     def forget_merchant(self, text: str, amount: Any = None) -> dict[str, Any]:
         with self.db.writing() as conn:
             return directory.forget(conn, text, int(amount) if amount not in (None, "") else None)

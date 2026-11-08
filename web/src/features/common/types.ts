@@ -150,6 +150,32 @@ export type BillUpdate = {
 };
 
 /** Transactions grouped by the merchant they'd be remembered by. */
+/** A merchant paid on a steady schedule: how often, how much, and when next (or that it looks stopped). */
+export type Regular = {
+  every_days: number;
+  label: string;
+  amount: number;
+  typical: number;
+  /** The same amount each time (a subscription), not just about the same. */
+  fixed: boolean;
+  last: string;
+  next: string;
+  stopped: boolean;
+};
+
+/** The latest change in a regular payment's price. */
+export type MerchantPriceChange = { was: number; now: number; date: string; pct: number | null; up: boolean };
+
+/** Merchants that look like one place, and the one to merge into. */
+export type MergeSuggestion = {
+  keys: string[];
+  names: string[];
+  into: string;
+  into_name: string;
+  reason: string;
+  count: number;
+};
+
 /** A merchant on the Merchants page: money out there, and the last 12 months, oldest first. */
 export type MerchantSummary = {
   key: string;
@@ -174,6 +200,8 @@ export type MerchantSummary = {
   /** Its own sorting: the default category's name, if one is set, and how many amount rules it has. */
   default_category: string | null;
   rules: number;
+  regular: Regular | null;
+  price_change: MerchantPriceChange | null;
 };
 
 export type MerchantDetail = {
@@ -209,6 +237,10 @@ export type MerchantDetail = {
   amounts: { text: string; amount: number }[];
   /** The catch-all for BPAY payments nobody has named yet. */
   unnamed: boolean;
+  regular: Regular | null;
+  price_change: MerchantPriceChange | null;
+  /** Each payment (cents out), oldest first, when it's a regular one. */
+  history: { date: string; amount: number }[];
   transactions: Transaction[];
 };
 

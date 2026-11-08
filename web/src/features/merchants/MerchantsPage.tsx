@@ -4,15 +4,16 @@
  * recent or A to Z, and open one for its whole story. The sort, filters and search live in the address (and are
  * remembered on this device), so coming back from a merchant finds the list as it was left.
  */
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { errorMessage } from "~/features/common/api";
+import { apiSend, errorMessage } from "~/features/common/api";
 import { Loading } from "~/features/common/brand";
-import { Card, ChoiceChip } from "~/features/common/ds";
+import { Card, CardHead, ChoiceChip } from "~/features/common/ds";
+import { useToast } from "~/features/common/overlay";
 import { dayDate, longDate, money } from "~/features/common/format";
-import { merchantDirectoryQuery } from "~/features/common/queries";
-import type { MerchantSummary } from "~/features/common/types";
+import { merchantDirectoryQuery, merchantSuggestionsQuery, refresh } from "~/features/common/queries";
+import type { MergeSuggestion, MerchantSummary } from "~/features/common/types";
 import { Button, Empty, ErrorText, Input, PageHead, Segmented, cn } from "~/features/common/ui";
 import { MerchantPicker } from "~/features/merchants/MerchantPicker";
 import { MerchantMark } from "~/features/spending/MerchantIcon";
@@ -125,6 +126,7 @@ export function MerchantsPage({ search }: { search: MerchantSearch }) {
               </>
             )}
           </p>
+          {dir === "out" && <Suggestions />}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <Input
               type="search"
@@ -190,6 +192,73 @@ export function MerchantsPage({ search }: { search: MerchantSearch }) {
   );
 }
 
+/** Merchants that look like one place: merge with a tap, or say they aren't the same. */
+function Suggestions() {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const q = useQuery(merchantSuggestionsQuery);
+  const [all, setAll] = useState(false);
+  const merge = useMutation({
+    mutationFn: (s: MergeSuggestion) =>
+      apiSend("POST", "merchants/merge", { from: s.keys.filter((k) => k !== s.into), into: s.into }),
+    onSuccess: (_, s) => {
+      refresh(qc);
+      toast(`Merged into ${s.into_name}`);
+    },
+  });
+  const dismiss = useMutation({
+    mutationFn: (s: MergeSuggestion) => apiSend("POST", "merchants/suggestions/dismiss", { keys: s.keys }),
+    onSuccess: () => refresh(qc),
+  });
+  const list = q.data ?? [];
+  if (!list.length) return null;
+  const shown = all ? list : list.slice(0, 3);
+  return (
+    <Card aria-labelledby="ms-h" className="flex flex-col gap-2">
+      <CardHead
+        id="ms-h"
+        title="Looks like the same place"
+        right={<span className="text-[13px] text-ink-3">{list.length}</span>}
+      />
+      {shown.map((s) => (
+        <div
+          key={s.keys.join("|")}
+          className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-line bg-tile-2 px-3 py-2.5"
+        >
+          <span className="flex flex-none -space-x-2">
+            {s.keys.slice(0, 3).map((k) => (
+              <MerchantMark key={k} name={k} size="md" />
+            ))}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[14px] font-semibold">{s.names.join(" + ")}</span>
+            <span className="block truncate text-[12px] text-ink-3">
+              {s.reason} · {s.count} visits
+            </span>
+          </span>
+          <span className="flex flex-none gap-2">
+            <Button small onClick={() => dismiss.mutate(s)} disabled={dismiss.isPending}>
+              Not the same
+            </Button>
+            <Button primary small onClick={() => merge.mutate(s)} disabled={merge.isPending}>
+              Merge into {s.into_name}
+            </Button>
+          </span>
+        </div>
+      ))}
+      {list.length > 3 && (
+        <button
+          type="button"
+          onClick={() => setAll((a) => !a)}
+          className="cursor-pointer self-start border-0 bg-transparent p-0 text-[13px] font-semibold text-teal"
+        >
+          {all ? "Show fewer" : `Show all ${list.length}`}
+        </button>
+      )}
+    </Card>
+  );
+}
+
 function MerchantRow({
   m,
   dir,
@@ -243,6 +312,14 @@ function MerchantRow({
           )}
         </span>
         <span className="block truncate text-[13px] text-ink-3">
+          {dir === "out" && m.regular && !m.regular.stopped ? (
+            <span className="text-ink-2">
+              {m.regular.label} · {m.regular.fixed ? "" : "about "}
+              {money(m.regular.typical, { cents: true })} ·{" "}
+            </span>
+          ) : dir === "out" && m.regular?.stopped ? (
+            <span className="text-warn">Looks stopped · </span>
+          ) : null}
           {dir === "in"
             ? `${m.received_count} ${m.received_count === 1 ? "payment" : "payments"}`
             : `${m.count} ${m.count === 1 ? "visit" : "visits"}`}{" "}
@@ -265,7 +342,16 @@ function MerchantRow({
         <span className={cn("num", dir === "in" && "text-good")}>
           {dir === "in" ? `+${money(m.received_year)}` : money(m.spent_year)}
         </span>
-        <span className="text-[12px] text-ink-3">last 12 months</span>
+        {dir === "out" && m.price_change ? (
+          <span
+            className={cn("text-[12px] font-semibold", m.price_change.up ? "text-warn" : "text-good")}
+            title={`${money(m.price_change.was, { cents: true })} to ${money(m.price_change.now, { cents: true })} from ${dayDate(m.price_change.date)}`}
+          >
+            {m.price_change.up ? "↑" : "↓"} {Math.abs(m.price_change.pct ?? 0)}%
+          </span>
+        ) : (
+          <span className="text-[12px] text-ink-3">last 12 months</span>
+        )}
       </span>
     </>
   );

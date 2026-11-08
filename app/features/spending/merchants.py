@@ -408,7 +408,8 @@ def brand(merchant_text: str) -> str | None:
     return None
 
 
-_PERSON = ("PAYMENT TO ", "PAYMENT FROM ", "OSKO PAYMENT TO ", "OSKO PAYMENT FROM ")
+PERSON = ("PAYMENT TO ", "PAYMENT FROM ", "OSKO PAYMENT TO ", "OSKO PAYMENT FROM ")
+_PERSON = PERSON
 
 
 def learn_pattern(
