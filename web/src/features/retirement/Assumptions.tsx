@@ -11,6 +11,7 @@ import { ChoiceChip } from "~/features/common/ds";
 import { longDate, money } from "~/features/common/format";
 import {
   investmentsQuery,
+  type KnownFund,
   refresh,
   retirementQuery,
   type RetirementSettings,
@@ -78,7 +79,12 @@ export function RetirementSettingsPanel() {
     <>
       <AssumptionsTile key={JSON.stringify(q.data.settings)} s={q.data.settings} funds={inv.data?.funds} />
       {q.data.people.map((p) => (
-        <FundTile key={`${p.id}:${JSON.stringify([p.fees, p.options])}`} p={p} s={q.data.settings} />
+        <FundTile
+          key={`${p.id}:${JSON.stringify([p.fees, p.options])}`}
+          p={p}
+          s={q.data.settings}
+          fund={q.data.funds.find((f) => f.key === p.known_fund)}
+        />
       ))}
       {q.data.people.length === 0 && (
         <Tile>
@@ -201,18 +207,35 @@ function AssumptionsTile({
   );
 }
 
-type FeeRow = { name: string; kind: "pct" | "fixed"; text: string };
+type FeeRow = { name: string; kind: "pct" | "fixed"; text: string; cap: string };
+
+const dollarsText = (cents: number) => (cents / 100).toFixed(2).replace(/\.00$/, "");
+const feeRow = (f: Fee): FeeRow => ({
+  name: f.name,
+  kind: f.kind,
+  text: f.kind === "pct" ? toPct(f.amount) : dollarsText(f.amount),
+  cap: f.kind === "pct" && f.cap ? dollarsText(f.cap) : "",
+});
+/** "0.1% on the first $500,000", "$57.20/yr". */
+const feeText = (f: Fee) =>
+  f.kind === "pct" ? `${pctText(f.amount)}${f.cap ? ` on the first ${money(f.cap)}` : ""}` : `${money(f.amount)}/yr`;
+const words = (s: string) => [...new Set(s.toLowerCase().match(/[a-z]+/g) ?? [])].sort().join(" ");
+/** An investment option's fee at a known fund, matched by its name's words in any order. */
+const optionFee = (fund: KnownFund, name: string) =>
+  Object.entries(fund.options).find(([n]) => words(n) === words(name))?.[1];
+/** A known fund's fees, keeping any it doesn't publish (insurance). */
+const publishedFees = (fund: KnownFund, keep: Fee[]): Fee[] => [
+  ...fund.fees,
+  ...keep.filter(
+    (f) =>
+      !fund.fees.some((k) => k.name === f.name) && !/admin|investment|reserves|transaction|^other fees$/i.test(f.name),
+  ),
+];
 type OptionRow = { name: string; share: string; ret: string; fee: string };
 
-function FundTile({ p, s }: { p: SuperAccount; s: RetirementSettings }) {
+function FundTile({ p, s, fund }: { p: SuperAccount; s: RetirementSettings; fund?: KnownFund }) {
   const qc = useQueryClient();
-  const [fees, setFees] = useState<FeeRow[]>(() =>
-    p.fees.map((f) => ({
-      name: f.name,
-      kind: f.kind,
-      text: f.kind === "pct" ? toPct(f.amount) : (f.amount / 100).toFixed(2).replace(/\.00$/, ""),
-    })),
-  );
+  const [fees, setFees] = useState<FeeRow[]>(() => p.fees.map(feeRow));
   const [options, setOptions] = useState<OptionRow[]>(() =>
     p.options.map((o) => ({ name: o.name, share: toPct(o.share), ret: toPct(o.return_pct), fee: toPct(o.fee_pct) })),
   );
@@ -220,6 +243,7 @@ function FundTile({ p, s }: { p: SuperAccount; s: RetirementSettings }) {
     name: f.name,
     kind: f.kind,
     amount: f.kind === "pct" ? (fromPct(f.text) ?? 0) : Math.round(Number(f.text || 0) * 100),
+    ...(f.kind === "pct" && Number(f.cap) > 0 ? { cap: Math.round(Number(f.cap) * 100) } : {}),
   }));
   const parsedOptions: Option[] = options.map((o) => ({
     name: o.name,
@@ -229,7 +253,7 @@ function FundTile({ p, s }: { p: SuperAccount; s: RetirementSettings }) {
   }));
   const shares = parsedOptions.reduce((a, o) => a + o.share, 0);
   const sharesOk = !options.length || Math.abs(shares - 1) < 0.005;
-  const t = fundTerms({ fees: parsedFees, options: parsedOptions }, assumptionsOf(s));
+  const t = fundTerms({ fees: parsedFees, options: parsedOptions }, assumptionsOf(s), p.balance);
   const feeDollars = Math.round(t.pct * p.balance + t.fixed);
   const save = useMutation({
     mutationFn: () => apiSend("PUT", `retirement/people/${p.id}`, { fees: parsedFees, options: parsedOptions }),
@@ -246,62 +270,116 @@ function FundTile({ p, s }: { p: SuperAccount; s: RetirementSettings }) {
         balance).
       </p>
       <StatementReader p={p} />
+      {fund && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-sunken p-3.5">
+          <span className="min-w-0 flex-1">
+            <span className="block text-[14px] font-semibold">{fund.name}'s published fees</span>
+            <span className="block text-[12px] text-ink-3">
+              {fund.fees.map((f) => `${f.name} ${feeText(f)}`).join(" · ")}, and each option's own.{" "}
+              <a href={fund.source} target="_blank" rel="noreferrer" className="text-teal no-underline">
+                Fees page
+              </a>
+              , checked {longDate(fund.checked)}. Insurance is kept.
+            </span>
+          </span>
+          <Button
+            small
+            type="button"
+            onClick={() => {
+              setFees(publishedFees(fund, parsedFees).map(feeRow));
+              setOptions((r) =>
+                r.map((o) => {
+                  const fee = optionFee(fund, o.name);
+                  return fee == null ? o : { ...o, fee: toPct(fee) };
+                }),
+              );
+            }}
+          >
+            Use these
+          </Button>
+        </div>
+      )}
 
       <div className="flex flex-col gap-2">
         <div className="eyebrow">Fees</div>
         {fees.map((f, i) => (
           <div
             key={i}
-            className="flex flex-wrap items-center gap-2 border-t border-line pt-2 first:border-t-0 first:pt-0 sm:flex-nowrap sm:border-0 sm:pt-0"
+            className="flex flex-col gap-2 border-t border-line pt-2 first:border-t-0 first:pt-0 sm:border-0 sm:pt-0"
           >
-            <Input
-              aria-label={`Fee ${i + 1} name`}
-              value={f.name}
-              className="order-1 min-w-0 flex-[1_1_0]"
-              onChange={(e) => setFees((r) => r.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}
-            />
-            {/* On a phone: the name and remove on one line, the kind and amount on the next. */}
-            <span aria-hidden className="order-3 basis-full sm:hidden" />
-            <div className="order-4 flex flex-none gap-1.5 sm:order-2" role="group" aria-label={`Fee ${i + 1} kind`}>
-              <ChoiceChip
-                pressed={f.kind === "fixed"}
-                onClick={() => setFees((r) => r.map((x, j) => (j === i ? { ...x, kind: "fixed", text: "" } : x)))}
-              >
-                $ a year
-              </ChoiceChip>
-              <ChoiceChip
-                pressed={f.kind === "pct"}
-                onClick={() => setFees((r) => r.map((x, j) => (j === i ? { ...x, kind: "pct", text: "" } : x)))}
-              >
-                % of balance
-              </ChoiceChip>
-            </div>
-            <span className="relative order-5 min-w-[90px] flex-1 sm:order-3 sm:w-[120px] sm:flex-none">
+            <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
               <Input
-                aria-label={`Fee ${i + 1} amount`}
-                inputMode="decimal"
-                value={f.text}
-                className={f.kind === "pct" ? "pr-8" : "pl-6"}
-                onChange={(e) =>
-                  setFees((r) =>
-                    r.map((x, j) => (j === i ? { ...x, text: e.target.value.replace(/[^0-9.]/g, "") } : x)),
-                  )
-                }
+                aria-label={`Fee ${i + 1} name`}
+                value={f.name}
+                className="order-1 min-w-0 flex-[1_1_0]"
+                onChange={(e) => setFees((r) => r.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}
               />
-              <span
-                className={`pointer-events-none absolute top-1/2 -translate-y-1/2 text-ink-3 ${f.kind === "pct" ? "right-3" : "left-3"}`}
-              >
-                {f.kind === "pct" ? "%" : "$"}
+              {/* On a phone: the name and remove on one line, the kind and amount on the next. */}
+              <span aria-hidden className="order-3 basis-full sm:hidden" />
+              <div className="order-4 flex flex-none gap-1.5 sm:order-2" role="group" aria-label={`Fee ${i + 1} kind`}>
+                <ChoiceChip
+                  pressed={f.kind === "fixed"}
+                  onClick={() =>
+                    setFees((r) => r.map((x, j) => (j === i ? { ...x, kind: "fixed", text: "", cap: "" } : x)))
+                  }
+                >
+                  $ a year
+                </ChoiceChip>
+                <ChoiceChip
+                  pressed={f.kind === "pct"}
+                  onClick={() => setFees((r) => r.map((x, j) => (j === i ? { ...x, kind: "pct", text: "" } : x)))}
+                >
+                  % of balance
+                </ChoiceChip>
+              </div>
+              <span className="relative order-5 min-w-[90px] flex-1 sm:order-3 sm:w-[120px] sm:flex-none">
+                <Input
+                  aria-label={`Fee ${i + 1} amount`}
+                  inputMode="decimal"
+                  value={f.text}
+                  className={f.kind === "pct" ? "pr-8" : "pl-6"}
+                  onChange={(e) =>
+                    setFees((r) =>
+                      r.map((x, j) => (j === i ? { ...x, text: e.target.value.replace(/[^0-9.]/g, "") } : x)),
+                    )
+                  }
+                />
+                <span
+                  className={`pointer-events-none absolute top-1/2 -translate-y-1/2 text-ink-3 ${f.kind === "pct" ? "right-3" : "left-3"}`}
+                >
+                  {f.kind === "pct" ? "%" : "$"}
+                </span>
               </span>
-            </span>
-            <button
-              type="button"
-              aria-label={`Remove ${f.name || `fee ${i + 1}`}`}
-              onClick={() => setFees((r) => r.filter((_, j) => j !== i))}
-              className="order-2 flex size-9 flex-none cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-ink-3 hover:text-bad sm:order-4"
-            >
-              ✕
-            </button>
+              <button
+                type="button"
+                aria-label={`Remove ${f.name || `fee ${i + 1}`}`}
+                onClick={() => setFees((r) => r.filter((_, j) => j !== i))}
+                className="order-2 flex size-9 flex-none cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-ink-3 hover:text-bad sm:order-4"
+              >
+                ✕
+              </button>
+            </div>
+            {/* A fee on the balance can stop at a cap, like 0.10% on the first $500,000. */}
+            {f.kind === "pct" && (
+              <label className="flex items-center gap-2 text-[13px] text-ink-3 sm:justify-end sm:pr-11">
+                Only on the first
+                <span className="relative w-[140px]">
+                  <Input
+                    aria-label={`${f.name || `Fee ${i + 1}`}: only on the first dollars of the balance`}
+                    inputMode="decimal"
+                    value={f.cap}
+                    placeholder="All of it"
+                    className="pl-6"
+                    onChange={(e) =>
+                      setFees((r) =>
+                        r.map((x, j) => (j === i ? { ...x, cap: e.target.value.replace(/[^0-9.]/g, "") } : x)),
+                      )
+                    }
+                  />
+                  <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-ink-3">$</span>
+                </span>
+              </label>
+            )}
           </div>
         ))}
         <div className="flex flex-wrap gap-2">
@@ -317,12 +395,16 @@ function FundTile({ p, s }: { p: SuperAccount; s: RetirementSettings }) {
                 key={n}
                 small
                 type="button"
-                onClick={() => setFees((r) => [...r, { name: n, kind: k as "pct" | "fixed", text: "" }])}
+                onClick={() => setFees((r) => [...r, { name: n, kind: k as "pct" | "fixed", text: "", cap: "" }])}
               >
                 + {n}
               </Button>
             ))}
-          <Button small type="button" onClick={() => setFees((r) => [...r, { name: "", kind: "fixed", text: "" }])}>
+          <Button
+            small
+            type="button"
+            onClick={() => setFees((r) => [...r, { name: "", kind: "fixed", text: "", cap: "" }])}
+          >
             + Another fee
           </Button>
         </div>
@@ -433,6 +515,8 @@ type Found = {
   fees: Fee[];
   options: Option[];
   notes: string[];
+  /** The known fund whose published fees these are, if any. */
+  fund: string | null;
 };
 
 /** Read the fund's statement (a PDF, read on the server) and choose which of what it found to keep. */
@@ -515,9 +599,7 @@ function StatementReader({ p }: { p: SuperAccount }) {
               <span className="min-w-0 flex-1 text-[14px]">
                 Fees, in place of the ones below
                 <span className="block text-[12px] text-ink-3">
-                  {found.fees
-                    .map((f) => `${f.name} ${f.kind === "pct" ? pctText(f.amount) : `${money(f.amount)}/yr`}`)
-                    .join(" · ")}
+                  {found.fees.map((f) => `${f.name} ${feeText(f)}`).join(" · ")}
                 </span>
               </span>
               <Switch checked={use.fees} onChange={(v) => setUse((u) => ({ ...u, fees: v }))} label="Use the fees" />
@@ -528,8 +610,8 @@ function StatementReader({ p }: { p: SuperAccount }) {
               <span className="min-w-0 flex-1 text-[14px]">
                 How it's invested
                 <span className="block text-[12px] text-ink-3">
-                  {found.options.map((o) => `${o.name} ${pctText(o.share, 1)}`).join(" · ")} (add each option's return
-                  and fee after)
+                  {found.options.map((o) => `${o.name} ${pctText(o.share, 1)}`).join(" · ")} (
+                  {found.fund ? "add each option's return after" : "add each option's return and fee after"})
                 </span>
               </span>
               <Switch

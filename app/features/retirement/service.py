@@ -23,6 +23,7 @@ from typing import Any
 
 from app.core import dates
 from app.core.database import Database
+from app.features.retirement import funds as known_funds
 
 DEFAULTS: dict[str, Any] = {
     "retire_age": 60,
@@ -58,7 +59,8 @@ DEFAULT_FEES: list[dict[str, Any]] = [
 
 
 def _fees(raw: Any) -> list[dict[str, Any]]:
-    """A fund's fees, checked: each a name, pct (a share of the balance a year) or fixed (cents a year), an amount."""
+    """A fund's fees, checked: each a name, pct (a share of the balance a year) or fixed (cents a year), an amount.
+    A pct fee can stop at a cap: charged on the balance up to `cap` cents ("0.10% on the first $500,000")."""
     if not isinstance(raw, list) or len(raw) > 12:
         raise ValueError("Fees are a list, each with a name, a kind and an amount.")
     out = []
@@ -69,16 +71,24 @@ def _fees(raw: Any) -> list[dict[str, Any]]:
             amount = float(f.get("amount"))
         except (AttributeError, TypeError, ValueError):
             raise ValueError("Each fee needs a name, a kind and an amount.") from None
+        cap = None
         if kind == "pct":
             if not 0 <= amount <= 0.05:
                 raise ValueError(f"{name}: a share of the balance up to 5% a year.")
+            if f.get("cap") not in (None, "", 0):
+                try:
+                    cap = int(f.get("cap"))
+                except (TypeError, ValueError):
+                    raise ValueError(f"{name}: the balance it stops at is dollars.") from None
+                if cap < 0:
+                    raise ValueError(f"{name}: the balance it stops at can't be below nothing.")
         elif kind == "fixed":
             if amount < 0:
                 raise ValueError(f"{name}: dollars a year can't be below nothing.")
             amount = round(amount)
         else:
             raise ValueError(f"{name}: is it a share of the balance or dollars a year?")
-        out.append({"name": name, "kind": kind, "amount": amount})
+        out.append({"name": name, "kind": kind, "amount": amount, **({"cap": cap} if cap else {})})
     return out
 
 
@@ -166,6 +176,8 @@ class RetirementService:
                 "born": r[2],
                 "age": dates.today().year - r[2],
                 "fund": r[3],
+                # The known fund this is, if any (its fees can be filled in from its fees page).
+                "known_fund": (known_funds.find(r[3]) or {}).get("key"),
                 "balance": r[4],
                 "as_of": r[5],
                 "salary": r[6],
@@ -210,14 +222,20 @@ class RetirementService:
                 raise ValueError("Enter the year they were born, like 1988.")
             if balance < 0 or salary < 0 or not 0 <= rate <= 0.5:
                 raise ValueError("The balance, salary and rate can't be below nothing.")
+            fund = " ".join(str(b.get("fund") or "").split())[:60]
+            # A fund whose fees are known fills them in when it's chosen (unless fees come with it); insurance stays.
+            known = known_funds.find(fund)
+            chosen = known is not None and "fees" not in body and known_funds.find(was.get("fund")) is not known
             fees = _fees(b.get("fees", DEFAULT_FEES if person_id is None else []))
             options = _options(b.get("options") or [])
+            if chosen and known is not None:
+                fees = _fees(known_funds.fees(known, fees if was else []))
+                options = _options(known_funds.options(known, options))
             as_of = b.get("as_of") or dates.today().isoformat()
             try:
                 as_of = dates.parse(str(as_of)).isoformat()
             except ValueError:
                 raise ValueError("That date isn't one we can read.") from None
-            fund = " ".join(str(b.get("fund") or "").split())[:60]
             values = (person, born, fund, balance, as_of, salary, rate, json.dumps(fees), json.dumps(options))
             if person_id is None:
                 cur = conn.execute(
@@ -277,6 +295,7 @@ class RetirementService:
         return {
             "people": self.people(),
             "settings": self.settings(),
+            "funds": known_funds.listing(),
             "spending_now": self.spending_now(),
             "preservation": PRESERVATION,
             "year": dates.today().year,

@@ -424,14 +424,15 @@ function Plan({
           }
         />
         <p className="m-0 text-[14px] text-ink-2">
-          Growth of about {pct(fundTerms(people[0], inputs).real, 1)} a year for {people[0].person}'s super after fees
-          and rising prices, spending of {k(s.spending)} a year, and no age pension, so it errs on the careful side.
+          Growth of about {pct(fundTerms(people[0], inputs, people[0].balance).real, 1)} a year for {people[0].person}'s
+          super after fees and rising prices, spending of {k(s.spending)} a year, and no age pension, so it errs on the
+          careful side.
         </p>
         <Details label="See every assumption">
           <p className="m-0 -mt-1 text-[12px] text-ink-3">A year. The right-hand figure is after fees and inflation.</p>
           {[
             ...people.map((p) => {
-              const t = fundTerms(p, inputs);
+              const t = fundTerms(p, inputs, p.balance);
               return [
                 `${p.person}'s super${p.fund ? `, ${p.fund}` : ""}`,
                 `${pct(t.ret)} before fees · ${pct(t.pct)} + ${money(t.fixed)} a year in fees`,
@@ -507,6 +508,8 @@ function PersonForm({ p, onClose }: { p: SuperAccount | null; onClose: () => voi
   const [name, setName] = useState(p?.person ?? "");
   const [born, setBorn] = useState(p ? String(p.born) : "");
   const [fund, setFund] = useState(p?.fund ?? "");
+  const known = useQuery(retirementQuery).data?.funds ?? [];
+  const picked = known.find((f) => fund.toLowerCase().includes(f.name.toLowerCase()));
   const [balance, setBalance] = useState(p ? (p.balance / 100).toFixed(0) : "");
   const [salary, setSalary] = useState(p ? (p.salary / 100).toFixed(0) : "");
   const [rate, setRate] = useState(p ? String(Math.round(p.rate * 1000) / 10) : "12");
@@ -556,10 +559,26 @@ function PersonForm({ p, onClose }: { p: SuperAccount | null; onClose: () => voi
           />
         </label>
       </div>
-      <label className="flex flex-col gap-1.5">
-        <span className="eyebrow">Fund</span>
-        <Input value={fund} placeholder="AustralianSuper · Balanced" onChange={(e) => setFund(e.target.value)} />
-      </label>
+      <div className="flex flex-col gap-1.5">
+        <label className="flex flex-col gap-1.5">
+          <span className="eyebrow">Fund</span>
+          <Input value={fund} placeholder="AustralianSuper · Balanced" onChange={(e) => setFund(e.target.value)} />
+        </label>
+        {known.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Funds whose fees are known">
+            {known.map((f) => (
+              <ChoiceChip key={f.key} pressed={picked?.key === f.key} onClick={() => setFund(f.name)}>
+                {f.name}
+              </ChoiceChip>
+            ))}
+          </div>
+        )}
+        <span className="text-[12px] text-ink-3">
+          {picked
+            ? `${picked.name}'s fees are filled in from its fees page, the way it charges them.`
+            : "Pick a fund above to have its fees filled in, or type any other."}
+        </span>
+      </div>
       <label className="flex flex-col gap-1.5">
         <span className="eyebrow">Balance now $</span>
         <Input inputMode="decimal" value={balance} placeholder="112,600" onChange={(e) => setBalance(e.target.value)} />

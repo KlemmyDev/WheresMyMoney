@@ -77,3 +77,49 @@ def test_assumptions_fees_and_options(client: TestClient) -> None:
     assert r.status_code == 422 and "100%" in r.text
     r = client.put(f"/api/retirement/people/{p['id']}", json={"fees": [{"name": "X", "kind": "pct", "amount": 0.2}]})
     assert r.status_code == 422
+
+
+def test_picking_a_known_fund_fills_in_its_fees(client: TestClient) -> None:
+    """Australian Retirement Trust's fees as its fees page has them: $1.10 a week, 0.10% on the first $500,000, 0.05%
+    met from reserves, and each investment option's own; insurance is kept."""
+    funds = ok(client.get("/api/retirement"))["funds"]
+    assert [f["name"] for f in funds] == ["Australian Retirement Trust"]
+    p = ok(
+        client.post(
+            "/api/retirement/people",
+            json={
+                "person": "Sam",
+                "born": 1992,
+                "balance": dollars(209000),
+                "options": [
+                    {"name": "International Shares - Index (unhedged)", "share": 0.6},
+                    {"name": "Australian Shares Index", "share": 0.4},
+                ],
+            },
+        )
+    )
+    assert p["known_fund"] is None and p["fees"][0] == {"name": "Admin fee", "kind": "fixed", "amount": 5200}
+    insurance = {"name": "Insurance", "kind": "fixed", "amount": dollars(1450)}
+    ok(client.put(f"/api/retirement/people/{p['id']}", json={"fees": [*p["fees"], insurance]}))
+
+    p = ok(client.put(f"/api/retirement/people/{p['id']}", json={"fund": "Australian Retirement Trust · Indexed"}))
+    assert p["known_fund"] == "art"
+    assert p["fees"] == [
+        {"name": "Admin fee", "kind": "fixed", "amount": 5720},
+        {"name": "Admin fee (on the balance)", "kind": "pct", "amount": 0.001, "cap": dollars(500000)},
+        {"name": "Costs met from reserves", "kind": "pct", "amount": 0.0005},
+        insurance,
+    ]
+    assert [o["fee_pct"] for o in p["options"]] == [0.001, 0.0008]
+
+    # Fees typed in later stay as typed, and saving the same fund again doesn't put them back.
+    mine = [{"name": "Admin fee", "kind": "fixed", "amount": 6000}]
+    ok(client.put(f"/api/retirement/people/{p['id']}", json={"fees": mine}))
+    assert (
+        ok(client.put(f"/api/retirement/people/{p['id']}", json={"fund": "Australian Retirement Trust"}))["fees"]
+        == mine
+    )
+
+    # A cap must be dollars at or above nothing.
+    bad = {"name": "Admin", "kind": "pct", "amount": 0.001, "cap": -1}
+    assert client.put(f"/api/retirement/people/{p['id']}", json={"fees": [bad]}).status_code == 422
