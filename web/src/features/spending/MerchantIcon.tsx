@@ -232,3 +232,37 @@ export function MerchantIcon({ tx, size = "lg" }: { tx: Transaction; size?: "md"
     </MerchantMark>
   );
 }
+
+/** A category's own tile: its badge glyph, duotone in the spending (or bills) colour. */
+export function CategoryGlyph({
+  name,
+  kind = "spending",
+  size = "lg",
+}: {
+  name: string | null;
+  kind?: string | null;
+  size?: "md" | "lg" | "xl";
+}) {
+  const d = name ? (BADGES.find(([re]) => re.test(name))?.[1] ?? TAG) : UNSORTED;
+  const colour = !name ? "var(--color-ink-3)" : kind === "bills" ? "var(--color-bills)" : "var(--color-spending)";
+  const px = SIZES[size];
+  return (
+    <span
+      aria-hidden
+      className="inline-flex flex-none items-center justify-center rounded-[30%]"
+      style={{ width: px, height: px, color: colour, background: `color-mix(in srgb, ${colour} 18%, transparent)` }}
+    >
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.7}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="size-[56%]"
+      >
+        <path d={d} />
+      </svg>
+    </span>
+  );
+}

@@ -316,6 +316,66 @@ export type BudgetSuggestions = {
   }[];
 };
 
+export type CategoryInsights = {
+  id: number;
+  name: string;
+  kind: "spending" | "bills";
+  budget: number | null;
+  first: string | null;
+  /** Calendar months, oldest first, ending with this one (so far). */
+  months: { month: string; spent: number }[];
+  this_month: number;
+  day: number;
+  days: number;
+  year: number;
+  year_months: number;
+  /** The average whole month over the last six (or fewer, for a new household). */
+  average: number;
+  average_months: number;
+  highest: number;
+  suggested: number | null;
+  over: number;
+  range: {
+    months: number;
+    start: string;
+    end: string;
+    spent: number;
+    count: number;
+    /** The same stretch just before it, when the statements cover it. */
+    previous: number | null;
+    previous_start: string;
+  };
+  merchants: { key: string; name: string; spent: number; count: number }[];
+  merchant_count: number;
+  /** Spent on each weekday over the timeframe, Monday first. */
+  weekdays: number[];
+  likely: {
+    ready: boolean;
+    history_days: number;
+    needs_days: number;
+    accuracy?: number | null;
+    rest?: number;
+    month_total?: number;
+    low?: number;
+    high?: number;
+    next_month?: string;
+    next?: number;
+    next_low?: number;
+    next_high?: number;
+    next_three?: number;
+    habits?: {
+      key: string;
+      name: string;
+      every_days: number;
+      amount: number;
+      last: string;
+      count: number;
+      next: string | null;
+    }[];
+  };
+  transactions: Transaction[];
+};
+
 export type Due = { bill_id: number; name: string; date: string; amount: number; how: string };
 
 export type BillsOverview = {

@@ -18,6 +18,7 @@ from typing import Any
 from app.core import dates
 from app.core.database import Database
 from app.features.spending import directory, forecast, merchants
+from app.features.spending.category import insights as category_view
 
 CATEGORY_KINDS = ("spending", "bills", "income", "transfer")
 # A new household's categories, with the designs' starting budgets (cents a month).
@@ -465,6 +466,13 @@ class SpendingService:
     def learn(self, description: str, category_id: int) -> int:
         with self.db.writing() as conn:
             return learn(conn, merchants.merchant(description), category_id, description)[0]
+
+    def category_insights(self, category_id: int, months: int = 3) -> dict[str, Any]:
+        with self.db.reading() as conn:
+            out = category_view(conn, category_id, dates.today(), months)
+        ids = out.pop("transaction_ids")
+        out["transactions"] = self.transactions(ids=ids, limit=len(ids)) if ids else []
+        return out
 
     # -- the merchants ---------------------------------------------------------------
 

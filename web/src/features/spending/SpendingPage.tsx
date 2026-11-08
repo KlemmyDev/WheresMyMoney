@@ -1,7 +1,7 @@
 /**
  * Spending (design: CkSpend): the spending month from top-up to top-up. What's left of the allowance, safe to spend a
  * day, the pace against an even month, where it'll be at the next top-up (what's left rolls into the offset), each day's
- * spending, each category against its budget (the tick is the pace to date), who spent it, and the latest spending.
+ * spending, every category (budgeted or not, each opening its own page), who spent it, and the latest spending.
  */
 import { Loading } from "~/features/common/brand";
 import { Banner, Bar, BigNumber, Card, Eyebrow, Stat, Details } from "~/features/common/ds";
@@ -9,7 +9,8 @@ import { I } from "~/features/common/icons";
 import type { BudgetSuggestions } from "~/features/common/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { useState, type CSSProperties } from "react";
+import { useState } from "react";
+import { SpendingCategories } from "~/features/spending/SpendingCategories";
 import { apiSend, errorMessage } from "~/features/common/api";
 import { Count, DayBars } from "~/features/common/charts";
 import {
@@ -50,7 +51,6 @@ export function SpendingPage() {
       </Empty>
     );
   const under = m.vs_pace <= 0;
-  const spentTotal = m.categories.reduce((s, c) => s + c.spent, 0) + m.unsorted;
   return (
     <>
       <PageHead
@@ -175,69 +175,8 @@ export function SpendingPage() {
           <span>{shortDate(m.end).toUpperCase()}</span>
         </div>
       </Tile>
+      <SpendingCategories m={m} onBudgets={() => setBudgets(true)} />
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,440px),1fr))] gap-4">
-        <Tile i={5} aria-labelledby="s-cat">
-          <TileTitle id="s-cat" right={<span className="mono">{money(spentTotal)}</span>}>
-            By category · the line is where you'd be on plan
-          </TileTitle>
-          <div className="flex flex-col gap-3">
-            {m.categories.map((c, i) => {
-              const ratio = c.budget ? c.spent / c.budget : 0;
-              const over = c.budget != null && ratio > m.pace * 1.25 && ratio > 0.5;
-              return (
-                <div key={c.id} className="grid grid-cols-[110px_1fr_120px] items-center gap-3 text-[13px]">
-                  <Link
-                    to="/transactions"
-                    search={{ account: m.account_id, category: c.id }}
-                    className="truncate text-ink underline decoration-line-2 underline-offset-4"
-                  >
-                    {c.name}
-                  </Link>
-                  <span className="relative h-2.5 rounded-full bg-raised">
-                    <i
-                      className="striped grow-x absolute inset-y-0 left-0 rounded-full"
-                      style={
-                        {
-                          width: `${Math.min(ratio, 1) * 100}%`,
-                          backgroundColor: over ? "var(--color-bills-fill)" : "var(--color-spending-fill)",
-                          "--i": i,
-                        } as CSSProperties
-                      }
-                    />
-                    {c.budget != null && (
-                      <b
-                        className="absolute -top-[3px] -bottom-[3px] w-0.5 bg-ink-2"
-                        style={{ left: `${m.pace * 100}%` }}
-                      />
-                    )}
-                  </span>
-                  <span className="mono text-right" style={{ color: over ? "var(--color-warn)" : undefined }}>
-                    {money(c.spent)}
-                    {c.budget != null ? ` / ${amount(c.budget)}` : ""}
-                  </span>
-                </div>
-              );
-            })}
-            {m.unsorted > 0 && (
-              <div className="grid grid-cols-[110px_1fr_120px] items-center gap-3 text-[13px] text-ink-2">
-                <Link
-                  to="/transactions"
-                  search={{ account: m.account_id, category: "unsorted" }}
-                  className="text-ink-2 underline decoration-line-2 underline-offset-4"
-                >
-                  Not sorted yet
-                </Link>
-                <span />
-                <span className="mono text-right">{money(m.unsorted)}</span>
-              </div>
-            )}
-          </div>
-          {m.unbudgeted > 0 && (
-            <div className="text-xs text-ink-3">
-              {money(m.unbudgeted)} of the {money(m.allowance)} isn't given to a category, so it's a cushion.
-            </div>
-          )}
-        </Tile>
         <Tile i={6} aria-labelledby="s-tx">
           {m.by_person.some((p) => p.user_id != null) && (
             <>
