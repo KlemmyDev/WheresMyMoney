@@ -283,6 +283,20 @@ export type SpendingMonth = {
   by_person: { user_id: number | null; spent: number }[];
   top_up: Rule | null;
   owed_back: number;
+  /**
+   * What the forecast expected each day of the month (cents, learned from the spending before it began; empty until
+   * there's enough history), how right it's been lately (0 to 1), and the likely spending still to come with a range.
+   */
+  expected: {
+    ready: boolean;
+    history_days: number;
+    needs_days: number;
+    daily: number[];
+    accuracy: number | null;
+    rest: number | null;
+    low: number | null;
+    high: number | null;
+  };
 };
 
 export type Flag = {

@@ -17,7 +17,7 @@ from typing import Any
 
 from app.core import dates
 from app.core.database import Database
-from app.features.spending import merchants
+from app.features.spending import forecast, merchants
 
 CATEGORY_KINDS = ("spending", "bills", "income", "transfer")
 # A new household's categories, with the designs' starting budgets (cents a month).
@@ -643,15 +643,18 @@ class SpendingService:
         remaining = max(days - elapsed, 0)
         cats = self.categories()
         spending_ids = {c["id"] for c in cats if c["kind"] == "spending"}
-        rows: list[tuple[int, str, int, int | None, int | None, int | None, str | None, int]] = []
+        names = {c["id"]: c["name"] for c in cats}
+        # The month, plus the year before it that the forecast learns from (and the four weeks it's checked on).
+        since = start - dt.timedelta(days=forecast.LOOKBACK + forecast.BACKTEST)
+        rows: list[tuple[int, str, int, int | None, int | None, int | None, str | None, int, str]] = []
         parts: dict[int, list[dict[str, Any]]] = {}
         if accounts:
             with self.db.reading() as conn:
                 rows = conn.execute(
-                    "SELECT id, date, amount, category_id, rule_id, user_id, category_by, excluded FROM transactions"
-                    f" WHERE account_id IN ({','.join('?' * len(accounts))}) AND date BETWEEN ? AND ?"
-                    " AND kind IN ('statement', 'manual', 'cash')",
-                    [*accounts, start.isoformat(), end.isoformat()],
+                    "SELECT id, date, amount, category_id, rule_id, user_id, category_by, excluded, merchant"
+                    f" FROM transactions WHERE account_id IN ({','.join('?' * len(accounts))}) AND date BETWEEN ? AND ?"
+                    " AND kind IN ('statement', 'manual', 'cash') ORDER BY date, id",
+                    [*accounts, since.isoformat(), end.isoformat()],
                 ).fetchall()
                 parts = _splits(conn, [r[0] for r in rows if r[6] == "split"])
         daily = [0] * days
@@ -660,9 +663,13 @@ class SpendingService:
         spent = 0
         # Spent on someone's behalf (less what they've paid back): it's coming back, so it counts as still there.
         owed_back = 0
-        for tx_id, day, amount, category, rule_id, user_id, _by, excluded in rows:
+        history: list[forecast.Spend] = []
+        for tx_id, day, amount, category, rule_id, user_id, _by, excluded, merchant_text in rows:
+            date = dates.parse(day)
+            this_month = date >= start
             if excluded:
-                owed_back -= amount
+                if this_month:
+                    owed_back -= amount
                 continue
             if rule_id is not None:
                 continue
@@ -677,8 +684,18 @@ class SpendingService:
                 if cat is None and part > 0:
                     continue  # money in that isn't sorted yet isn't a refund we can be sure of
                 out = -part
+                history.append(
+                    forecast.Spend(
+                        date,
+                        out,
+                        names.get(cat, "Not sorted yet") if cat is not None else "Not sorted yet",
+                        merchant_text,
+                    )
+                )
+                if not this_month:
+                    continue
                 spent += out
-                i = (dates.parse(day) - start).days
+                i = (date - start).days
                 if 0 <= i < days:
                     daily[i] += out
                 by_category[cat] = by_category.get(cat, 0) + out
@@ -698,6 +715,20 @@ class SpendingService:
         unsorted = by_category.get(None, 0)
         budgeted = sum(c["budget"] or 0 for c in cats if c["kind"] == "spending")
         per_day = spent / elapsed if elapsed else 0
+        # What the forecast expected for each day of the month, learned only from the spending before the month began
+        # (so it's a fair test of it); and, learned from everything up to today, where the month is likely to finish.
+        before = forecast.Model(history, start)
+        ahead = forecast.forecast(history, today, end, daily[elapsed - 1] if today <= end else 0)
+        expected = {
+            "ready": before.ready,
+            "history_days": before.days,
+            "needs_days": forecast.MIN_HISTORY,
+            "daily": [d["expected"] for d in before.days_ahead(start, end)] if before.ready else [],
+            "accuracy": ahead["accuracy"],
+            "rest": ahead["rest"] if ahead["ready"] else None,
+            "low": ahead["low"] if ahead["ready"] else None,
+            "high": ahead["high"] if ahead["ready"] else None,
+        }
         return {
             "start": start.isoformat(),
             "end": end.isoformat(),
@@ -718,4 +749,5 @@ class SpendingService:
             "unbudgeted": max(allowance - budgeted, 0),
             "by_person": [{"user_id": k, "spent": v} for k, v in by_person.items()],
             "owed_back": max(owed_back, 0),
+            "expected": expected,
         }

@@ -1,13 +1,9 @@
 /**
- * The Overview (Nightfall, from the uplift canvas): your balances up top with an account filter and safe to spend,
- * quick actions, then this spending month. Previously: three readouts
- * (safe to spend today, spent so far, bills before the next pay), the month day by day (money left as a line, what was
- * spent each day as bars, pay and bills underneath; hover or arrow through any day to see it on the right), where the
- * money went by category, and what's still to come before the next top-up.
+ * The Overview (Nightfall, from the uplift canvas): the balances with an account filter and what's coming up beside
+ * them, then this spending month against what the forecast expected, recent activity and savings goals.
  */
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { useState } from "react";
 import { errorMessage } from "~/features/common/api";
 import { Loading } from "~/features/common/brand";
 import { money, parseDate } from "~/features/common/format";
@@ -15,7 +11,7 @@ import { dashboardQuery } from "~/features/common/queries";
 import type { Dashboard, SpendingMonth } from "~/features/common/types";
 import { Empty, ErrorText } from "~/features/common/ui";
 import { BalanceHero, GoalsCard } from "~/features/dashboard/OverviewParts";
-import { ComingUp, MonthCard, RecentActivity, WhereItWent } from "~/features/dashboard/OverviewMonth";
+import { ComingUp, MonthCard, RecentActivity } from "~/features/dashboard/OverviewMonth";
 
 type Event = { kind: "pay" | "bill" | "topup"; name: string; amount: number | null; how: string; bill_id?: number };
 
@@ -24,7 +20,6 @@ export type Month = {
   s: SpendingMonth;
   today: number;
   dates: string[];
-  left: number[];
   events: Event[][];
   nextPay: number | null;
   beforePay: { total: number; count: number; byHand: number };
@@ -62,12 +57,6 @@ function payDates(anchor: string, every: string, from: string, to: string): stri
 function buildMonth(d: Dashboard, s: SpendingMonth): Month {
   const today = s.day - 1;
   const dates = s.daily.map((_, i) => addDays(s.start, i));
-  // Left after each day: anchored on today's real balance, then the safe amount a day to the end.
-  const spentTo: number[] = [];
-  s.daily.reduce((acc, v, i) => (spentTo[i] = acc + v), 0);
-  const left = s.daily.map((_, i) =>
-    i <= today ? s.left + spentTo[today] - spentTo[i] : s.left - (i - today) * s.safe_per_day,
-  );
   const events: Event[][] = s.daily.map(() => []);
   const names = Object.fromEntries(d.accounts.map((a) => [a.id, a.name]));
   if (s.top_up)
@@ -105,7 +94,6 @@ function buildMonth(d: Dashboard, s: SpendingMonth): Month {
     s,
     today,
     dates,
-    left,
     events,
     nextPay,
     beforePay: {
@@ -118,7 +106,6 @@ function buildMonth(d: Dashboard, s: SpendingMonth): Month {
 
 export function DashboardPage() {
   const q = useQuery(dashboardQuery("30d"));
-  const [sel, setSel] = useState<number | null>(null);
   if (q.isError) return <ErrorText>{errorMessage(q.error)}</ErrorText>;
   const d = q.data;
   if (!d) return <Loading />;
@@ -137,7 +124,7 @@ export function DashboardPage() {
     );
   const s = d.spending;
   const m = s ? buildMonth(d, s) : null;
-  // The account total leads, with what's coming up beside it; then the month and where it went.
+  // The account total leads, with what's coming up beside it; then the month against what was expected.
   return (
     <>
       <div className="grid gap-4 md:grid-cols-12 [&>*]:min-w-0">
@@ -154,15 +141,17 @@ export function DashboardPage() {
       </div>
       {s && m && (
         <>
-          <MonthCard m={m} sel={sel} setSel={setSel} />
-          <div className="grid gap-4 md:grid-cols-12 [&>*]:min-w-0">
-            <WhereItWent s={s} />
-            <RecentActivity />
-          </div>
+          <MonthCard m={m} />
         </>
       )}
-      {!(s && m) && <RecentActivity />}
-      <GoalsCard d={d} />
+      <div className="grid gap-4 md:grid-cols-12 [&>*]:min-w-0">
+        <div className="md:col-span-7">
+          <RecentActivity />
+        </div>
+        <div className="md:col-span-5">
+          <GoalsCard d={d} />
+        </div>
+      </div>
     </>
   );
 }
