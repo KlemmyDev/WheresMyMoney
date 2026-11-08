@@ -1,17 +1,16 @@
 /**
- * The Overview's month, as on the uplift canvas: money left day by day (stat tiles, a striped bar for each day spent,
- * hatched for what's likely, the line of money left, pay and bills as icon chips under their days, and the chosen
- * day's tiles), safe to spend with "what if I spend…", what's coming up with how well Bills covers it, where the
- * money went, and recent activity. Every chart reads by dragging, hovering or the arrow keys.
+ * The Overview's month: spending so far against what the forecast expected (app.features.spending.forecast), what's
+ * coming up with how well Bills covers it, and recent activity. The chart reads by dragging, hovering or arrow keys.
  */
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useState, type KeyboardEvent, type PointerEvent } from "react";
-import { Bar, Card, CardHead, Details, Stat } from "~/features/common/ds";
-import { dayDate, money, parseDate, shortDate } from "~/features/common/format";
+import { useState } from "react";
+import { Bar, Card, CardHead, Details } from "~/features/common/ds";
+import { ScrubChart } from "~/features/common/ScrubChart";
+import { dayDate, money, shortDate } from "~/features/common/format";
 import { Chip, I, type Glyph, type Tone } from "~/features/common/icons";
 import { transactionsQuery } from "~/features/common/queries";
-import type { Dashboard, SpendingMonth, Transaction } from "~/features/common/types";
+import type { Dashboard, Transaction } from "~/features/common/types";
 import { TransactionSheet, TxRow } from "~/features/spending/TransactionSheet";
 import { Pill, cn } from "~/features/common/ui";
 import type { Month } from "~/features/dashboard/DashboardPage";
@@ -22,36 +21,27 @@ const EVENT_GLYPH: Record<string, { g: Glyph; tone: Tone }> = {
   bill: { g: I.bills, tone: "bills" },
 };
 
-/** Money left, day by day. */
-export function MonthCard({ m, sel, setSel }: { m: Month; sel: number | null; setSel: (i: number | null) => void }) {
+/**
+ * Spending this month: what's gone so far against what the forecast expected by each day. The expected line is learned
+ * only from the spending before the month began, so it's a fair test of it; until there's enough history to learn
+ * from, the plan (the month's money spread evenly) stands in for it.
+ */
+export function MonthCard({ m }: { m: Month }) {
   const s = m.s;
-  const n = s.days;
-  const day = sel ?? m.today;
-  const top = Math.max(s.allowance, ...m.left, 1);
-  const y = (v: number) => 4 + (1 - Math.max(v, 0) / top) * 92;
-  const x = (i: number) => ((i + 0.5) / n) * 100;
-  const past = [
-    `M0 ${y(s.allowance).toFixed(2)}`,
-    ...m.left.slice(0, m.today + 1).map((v, i) => `L${x(i).toFixed(2)} ${y(v).toFixed(2)}`),
-  ].join(" ");
-  const future = m.left
-    .slice(m.today)
-    .map((v, i) => `${i ? "L" : "M"}${x(m.today + i).toFixed(2)} ${y(v).toFixed(2)}`)
-    .join(" ");
-  const barTop = Math.max(s.even_per_day * 2.5, ...s.daily, 1);
-  const likelyLeft = s.projected;
-  const pick = (e: PointerEvent<HTMLDivElement>) => {
-    const r = e.currentTarget.getBoundingClientRect();
-    setSel(Math.min(n - 1, Math.max(0, Math.floor(((e.clientX - r.left) / r.width) * n))));
+  const e = s.expected;
+  const learned = e.ready && e.daily.length === s.days;
+  const sum = (vals: number[]) => {
+    let t = 0;
+    return vals.map((v) => (t += v));
   };
-  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-    e.preventDefault();
-    setSel(Math.min(n - 1, Math.max(0, day + (e.key === "ArrowRight" ? 1 : -1))));
-  };
-  const done = day < m.today;
-  const isToday = day === m.today;
-  const evs = m.events[day];
+  const actual = sum(s.daily).map((v, i) => (i <= m.today ? v : null));
+  const expected = learned ? sum(e.daily) : s.daily.map((_, i) => Math.round((s.allowance * (i + 1)) / s.days));
+  const byNow = expected[m.today] ?? 0;
+  const diff = s.spent - byNow;
+  const close = Math.abs(diff) < Math.max(byNow * 0.03, 1000);
+  const finish = e.rest != null ? s.spent + e.rest : null;
+  const range = e.low != null && e.high != null ? [s.spent + e.low, s.spent + e.high] : null;
+  const what = learned ? "expected" : "planned";
   return (
     <Card aria-labelledby="mo-h">
       <CardHead
@@ -64,207 +54,52 @@ export function MonthCard({ m, sel, setSel }: { m: Month; sel: number | null; se
         }
       />
       <p className="m-0 text-[16px] text-ink-2">
-        {s.spent <= s.allowance
-          ? `You've spent ${money(s.spent)} of ${money(s.allowance)} so far, `
-          : `You've spent ${money(s.spent)}, more than the ${money(s.allowance)} for the month, `}
-        {s.vs_pace <= 0
-          ? `${money(-s.vs_pace)} less than planned by now.`
-          : `${money(s.vs_pace)} more than planned by now.`}
-        {likelyLeft >= 0
-          ? ` At this rate about ${money(likelyLeft)} will be left over.`
-          : ` At this rate it'll run ${money(-likelyLeft)} short.`}
+        You've spent <span className="text-ink">{money(s.spent)}</span>
+        {close
+          ? `, about what was ${what} by now.`
+          : diff < 0
+            ? `, ${money(-diff)} less than ${what} by now.`
+            : `, ${money(diff)} more than ${what} by now.`}
+        {finish != null &&
+          ` On your usual spending it'll finish around ${money(finish)}${
+            finish > s.allowance ? `, over the ${money(s.allowance)} for the month.` : ` of the ${money(s.allowance)}.`
+          }`}
       </p>
-      <Bar
-        label={`Spent ${money(s.spent)} of ${money(s.allowance)}, about ${money(Math.max(0, s.left - likelyLeft))} more likely`}
-        max={Math.max(s.allowance, s.spent + Math.max(0, s.left - likelyLeft), 1)}
-        marker={(s.allowance * s.day) / s.days}
-        segments={[
-          { value: s.spent, role: "spending" },
-          { value: Math.max(0, s.left - likelyLeft), role: "spending", likely: true },
+      <ScrubChart
+        label={`Spending this month, ${what} against actual, by day`}
+        lines={[
+          { values: actual, colour: "var(--color-spending-fill)", name: "Spent", fill: true },
+          { values: expected, colour: "var(--color-ink-3)", name: learned ? "Expected" : "Plan", dashed: true },
         ]}
+        at={(i) => dayDate(m.dates[i])}
+        axisAt={(i) => shortDate(m.dates[i])}
+        axis={[0, s.days - 1]}
+        format={(v) => money(v)}
+        floor={0}
+        height={170}
+        marks={m.today < s.days - 1 ? [{ i: m.today, label: "Today" }] : []}
       />
-      <Details label="See the month day by day">
-        <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4">
-          <Stat label="Spent so far" value={money(s.spent)} note={`of ${money(s.allowance)}`} role="spending" />
-          <Stat label="Left" value={money(s.left)} note={`${s.remaining} days to go`} role="accent" />
-          <Stat
-            label="Likely left over"
-            value={money(likelyLeft)}
-            note={likelyLeft >= 0 ? "goes back to the offset" : "short"}
-            role={likelyLeft >= 0 ? "savings" : "bills"}
-            noteColor={likelyLeft >= 0 ? undefined : "var(--color-warn)"}
-          />
-          <Stat
-            label="Compared with plan"
-            value={money(Math.abs(s.vs_pace))}
-            note={s.vs_pace <= 0 ? "under plan so far" : "over plan so far"}
-            role={s.vs_pace <= 0 ? "savings" : "bills"}
-          />
-        </div>
-        <div
-          role="slider"
-          tabIndex={0}
-          aria-label="The month day by day. Drag across it, or use the arrow keys, to move between days."
-          aria-valuemin={1}
-          aria-valuemax={n}
-          aria-valuenow={day + 1}
-          aria-valuetext={`${dayDate(m.dates[day])}: ${money(m.left[day])} left`}
-          onPointerDown={pick}
-          onPointerMove={pick}
-          onPointerLeave={(e) => e.pointerType === "mouse" && setSel(null)}
-          onKeyDown={onKey}
-          className="relative mt-1 cursor-ew-resize touch-pan-y rounded-xl outline-offset-4 select-none"
-        >
-          <div className="relative h-[200px] sm:h-[230px]">
-            {/* What's ahead is likely, not known: hatched. */}
-            <div
-              aria-hidden
-              className="hatched absolute top-0 right-0 bottom-0 rounded-xl border-l border-dashed opacity-40"
-              style={{
-                left: `${((m.today + 1) / n) * 100}%`,
-                borderColor: "color-mix(in srgb, var(--color-accent-fill) 50%, transparent)",
-              }}
-            />
-            <div aria-hidden className="absolute inset-x-0 bottom-0 flex h-[45%] items-end gap-[3px]">
-              {s.daily.map((v, i) => {
-                const past = i < m.today;
-                const val = i <= m.today ? v : s.safe_per_day;
-                return (
-                  <div key={i} className={cn("flex h-full flex-1 items-end rounded-[5px]", i === day && "bg-ink/6")}>
-                    <i
-                      className={cn("block w-full rounded-t-[4px]", past ? "striped" : i === m.today ? "" : "hatched")}
-                      style={{
-                        height: `max(3px, ${Math.min(val / barTop, 1) * 100}%)`,
-                        ["--c" as string]: "var(--color-spending-fill)",
-                        // Only set what applies: an empty background shorthand would wipe the colour.
-                        ...(past
-                          ? { backgroundColor: "var(--color-spending-fill)" }
-                          : i === m.today
-                            ? { background: "var(--grad)" }
-                            : {
-                                boxShadow:
-                                  "inset 0 0 0 1px color-mix(in srgb, var(--color-spending-fill) 45%, transparent)",
-                              }),
-                      }}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-            <svg
-              viewBox="0 0 100 100"
-              preserveAspectRatio="none"
-              className="absolute inset-0 h-full w-full"
-              aria-hidden
-            >
-              <path
-                d={past}
-                fill="none"
-                stroke="var(--color-teal)"
-                strokeWidth={2.6}
-                vectorEffect="non-scaling-stroke"
-                strokeLinejoin="round"
-              />
-              {m.today < n - 1 && (
-                <path
-                  d={future}
-                  fill="none"
-                  stroke="var(--color-teal)"
-                  strokeWidth={2.2}
-                  strokeDasharray="5 5"
-                  vectorEffect="non-scaling-stroke"
-                />
-              )}
-            </svg>
-            <span
-              aria-hidden
-              className="pointer-events-none absolute top-0 bottom-0 w-px bg-ink-3/60"
-              style={{ left: `${x(day)}%` }}
-            />
-            <span
-              aria-hidden
-              className="pointer-events-none absolute size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-[0_0_0_4px_var(--color-accent-fill)]"
-              style={{ left: `${x(day)}%`, top: `${y(m.left[day])}%` }}
-            />
-            <span className="num absolute top-0 left-1 text-[10px] text-ink-3">{money(top)}</span>
-          </div>
-          <div aria-hidden className="mt-2 flex h-6 gap-[3px]">
-            {m.events.map((e, i) => {
-              const first = e[0];
-              return (
-                <div key={i} className="flex flex-1 justify-center">
-                  {first && (
-                    <>
-                      {/* Icon chips where there's room; on a phone a day is too narrow, so a dot in the same colour. */}
-                      <Chip
-                        g={EVENT_GLYPH[first.kind].g}
-                        tone={EVENT_GLYPH[first.kind].tone}
-                        size="sm"
-                        solid={i === day}
-                        className="max-md:hidden"
-                      />
-                      <span
-                        className="mt-1.5 size-2 rounded-full md:hidden"
-                        style={{
-                          background:
-                            first.kind === "bill"
-                              ? "var(--color-bills-fill)"
-                              : first.kind === "pay"
-                                ? "var(--color-savings-fill)"
-                                : "var(--color-offset-fill)",
-                        }}
-                      />
-                    </>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          <div aria-hidden className="mono mt-1 flex gap-[3px] text-[10px] text-ink-3">
-            {m.dates.map((date, i) => (
-              <span
-                key={date}
-                className={cn("flex-1 text-center whitespace-nowrap", i === m.today && "font-semibold text-teal")}
-              >
-                {i === m.today ? "today" : i % 5 === 0 ? parseDate(date).getDate() : ""}
-              </span>
-            ))}
-          </div>
-        </div>
-        <p className="m-0 flex items-center gap-1.5 text-[12px] text-ink-3">
-          Bars are what was spent each day; the shaded part is what's likely still to come. Drag across to see any day.
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-ink-3">
+        <span className="flex items-center gap-1.5">
+          <i className="h-[3px] w-4 rounded-full bg-spending-fill" /> Spent
+        </span>
+        <span className="flex items-center gap-1.5">
+          <i className="w-4 border-t-2 border-dashed border-ink-3" /> {learned ? "Expected" : "Plan"}
+        </span>
+        {range && (
+          <span>
+            Likely {money(range[0])}–{money(range[1])} by {shortDate(s.end)}
+          </span>
+        )}
+      </div>
+      <Details label="How it's worked out">
+        <p className="m-0 text-[14px] text-ink-2">
+          {learned
+            ? "Expected is learned from up to a year of your spending before this month began: recent weeks count most, each weekday has its own pattern (more on a Saturday, less on a Tuesday), and payments that repeat, like the gym or a subscription, are expected on their days. It learns more each month."
+            : `There isn't enough spending history to learn from yet (${e.history_days} of ${e.needs_days} days), so the line is the plan: the month's ${money(s.allowance)} spread evenly. An expected line takes over once there's enough.`}
+          {e.accuracy != null &&
+            ` Over the last four weeks it was ${Math.round(e.accuracy * 100)}% right, and the likely range is as wide as it has been wrong.`}
         </p>
-        <div aria-live="polite" className="grid gap-2.5 sm:grid-cols-[1.3fr_1fr_1fr]">
-          <div className="flex items-center gap-3 rounded-2xl border border-line bg-tile-2 p-3.5">
-            {evs[0] ? (
-              <Chip g={EVENT_GLYPH[evs[0].kind].g} tone={EVENT_GLYPH[evs[0].kind].tone} size="lg" />
-            ) : (
-              <Chip g={I.spending} tone="spending" size="lg" />
-            )}
-            <span className="min-w-0">
-              <span className="block font-semibold">
-                {isToday ? "Today, " : ""}
-                {dayDate(m.dates[day])}
-              </span>
-              <span className="block truncate text-[13px] text-ink-3">
-                {evs.length
-                  ? evs
-                      .map(
-                        (e) =>
-                          `${e.name}${e.amount != null ? ` ${e.kind === "pay" ? "+" : ""}${money(e.amount)}` : ""}`,
-                      )
-                      .join(", ")
-                  : "No pay or bills this day"}
-              </span>
-            </span>
-          </div>
-          <Stat
-            label={done ? "Spent" : isToday ? "Spent today" : "You could spend"}
-            value={money(done || isToday ? s.daily[day] : s.safe_per_day, { cents: true })}
-            role="spending"
-          />
-          <Stat label="Left after" value={money(m.left[day], { cents: true })} role="accent" />
-        </div>
       </Details>
     </Card>
   );
@@ -367,109 +202,6 @@ export function ComingUp({
           {all.length - rows.length} more before the month ends
         </Link>
       )}
-    </Card>
-  );
-}
-
-const CAT_COLOURS = [
-  "var(--color-spending-fill)",
-  "var(--color-offset-fill)",
-  "var(--color-bills-fill)",
-  "var(--color-savings-fill)",
-  "var(--color-invest)",
-  "var(--color-accent-fill)",
-  "var(--color-rose)",
-];
-
-/** Where the money went: a donut and a bar per category against its budget. */
-export function WhereItWent({ s }: { s: SpendingMonth }) {
-  const [hover, setHover] = useState<number | null>(null);
-  const cats = [
-    ...s.categories
-      .filter((c) => c.spent > 0)
-      .sort((a, b) => b.spent - a.spent)
-      .map((c, i) => ({ ...c, colour: CAT_COLOURS[i % CAT_COLOURS.length] })),
-    ...(s.unsorted > 0
-      ? [{ id: -1, name: "Not sorted yet", budget: null, spent: s.unsorted, colour: "var(--color-out)" }]
-      : []),
-  ];
-  const total = cats.reduce((a, c) => a + c.spent, 0) || 1;
-  let at = 0;
-  const shown = hover != null ? cats[hover] : null;
-  return (
-    <Card aria-labelledby="wiw-h" className="md:col-span-6">
-      <CardHead
-        id="wiw-h"
-        title="Where it went"
-        right={
-          s.unsorted > 0 ? (
-            <Link to="/sort" className="text-[14px] font-semibold text-teal no-underline">
-              Sort {money(s.unsorted)}
-            </Link>
-          ) : undefined
-        }
-      />
-      <div className="flex flex-wrap items-center gap-5">
-        <div className="relative size-[150px] flex-none">
-          <svg viewBox="0 0 42 42" className="size-full -rotate-90" aria-hidden>
-            {cats.map((c, i) => {
-              const len = (c.spent / total) * 100;
-              const el = (
-                <circle
-                  key={c.id}
-                  cx="21"
-                  cy="21"
-                  r="15.9"
-                  fill="none"
-                  stroke={c.colour}
-                  strokeWidth={hover === i ? 6.5 : 5}
-                  pathLength={100}
-                  strokeDasharray={`${Math.max(len - 1, 0.5)} ${100 - Math.max(len - 1, 0.5)}`}
-                  strokeDashoffset={-at}
-                  className="transition-[stroke-width] duration-150"
-                />
-              );
-              at += len;
-              return el;
-            })}
-          </svg>
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-            <span className="num text-[17px]">{money(shown ? shown.spent : s.spent)}</span>
-            <span className="max-w-[90px] truncate text-[11px] text-ink-3">{shown ? shown.name : "this month"}</span>
-          </div>
-        </div>
-        <div className="flex min-w-[220px] flex-1 flex-col" onMouseLeave={() => setHover(null)}>
-          {cats.map((c, i) => (
-            <Link
-              key={c.id}
-              to={c.id === -1 ? "/sort" : "/spending"}
-              onMouseEnter={() => setHover(i)}
-              onFocus={() => setHover(i)}
-              onBlur={() => setHover(null)}
-              className="press flex min-h-12 flex-col justify-center gap-1.5 rounded-xl px-1.5 text-ink no-underline hover:bg-tile-2"
-            >
-              <span className="flex items-center gap-2 text-[14px]">
-                <span aria-hidden className="size-2.5 rounded-[3px]" style={{ background: c.colour }} />
-                <span className="min-w-0 flex-1 truncate">{c.name}</span>
-                <span className="num text-[13px] text-ink-2">
-                  {money(c.spent)}
-                  {c.budget ? ` / ${money(c.budget)}` : ""}
-                </span>
-              </span>
-              <span className="block h-1.5 overflow-hidden rounded-full bg-raised">
-                <span
-                  className="striped block h-full rounded-full"
-                  style={{
-                    width: `${c.budget ? Math.min(c.spent / c.budget, 1) * 100 : (c.spent / cats[0].spent) * 100}%`,
-                    backgroundColor: c.colour,
-                  }}
-                />
-              </span>
-            </Link>
-          ))}
-          {!cats.length && <span className="text-[13px] text-ink-3">Nothing spent yet this month.</span>}
-        </div>
-      </div>
     </Card>
   );
 }

@@ -110,7 +110,7 @@ export function ScrubChart({
               <g key={l.name}>
                 {l.fill && d && (
                   <path
-                    d={`${d} L${x(l.values.length - 1)} ${H} L${x(l.values.findIndex((v) => v != null))} ${H} Z`}
+                    d={`${d} L${x(l.values.findLastIndex((v) => v != null))} ${H} L${x(l.values.findIndex((v) => v != null))} ${H} Z`}
                     fill={l === main ? `url(#${id}-g)` : `color-mix(in srgb, ${l.colour} 18%, transparent)`}
                   />
                 )}
