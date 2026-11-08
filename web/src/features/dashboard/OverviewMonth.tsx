@@ -317,7 +317,11 @@ export function ComingUp({ d, m }: { d: Dashboard; m: Month }) {
             <button
               key={k}
               type="button"
-              onClick={() => navigate({ to: r.kind === "bill" ? "/bills" : "/rules" })}
+              onClick={() =>
+                r.kind === "bill" && r.bill_id != null
+                  ? navigate({ to: "/bills/$billId", params: { billId: String(r.bill_id) } })
+                  : navigate({ to: r.kind === "bill" ? "/bills" : "/rules" })
+              }
               className="chip-host press flex min-h-16 cursor-pointer items-center gap-3 rounded-2xl border-0 bg-transparent px-1.5 text-left text-ink hover:bg-tile-2"
             >
               <Chip g={e.g} tone={e.tone} size="lg" />

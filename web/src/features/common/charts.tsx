@@ -3,8 +3,10 @@
  * value in 700ms, lines draw left to right and then their fill fades in, bars grow from the baseline in reading order.
  * With reduced motion they appear already drawn.
  */
-import type { CSSProperties, ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
+import { money, monthYear } from "~/features/common/format";
 import { useCountUp, useSweep } from "~/features/common/motion";
+import { cn } from "~/features/common/ui";
 
 /** A figure that counts up from the last value seen (600ms). `format` writes it (cents in, text out). */
 export function Count({ k, value, format }: { k: string; value: number; format: (v: number) => ReactNode }) {
@@ -345,6 +347,93 @@ export function DayBars({
               </div>
             );
           })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A bar for each payment, oldest on the left, against a dashed line at what the bill is now. Tapping a bar (or
+ * moving along them with the arrow keys) shows its date and amount above; the latest is shown to start with.
+ */
+export function PaymentBars({
+  payments,
+  now,
+  label,
+  describe,
+}: {
+  payments: { date: string; amount: number }[];
+  now: number;
+  label: string;
+  describe: (p: { date: string; amount: number }) => ReactNode;
+}) {
+  const [picked, setPicked] = useState<number | null>(null);
+  const at = picked ?? payments.length - 1;
+  const ticks = niceTicks(Math.max(now, ...payments.map((p) => p.amount), 1));
+  const top = ticks[ticks.length - 1];
+  const pick = (i: number) => setPicked(Math.max(0, Math.min(payments.length - 1, i)));
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="min-h-6 text-[14px] text-ink-2" aria-live="polite">
+        {payments[at] && describe(payments[at])}
+      </div>
+      <div className="flex gap-2.5">
+        <div className="mono flex h-[180px] flex-col justify-between text-right text-xs text-ink-3">
+          {[...ticks].reverse().map((t) => (
+            <span key={t}>${short(t)}</span>
+          ))}
+        </div>
+        <div className="relative min-w-0 flex-1">
+          <div
+            className="relative flex h-[180px] items-end gap-[3px] border-b border-line"
+            role="group"
+            aria-label={label}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+                e.preventDefault();
+                const next = Math.max(0, Math.min(payments.length - 1, at + (e.key === "ArrowLeft" ? -1 : 1)));
+                pick(next);
+                (e.currentTarget.children[next] as HTMLElement | undefined)?.focus();
+              }
+            }}
+          >
+            {payments.map((p, i) => (
+              <button
+                key={i}
+                type="button"
+                tabIndex={i === at ? 0 : -1}
+                aria-label={`${p.date}: ${money(p.amount, { cents: true })}`}
+                aria-pressed={i === at}
+                onClick={() => pick(i)}
+                onMouseEnter={() => pick(i)}
+                className="relative flex h-full min-w-0 flex-1 cursor-pointer items-end border-0 bg-transparent p-0"
+              >
+                <span
+                  className={cn(
+                    "striped block w-full grow rounded-t-[4px] bg-bills-fill transition-opacity",
+                    i !== at && "opacity-60",
+                  )}
+                  style={
+                    {
+                      height: `max(2px, ${(p.amount / top) * 100}%)`,
+                      ["--i" as string]: i,
+                    } as CSSProperties
+                  }
+                />
+              </button>
+            ))}
+            <div
+              className="pointer-events-none absolute inset-x-0 border-t-[1.5px] border-dashed border-ink"
+              style={{ bottom: `${(now / top) * 100}%` }}
+            />
+          </div>
+          {payments.length > 0 && (
+            <div className="mono mt-1.5 flex justify-between text-xs text-ink-3">
+              <span>{monthYear(payments[0].date.slice(0, 7))}</span>
+              <span>{monthYear(payments[payments.length - 1].date.slice(0, 7))}</span>
+            </div>
+          )}
         </div>
       </div>
     </div>

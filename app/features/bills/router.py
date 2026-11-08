@@ -50,6 +50,16 @@ async def dismiss(svc: ServicesDep, body: JsonBody):
     return {"dismissed": True}
 
 
+@router.get("/{bill_id}")
+async def detail(svc: ServicesDep, bill_id: int):
+    """One bill: its payments, what they add up to, its price changes and what's ahead, with the payments as
+    transactions (newest first) to open."""
+    d = await run(svc.bills.detail, bill_id)
+    ids = [int(p["id"]) for p in d["payments"]]
+    d["transactions"] = await run(svc.spending.transactions, None, None, None, max(len(ids), 1), ids) if ids else []
+    return d
+
+
 @router.put("/{bill_id}")
 async def update(svc: ServicesDep, bill_id: int, body: JsonBody):
     await run(svc.bills.update, bill_id, body)

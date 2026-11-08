@@ -18,7 +18,7 @@ import { Empty, ErrorText } from "~/features/common/ui";
 import { BalanceHero, GoalsCard } from "~/features/dashboard/OverviewParts";
 import { ComingUp, MonthCard, RecentActivity, WhereItWent } from "~/features/dashboard/OverviewMonth";
 
-type Event = { kind: "pay" | "bill" | "topup"; name: string; amount: number | null; how: string };
+type Event = { kind: "pay" | "bill" | "topup"; name: string; amount: number | null; how: string; bill_id?: number };
 
 /** One spending month, day by day: what was spent, what's left after each day, and the pay and bills on it. */
 export type Month = {
@@ -93,6 +93,7 @@ function buildMonth(d: Dashboard, s: SpendingMonth): Month {
     if (i < 0) continue;
     events[i].push({
       kind: "bill",
+      bill_id: b.bill_id,
       name: b.name,
       amount: b.amount,
       how: b.how === "manual" ? "Pay by hand" : b.how === "estimate" ? "Estimate" : "Direct debit",

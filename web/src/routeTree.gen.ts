@@ -26,6 +26,7 @@ import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppSortRouteImport } from './routes/_app/sort'
 import { Route as AppSpendingRouteImport } from './routes/_app/spending'
 import { Route as AppTransactionsRouteImport } from './routes/_app/transactions'
+import { Route as AppBillsBillIdRouteImport } from './routes/_app/bills_.$billId'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -111,6 +112,11 @@ const AppTransactionsRoute = AppTransactionsRouteImport.update({
   path: '/transactions',
   getParentRoute: () => AppRoute,
 } as any)
+const AppBillsBillIdRoute = AppBillsBillIdRouteImport.update({
+  id: '/bills_/$billId',
+  path: '/bills/$billId',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
@@ -129,6 +135,7 @@ export interface FileRoutesByFullPath {
   '/sort': typeof AppSortRoute
   '/spending': typeof AppSpendingRoute
   '/transactions': typeof AppTransactionsRoute
+  '/bills/$billId': typeof AppBillsBillIdRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -147,6 +154,7 @@ export interface FileRoutesByTo {
   '/spending': typeof AppSpendingRoute
   '/transactions': typeof AppTransactionsRoute
   '/': typeof AppIndexRoute
+  '/bills/$billId': typeof AppBillsBillIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -167,6 +175,7 @@ export interface FileRoutesById {
   '/_app/spending': typeof AppSpendingRoute
   '/_app/transactions': typeof AppTransactionsRoute
   '/_app/': typeof AppIndexRoute
+  '/_app/bills_/$billId': typeof AppBillsBillIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -187,6 +196,7 @@ export interface FileRouteTypes {
     | '/sort'
     | '/spending'
     | '/transactions'
+    | '/bills/$billId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -205,6 +215,7 @@ export interface FileRouteTypes {
     | '/spending'
     | '/transactions'
     | '/'
+    | '/bills/$billId'
   id:
     | '__root__'
     | '/_app'
@@ -224,6 +235,7 @@ export interface FileRouteTypes {
     | '/_app/spending'
     | '/_app/transactions'
     | '/_app/'
+    | '/_app/bills_/$billId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -353,6 +365,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppTransactionsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/bills_/$billId': {
+      id: '/_app/bills_/$billId'
+      path: '/bills/$billId'
+      fullPath: '/bills/$billId'
+      preLoaderRoute: typeof AppBillsBillIdRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
@@ -371,6 +390,7 @@ interface AppRouteChildren {
   AppSpendingRoute: typeof AppSpendingRoute
   AppTransactionsRoute: typeof AppTransactionsRoute
   AppIndexRoute: typeof AppIndexRoute
+  AppBillsBillIdRoute: typeof AppBillsBillIdRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -388,6 +408,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppSpendingRoute: AppSpendingRoute,
   AppTransactionsRoute: AppTransactionsRoute,
   AppIndexRoute: AppIndexRoute,
+  AppBillsBillIdRoute: AppBillsBillIdRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
