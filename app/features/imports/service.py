@@ -280,7 +280,8 @@ class ImportService:
                 out.append(item)
                 continue
             item["status"] = "new"
-            m = merchants.merchant(r.description)
+            # The loan's own rows (interest, repayments, fees) aren't anyone the household buys from or is paid by.
+            m = "" if is_loan else merchants.merchant(r.description)
             item["merchant"] = m
             if is_loan:
                 item.update(why=loan_rows.why(r), sure=True, loan=True)
@@ -534,7 +535,7 @@ class ImportService:
                     by = "you" if category is not None else None
                 elif category is None and accept and x.get("suggest_id") is not None:
                     category, by = x.get("suggest_id"), "suggest"
-                m = x.get("merchant") or merchants.merchant(x["description"])
+                m = "" if x.get("loan") else (x.get("merchant") or merchants.merchant(x["description"]))
                 if x["status"] == "merge":
                     conn.execute(
                         "UPDATE transactions SET kind = 'statement', date = ?, description = ?, merchant = ?,"

@@ -75,7 +75,10 @@ export function TransactionsPage({ search }: { search: TxSearch }) {
 
   const banks = (accounts.data?.accounts ?? []).filter((a) => a.kind === "bank");
   const byId = Object.fromEntries(banks.map((a) => [a.id, a]));
-  const all = txs.data ?? [];
+  // Only the bank accounts: the loan's own rows (interest added, repayments as the loan sees them) aren't money in
+  // or out of the household, and its repayments are already here from the account that paid them.
+  const loanId = accounts.data?.loan?.id;
+  const all = (txs.data ?? []).filter((t) => t.account_id !== loanId);
 
   // The month in numbers: what came in, what went out, and where it went.
   const counting = all.filter(counted);

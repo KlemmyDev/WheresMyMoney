@@ -183,6 +183,13 @@ export type LoanView = {
   coverage_offset_only: number;
   interest_per_day: number;
   charged_per_month: number;
+  /** What the imported loan statements actually charged; null until one is imported. */
+  interest_charged: {
+    months: { month: string; amount: number }[];
+    last: { date: string; amount: number } | null;
+    year: number;
+    per_month: number;
+  } | null;
   principal_per_month: number;
   monthly_growth: number;
   planned_growth: number;

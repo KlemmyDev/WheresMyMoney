@@ -263,6 +263,15 @@ def _names_stuck_to_numbers(conn: sqlite3.Connection) -> None:
             conn.execute("UPDATE transactions SET merchant = ? WHERE id = ?", (now, tx_id))
 
 
+def _loan_rows_not_merchants(conn: sqlite3.Connection) -> None:
+    """The home loan's own rows (interest charged, repayments, fees) aren't merchants: interest charged was showing on
+    the Merchants page as money in, because on the loan what's owed is positive."""
+    conn.execute(
+        "UPDATE transactions SET merchant = '', merchant_override = NULL"
+        " WHERE account_id IN (SELECT id FROM accounts WHERE kind = 'loan')"
+    )
+
+
 def _investments(conn: sqlite3.Connection) -> None:
     """Investments: the ETFs held, entered by hand as they're bought and sold.
 
@@ -397,4 +406,5 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _merge_dismissed,
     _celebrations,
     _names_stuck_to_numbers,
+    _loan_rows_not_merchants,
 ]

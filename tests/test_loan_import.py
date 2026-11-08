@@ -103,3 +103,40 @@ def test_loan_transactions_stay_out_of_spending(client: TestClient, household: d
     bring_in(client, loan, FEB, "2026-02")
     after = ok(client.get("/api/dashboard", params={"period": "30d"}))
     assert before["spending"] == after["spending"]
+
+
+def test_the_loans_interest_is_a_cost_of_the_loan_not_a_merchant(client: TestClient, household: dict) -> None:
+    """On the loan what's owed is positive, so interest charged would read as money in: it's kept off the Merchants
+    page and the Transactions month, and shown on the Loan page as what the bank charged."""
+    loan = household["Loan"]
+    ok(client.put(f"/api/accounts/{loan}", json={"last4": "9917"}))
+    assert ok(client.get("/api/loan"))["interest_charged"] is None  # nothing imported yet
+    for raw, month in ((JAN, "2026-01"), (FEB, "2026-02"), (MAR, "2026-03")):
+        bring_in(client, loan, raw, month)
+
+    rows = ok(client.get("/api/transactions", params={"account_id": loan}))
+    assert rows and all(t["merchant"] == "" and t["merchant_key"] == "" for t in rows)
+    listed = ok(client.get("/api/merchants/directory"))
+    assert not [m for m in listed if "INTEREST" in m["key"] or "SCHEDULE" in m["key"]]
+
+    charged = ok(client.get("/api/loan"))["interest_charged"]
+    by_month = {m["month"]: m["amount"] for m in charged["months"]}
+    assert by_month["2026-01"] == dollars(400) and by_month["2026-03"] == dollars(1300)
+    assert charged["last"] == {"date": "2026-03-31", "amount": dollars(1300)}
+    assert charged["year"] == dollars(2900) and charged["per_month"] == round(dollars(2900) / 3)
+
+
+def test_old_loan_rows_stop_being_merchants(client: TestClient, household: dict, config: Any) -> None:
+    import sqlite3
+
+    from app.core.schema import _loan_rows_not_merchants
+
+    loan = household["Loan"]
+    ok(client.put(f"/api/accounts/{loan}", json={"last4": "9917"}))
+    bring_in(client, loan, JAN, "2026-01")
+    with sqlite3.connect(config.db_path) as conn:  # as an import from before this stored it
+        conn.execute("UPDATE transactions SET merchant = 'INTEREST CHARGED' WHERE account_id = ?", (loan,))
+    assert [m for m in ok(client.get("/api/merchants/directory")) if m["key"] == "INTEREST CHARGED"]
+    with sqlite3.connect(config.db_path) as conn:
+        _loan_rows_not_merchants(conn)
+    assert not [m for m in ok(client.get("/api/merchants/directory")) if m["key"] == "INTEREST CHARGED"]
