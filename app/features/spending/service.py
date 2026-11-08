@@ -305,7 +305,9 @@ class SpendingService:
             m = merchants.merchant(description)
             by: str | None = "you"
             if category in (None, ""):
-                category = rule_for(learned(conn), m)
+                category = directory.Sorter(conn).category(m, description, amount)
+                if category is None:
+                    category = rule_for(learned(conn), m)
                 by = "rule" if category is not None else None
             cur = conn.execute(
                 "INSERT INTO transactions (account_id, date, amount, description, merchant, kind, category_id,"
@@ -370,6 +372,7 @@ class SpendingService:
             rows = conn.execute(sql, args).fetchall()
             parts = _splits(conn, [r[0] for r in rows if r[17] == "split"])
             book = directory.Book(conn)
+            noted = directory.notes(conn)
         return [
             {
                 "id": r[0],
@@ -394,6 +397,7 @@ class SpendingService:
                 # The merchant it belongs to (its own, or the one the household mapped its statement name to).
                 "merchant_key": (key := book.key(r[16], r[4])) if r[16] else "",
                 "merchant_name": book.name(key) if r[16] else "",
+                "merchant_note": noted.get(key, "") if r[16] else "",
                 "excluded": bool(r[18]),
                 "one_off": bool(r[19]),
                 "splits": parts.get(r[0], []),
@@ -473,6 +477,10 @@ class SpendingService:
             sources = [sources]
         with self.db.writing() as conn:
             return directory.merge(conn, [str(x) for x in sources or []], body.get("into"), body.get("name"))
+
+    def save_merchant_settings(self, key: str, body: dict[str, Any]) -> dict[str, Any]:
+        with self.db.writing() as conn:
+            return directory.save_settings(conn, key, body)
 
     def forget_merchant(self, text: str) -> dict[str, Any]:
         with self.db.writing() as conn:

@@ -259,6 +259,7 @@ function Body({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
               >
                 {tx.merchant_name} →
               </Link>
+              {tx.merchant_note && <span className="block truncate text-[12px] text-ink-3">{tx.merchant_note}</span>}
             </span>
             <Button small onClick={() => setPicking((p) => !p)}>
               {picking ? "Close" : "Change"}

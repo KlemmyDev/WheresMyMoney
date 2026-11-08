@@ -342,3 +342,26 @@ def test_the_export_marks_transfers_suggests_ubanks_category_and_remembers_its_a
     assert again["account_id"] == household["Spending"]
     b = ok(client.post(f"/api/imports/{again['token']}/analyse", json={"account_id": household["Spending"]}))
     assert b["counts"]["duplicates"] == 4 and b["counts"]["new"] == 0
+
+
+def test_a_merchants_amount_rules_sort_an_import(client: TestClient, household: dict) -> None:
+    cats = {c["name"]: c["id"] for c in ok(client.get("/api/categories"))["categories"]}
+    ok(
+        client.put(
+            "/api/merchants/settings/7-ELEVEN",
+            json={
+                "category_id": cats["Eating out"],
+                "rules": [{"over": True, "amount": 3000, "category_id": cats["Fuel"]}],
+            },
+        )
+    )
+    raw = ubank(
+        [
+            ("24 Oct 2026", "7-ELEVEN 2201 KEPERRA", "$6.50", "", "+$248.05"),
+            ("25 Oct 2026", "7-ELEVEN 2201 KEPERRA", "$71.00", "", "+$177.05"),
+        ]
+    )
+    opened = upload(client, raw)
+    a = ok(client.post(f"/api/imports/{opened['token']}/analyse", json={"account_id": household["Spending"]}))
+    got = sorted((r["amount"], r["category_id"], r["why"]) for r in a["rows"])
+    assert got == [(-7100, cats["Fuel"], "rule"), (-650, cats["Eating out"], "rule")]

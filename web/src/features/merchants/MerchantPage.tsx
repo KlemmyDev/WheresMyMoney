@@ -14,6 +14,7 @@ import { merchantQuery, refresh } from "~/features/common/queries";
 import type { MerchantDetail } from "~/features/common/types";
 import { Button, Empty, ErrorText, Input, Pill } from "~/features/common/ui";
 import { MerchantPicker } from "~/features/merchants/MerchantPicker";
+import { MerchantSettings } from "~/features/merchants/MerchantSettings";
 import { MerchantMark } from "~/features/spending/MerchantIcon";
 import { TransactionSheet, TxRow } from "~/features/spending/TransactionSheet";
 
@@ -121,6 +122,8 @@ export function MerchantPage({ merchantKey }: { merchantKey: string }) {
         <Names d={d} />
       </div>
 
+      <MerchantSettings key={JSON.stringify(d.settings)} d={d} />
+
       <Card aria-labelledby="mp-list" className="flex flex-col gap-1">
         <CardHead
           id="mp-list"
@@ -194,7 +197,11 @@ function Title({ d }: { d: MerchantDetail }) {
             <h1 className="m-0 line-clamp-2 min-w-0 text-[28px] leading-9 font-semibold tracking-[-0.03em] break-words sm:text-[40px] sm:leading-[46px]">
               {d.name}
             </h1>
-            {d.category && <span className="text-[14px] text-ink-3">Mostly {d.category}</span>}
+            {(d.settings.note || d.category) && (
+              <span className="text-[14px] text-ink-3">
+                {[d.settings.note, d.category && `Mostly ${d.category}`].filter(Boolean).join(" · ")}
+              </span>
+            )}
           </div>
         )}
       </div>

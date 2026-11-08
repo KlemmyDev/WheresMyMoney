@@ -213,6 +213,19 @@ def _merchant_book(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE TABLE IF NOT EXISTS merchant_names (key TEXT PRIMARY KEY, name TEXT NOT NULL)")
 
 
+def _merchant_sorting(conn: sqlite3.Connection) -> None:
+    """merchant_settings: a merchant's default category and a `note` ("car insurance for the Mazda").
+    merchant_amount_rules: categories by how much was spent there,
+    tried in `sort` order before the default ("over $30 at 7-Eleven is fuel"); `over` is 1 for more than `amount`
+    (cents), 0 for less. Both by merchant key (app.features.spending.directory)."""
+    conn.execute("CREATE TABLE IF NOT EXISTS merchant_settings (key TEXT PRIMARY KEY, category_id INTEGER, note TEXT)")
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS merchant_amount_rules (id INTEGER PRIMARY KEY, key TEXT NOT NULL,"
+        " over INTEGER NOT NULL, amount INTEGER NOT NULL, category_id INTEGER NOT NULL, sort INTEGER NOT NULL DEFAULT 0)"
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS merchant_amount_rules_by_key ON merchant_amount_rules (key, sort)")
+
+
 def _investments(conn: sqlite3.Connection) -> None:
     """Investments: the ETFs held, entered by hand as they're bought and sold.
 
@@ -342,4 +355,5 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _push_only,
     _one_offs,
     _merchant_book,
+    _merchant_sorting,
 ]
