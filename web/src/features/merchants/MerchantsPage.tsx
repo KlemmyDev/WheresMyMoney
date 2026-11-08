@@ -3,7 +3,7 @@
  * each month. Search by name, sort by most spent, most recent or A to Z, and open one for its whole story.
  */
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { errorMessage } from "~/features/common/api";
 import { Loading } from "~/features/common/brand";
@@ -11,7 +11,8 @@ import { Card, ChoiceChip } from "~/features/common/ds";
 import { dayDate, longDate, money } from "~/features/common/format";
 import { merchantDirectoryQuery } from "~/features/common/queries";
 import type { MerchantSummary } from "~/features/common/types";
-import { Empty, ErrorText, Input, PageHead } from "~/features/common/ui";
+import { Button, Empty, ErrorText, Input, PageHead, cn } from "~/features/common/ui";
+import { MerchantPicker } from "~/features/merchants/MerchantPicker";
 import { MerchantMark } from "~/features/spending/MerchantIcon";
 
 const SORTS = {
@@ -24,6 +25,16 @@ export function MerchantsPage() {
   const q = useQuery(merchantDirectoryQuery);
   const [find, setFind] = useState("");
   const [sort, setSort] = useState<keyof typeof SORTS>("spent");
+  // Picking merchants to merge: Select, tick a few, then Merge into one.
+  const [selecting, setSelecting] = useState(false);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [merging, setMerging] = useState(false);
+  const navigate = useNavigate();
+  const stop = () => {
+    setSelecting(false);
+    setPicked([]);
+    setMerging(false);
+  };
   if (q.isError) return <ErrorText>{errorMessage(q.error)}</ErrorText>;
   if (!q.data) return <Loading />;
   const needle = find.trim().toLowerCase();
@@ -63,11 +74,43 @@ export function MerchantsPage() {
                 </ChoiceChip>
               ))}
             </div>
+            <span className="hidden flex-1 sm:block" />
+            <Button small onClick={() => (selecting ? stop() : setSelecting(true))}>
+              {selecting ? "Done" : "Select to merge"}
+            </Button>
           </div>
+          {selecting && (
+            <div className="flex flex-col gap-2 rounded-2xl border border-line-2 bg-tile p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="min-w-0 flex-1 text-[14px]">
+                  {picked.length
+                    ? `${picked.length} selected. Merge them into one merchant, existing or new.`
+                    : "Tick the merchants that are really one, like a business paid under several names."}
+                </span>
+                <Button primary small disabled={!picked.length} onClick={() => setMerging((m) => !m)}>
+                  Merge {picked.length || ""}…
+                </Button>
+              </div>
+              {merging && picked.length > 0 && (
+                <MerchantPicker
+                  merge={picked}
+                  onDone={(key) => {
+                    stop();
+                    if (key) navigate({ to: "/merchants/$key", params: { key } });
+                  }}
+                />
+              )}
+            </div>
+          )}
           <Card aria-label="Merchants" className="gap-0 px-2 py-2 sm:px-3 sm:py-3">
             {shown.length === 0 && <p className="m-0 px-2 py-4 text-[14px] text-ink-3">No merchant matches that.</p>}
             {shown.map((m) => (
-              <MerchantRow key={m.key} m={m} />
+              <MerchantRow
+                key={m.key}
+                m={m}
+                picked={selecting ? picked.includes(m.key) : undefined}
+                onPick={() => setPicked((p) => (p.includes(m.key) ? p.filter((k) => k !== m.key) : [...p, m.key]))}
+              />
             ))}
           </Card>
         </>
@@ -76,15 +119,26 @@ export function MerchantsPage() {
   );
 }
 
-function MerchantRow({ m }: { m: MerchantSummary }) {
+function MerchantRow({ m, picked, onPick }: { m: MerchantSummary; picked?: boolean; onPick: () => void }) {
   const top = Math.max(...m.months, 1);
   const thisYear = String(new Date().getFullYear());
-  return (
-    <Link
-      to="/merchants/$key"
-      params={{ key: m.key }}
-      className="press flex min-h-16 min-w-0 items-center gap-3 rounded-2xl px-2 text-ink no-underline hover:bg-tile-2"
-    >
+  const body = (
+    <>
+      {picked !== undefined && (
+        <span
+          aria-hidden
+          className={cn(
+            "flex size-5 flex-none items-center justify-center rounded-md border-2",
+            picked ? "border-teal bg-teal text-page" : "border-line-2",
+          )}
+        >
+          {picked && (
+            <svg viewBox="0 0 24 24" className="size-3.5" fill="none" stroke="currentColor" strokeWidth={3.4}>
+              <path d="M5 12.5l4.5 4.5L19 7.5" />
+            </svg>
+          )}
+        </span>
+      )}
       <MerchantMark name={m.key} />
       <span className="min-w-0 flex-1">
         <span className="block truncate font-semibold">{m.name}</span>
@@ -108,6 +162,25 @@ function MerchantRow({ m }: { m: MerchantSummary }) {
         <span className="num">{money(m.spent_year)}</span>
         <span className="text-[12px] text-ink-3">last 12 months</span>
       </span>
+    </>
+  );
+  const row =
+    "press flex min-h-16 w-full min-w-0 items-center gap-3 rounded-2xl px-2 text-left text-ink no-underline hover:bg-tile-2";
+  if (picked !== undefined)
+    return (
+      <button
+        type="button"
+        role="checkbox"
+        aria-checked={picked}
+        onClick={onPick}
+        className={cn(row, "cursor-pointer border-0 bg-transparent", picked && "bg-tile-2")}
+      >
+        {body}
+      </button>
+    );
+  return (
+    <Link to="/merchants/$key" params={{ key: m.key }} className={row}>
+      {body}
     </Link>
   );
 }

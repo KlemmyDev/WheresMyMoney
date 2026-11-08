@@ -467,6 +467,13 @@ class SpendingService:
         with self.db.writing() as conn:
             return directory.assign(conn, str(body.get("text") or ""), body.get("key"), body.get("name"))
 
+    def merge_merchants(self, body: dict[str, Any]) -> dict[str, Any]:
+        sources = body.get("from")
+        if isinstance(sources, str):
+            sources = [sources]
+        with self.db.writing() as conn:
+            return directory.merge(conn, [str(x) for x in sources or []], body.get("into"), body.get("name"))
+
     def forget_merchant(self, text: str) -> dict[str, Any]:
         with self.db.writing() as conn:
             return directory.forget(conn, text)

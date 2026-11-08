@@ -3,7 +3,7 @@
  * names that belong to it (mapped by hand, or found by themselves; move or unmap one), and every transaction.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { apiSend, errorMessage } from "~/features/common/api";
 import { Loading } from "~/features/common/brand";
@@ -153,6 +153,8 @@ export function MerchantPage({ merchantKey }: { merchantKey: string }) {
 function Title({ d }: { d: MerchantDetail }) {
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
+  const [merging, setMerging] = useState(false);
+  const navigate = useNavigate();
   const [text, setText] = useState(d.name);
   const save = useMutation({
     mutationFn: (name: string) => apiSend("PUT", `merchants/directory/${encodeURIComponent(d.key)}`, { name }),
@@ -197,14 +199,28 @@ function Title({ d }: { d: MerchantDetail }) {
         )}
       </div>
       {!editing && (
-        <Button
-          onClick={() => {
-            setText(d.name);
-            setEditing(true);
-          }}
-        >
-          Rename
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={() => setMerging((m) => !m)}>{merging ? "Cancel merge" : "Merge into…"}</Button>
+          <Button
+            onClick={() => {
+              setText(d.name);
+              setEditing(true);
+            }}
+          >
+            Rename
+          </Button>
+        </div>
+      )}
+      {merging && (
+        <div className="w-full">
+          <MerchantPicker
+            merge={[d.key]}
+            onDone={(key) => {
+              setMerging(false);
+              if (key) navigate({ to: "/merchants/$key", params: { key } });
+            }}
+          />
+        </div>
       )}
       {save.isError && <ErrorText>{errorMessage(save.error)}</ErrorText>}
     </div>

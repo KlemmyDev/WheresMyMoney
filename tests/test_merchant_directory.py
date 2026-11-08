@@ -60,3 +60,29 @@ def test_unknown_merchants_go_by_two_words() -> None:
     assert auto_key("HOME LOAN REPAYMENT") == "HOME LOAN"
     assert auto_key("HOME INSURANCE PAYMENT") == "HOME INSURANCE"
     assert auto_key("WOOLWORTHS REDBANK PLAINS") == "WOOLWORTHS"
+
+
+def test_merging_merchants(client: TestClient, household: dict) -> None:
+    acc = household["Spending"]
+    # The pool build, paid in stages (numbers are dropped from statement names, so the stages are one merchant) and
+    # an excavation bill under another name.
+    spend(client, acc, 150000, "STAGE 1 PAYMENT", "2026-10-11")
+    spend(client, acc, 220000, "STAGE 2 PAYMENT", "2026-10-12")
+    spend(client, acc, 90000, "POOL EXCAVATION", "2026-10-13")
+    keys = {m["key"] for m in ok(client.get("/api/merchants/directory"))}
+    assert {"STAGE PAYMENT", "POOL EXCAVATION"} <= keys
+    out = ok(
+        client.post(
+            "/api/merchants/merge", json={"from": ["STAGE PAYMENT", "POOL EXCAVATION"], "name": "La Vida Pools"}
+        )
+    )
+    assert out == {"key": "LA VIDA POOLS", "moved": 2}
+    listed = {m["key"]: m for m in ok(client.get("/api/merchants/directory"))}
+    assert not {"STAGE PAYMENT", "POOL EXCAVATION"} & listed.keys()
+    pools = listed["LA VIDA POOLS"]
+    assert pools["name"] == "La Vida Pools" and pools["count"] == 3 and pools["spent"] == 460000
+    # Merging into an existing merchant works the same way.
+    spend(client, acc, 5000, "LAVIDA POOL SUPPLIES", "2026-10-20")
+    ok(client.post("/api/merchants/merge", json={"from": "LAVIDA POOL", "into": "LA VIDA POOLS"}))
+    assert ok(client.get("/api/merchants/directory/LA VIDA POOLS"))["count"] == 4
+    assert client.post("/api/merchants/merge", json={"from": []}).status_code == 422
