@@ -5,6 +5,7 @@
 import { Loading } from "~/features/common/brand";
 import { Bar, BigNumber, Card, Details, Eyebrow, Stat, Term } from "~/features/common/ds";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useState, type CSSProperties } from "react";
 import { apiGet, apiSend, errorMessage } from "~/features/common/api";
 import { AreaLine, Count } from "~/features/common/charts";
@@ -20,6 +21,7 @@ const HOW = { auto: ["AUTO", "info"], manual: ["BY HAND", "warn"], estimate: ["E
 
 export function BillsPage() {
   const q = useQuery(billsQuery);
+  const navigate = useNavigate();
   const [editing, setEditing] = useState<Bill | "new" | null>(null);
   const [spotted, setSpotted] = useState<SpottedBill | null>(null);
   const b = q.data;
@@ -207,8 +209,21 @@ export function BillsPage() {
             </thead>
             <tbody>
               {b.bills.map((bill) => (
-                <tr key={bill.id} className="cursor-pointer hover:bg-raised/40" onClick={() => setEditing(bill)}>
-                  <td className="border-b border-line px-2.5 py-2.5 font-medium">{bill.name}</td>
+                <tr
+                  key={bill.id}
+                  className="cursor-pointer hover:bg-raised/40"
+                  onClick={() => navigate({ to: "/bills/$billId", params: { billId: String(bill.id) } })}
+                >
+                  <td className="border-b border-line px-2.5 py-2.5 font-medium">
+                    <Link
+                      to="/bills/$billId"
+                      params={{ billId: String(bill.id) }}
+                      className="text-ink no-underline"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {bill.name}
+                    </Link>
+                  </td>
                   <td className="border-b border-line px-2.5 py-2.5 text-ink-2">{EVERY_LABEL[bill.every]}</td>
                   <td className="mono border-b border-line px-2.5 py-2.5 text-ink-2">{shortDate(bill.next_due)}</td>
                   <td className="mono border-b border-line px-2.5 py-2.5 text-right">

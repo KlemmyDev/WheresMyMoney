@@ -124,3 +124,25 @@ def test_spotted_bills_can_be_added_or_dismissed(client: TestClient, household: 
     ok(client.post("/api/bills/spotted/dismiss", json={"key": names["Kindle Unltd"]["key"]}))
     left = {s["name"] for s in ok(client.get("/api/bills/spotted"))["suggestions"]}
     assert "Netflix" not in left and "Kindle Unltd" not in left
+
+
+def test_a_bills_page_has_its_payments_totals_and_price_changes(client: TestClient, household: dict) -> None:
+    # Netflix at $9.99 a month, then $12.99 from the ninth payment on.
+    for i, (d, _) in enumerate(monthly(dt.date(2025, 11, 14), 12, 0)):
+        amount = 999 if i < 8 else 1299
+        tx = {"amount": -amount, "description": "Netflix.com Melbourne", "account_id": household["Spending"], "date": d}
+        ok(client.post("/api/transactions", json=tx))
+    found = {s["name"]: s for s in ok(client.get("/api/bills/spotted"))["suggestions"]}
+    overview = ok(client.post("/api/bills/spotted/accept", json={"key": found["Netflix"]["key"]}))
+    netflix = next(b for b in overview["bills"] if b["name"] == "Netflix")
+
+    d = ok(client.get(f"/api/bills/{netflix['id']}"))
+    assert d["bill"]["name"] == "Netflix" and d["count"] == 12
+    assert d["total"] == 8 * 999 + 4 * 1299 and d["average"] == round(d["total"] / 12)
+    assert d["first"] == "2025-11-14" and [p["date"] for p in d["payments"]] == sorted(p["date"] for p in d["payments"])
+    assert d["changes"] == [{"date": d["payments"][8]["date"], "was": 999, "now": 1299}]
+    assert len(d["transactions"]) == 12 and d["transactions"][0]["date"] >= d["transactions"][-1]["date"]
+    assert len(d["upcoming"]) == 6 and d["next_year"] == 12 * netflix["amount"]
+    assert 0 < d["share"] < 1
+
+    assert client.get("/api/bills/9999").status_code == 404

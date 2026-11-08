@@ -203,6 +203,56 @@ class BillsService:
             "account": bills_account,
         }
 
+    # -- one bill and what it's cost ------------------------------------------------
+
+    def detail(self, bill_id: int) -> dict[str, Any]:
+        """One bill: its payments (oldest first), what they add up to, when its price changed, and what's ahead.
+
+        Its payments are the statement lines matched to it (on import, or when a spotted bill was added). A price
+        change is a payment for a different amount that the next one stayed at (or the latest); an estimate's
+        amounts vary, so it has none.
+        """
+        bill = self.get(bill_id)
+        if bill is None:
+            raise LookupError("That bill has gone.")
+        today = dates.today()
+        with self.db.reading() as conn:
+            rows = conn.execute(
+                "SELECT id, date, -amount FROM transactions WHERE bill_id = ? AND amount < 0 ORDER BY date, id",
+                (bill_id,),
+            ).fetchall()
+        payments = [{"id": r[0], "date": r[1], "amount": r[2]} for r in rows]
+        amounts = [int(p["amount"]) for p in payments]
+        total = sum(amounts)
+        year_ago = (today - dt.timedelta(days=365)).isoformat()
+
+        def moved(a: int, b: int) -> bool:
+            return abs(a - b) > max(detect.CHANGED_CENTS, round(max(a, b) * detect.CHANGED))
+
+        changes = []
+        if bill.how != "estimate":
+            for i in range(1, len(amounts)):
+                was, now = amounts[i - 1], amounts[i]
+                stayed = i == len(amounts) - 1 or not moved(amounts[i + 1], now)
+                if moved(was, now) and stayed:
+                    changes.append({"date": payments[i]["date"], "was": was, "now": now})
+        ahead = self.due(today, dates.add_months(today, 12) - dt.timedelta(days=1))
+        mine = [x for x in ahead if x["bill_id"] == bill_id]
+        all_per_year = sum(b.per_year for b in self.all())
+        return {
+            "bill": bill.view(),
+            "payments": payments,
+            "total": total,
+            "count": len(payments),
+            "average": round(total / len(payments)) if payments else None,
+            "last_year": sum(int(p["amount"]) for p in payments if p["date"] >= year_ago),
+            "first": payments[0]["date"] if payments else None,
+            "changes": changes,
+            "upcoming": [{"date": x["date"], "amount": x["amount"]} for x in mine[:6]],
+            "next_year": sum(int(x["amount"]) for x in mine),
+            "share": bill.per_year / all_per_year if all_per_year else 0,
+        }
+
     # -- bills spotted in the ledger --------------------------------------------------
 
     def _payments(self) -> tuple[list[detect.Payment], dict[int, str], set[int], dict[int, str]]:

@@ -159,6 +159,23 @@ export type MerchantGroup = {
   categories: { id: number; name: string; count: number }[];
 };
 
+/** One bill's page: its payments (oldest first), what they add up to, price changes, and the dates ahead. */
+export type BillDetail = {
+  bill: Bill;
+  payments: { id: number; date: string; amount: number }[];
+  total: number;
+  count: number;
+  average: number | null;
+  last_year: number;
+  first: string | null;
+  changes: { date: string; was: number; now: number }[];
+  upcoming: { date: string; amount: number }[];
+  next_year: number;
+  share: number;
+  /** The payments as transactions, newest first. */
+  transactions: Transaction[];
+};
+
 export type Due = { bill_id: number; name: string; date: string; amount: number; how: string };
 
 export type BillsOverview = {

@@ -2,6 +2,7 @@
 import { queryOptions, type QueryClient } from "@tanstack/react-query";
 import { apiGet } from "~/features/common/api";
 import type {
+  BillDetail,
   Account,
   AccountsOverview,
   BillUpdate,
@@ -77,6 +78,12 @@ export const billsQuery = queryOptions({
   queryKey: ["bills"],
   queryFn: ({ signal }) => apiGet<BillsOverview>("bills", undefined, { signal }),
 });
+
+export const billQuery = (id: number) =>
+  queryOptions({
+    queryKey: ["bills", id],
+    queryFn: ({ signal }) => apiGet<BillDetail>(`bills/${id}`, undefined, { signal }),
+  });
 
 export const rulesQuery = queryOptions({
   queryKey: ["rules"],
