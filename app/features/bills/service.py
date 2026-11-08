@@ -248,7 +248,7 @@ class BillsService:
         aside for them: each one's monthly share, and how much of it should be built up by now (its share of the time
         since it was last due), so it's all there when it lands. Soonest first."""
         today = dates.today()
-        items = []
+        items: list[dict[str, Any]] = []
         for b in self.all():
             if b.every not in OCCASIONAL:
                 continue

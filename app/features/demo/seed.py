@@ -13,6 +13,7 @@ import json
 import random
 import sqlite3
 import time
+from typing import Any
 
 from app.core import dates
 from app.core.database import Database
@@ -254,7 +255,7 @@ def seed(db: Database, today: dt.date | None = None) -> bool:
                 "INSERT INTO asset_values (asset_id, date, value) VALUES (?, ?, ?)",
                 (home, dates.add_months(today, -months_back).isoformat(), value),
             )
-        supers = (
+        supers: tuple[tuple[str, int, str, int, int, list[dict[str, Any]], list[dict[str, Any]]], ...] = (
             (
                 "Alex",
                 38,
