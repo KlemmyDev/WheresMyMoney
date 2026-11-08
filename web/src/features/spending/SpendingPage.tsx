@@ -4,22 +4,35 @@
  * spending, each category against its budget (the tick is the pace to date), who spent it, and the latest spending.
  */
 import { Loading } from "~/features/common/brand";
-import { Bar, BigNumber, Card, Eyebrow, Stat, Details } from "~/features/common/ds";
+import { Banner, Bar, BigNumber, Card, Eyebrow, Stat, Details } from "~/features/common/ds";
+import { I } from "~/features/common/icons";
+import type { BudgetSuggestions } from "~/features/common/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState, type CSSProperties } from "react";
 import { apiSend, errorMessage } from "~/features/common/api";
 import { Count, DayBars } from "~/features/common/charts";
-import { amount, capsDate, editable, longDate, money, parseMoney, shortDate } from "~/features/common/format";
+import {
+  amount,
+  capsDate,
+  editable,
+  longDate,
+  money,
+  monthYear,
+  parseMoney,
+  shortDate,
+} from "~/features/common/format";
 import { useActions } from "~/features/common/layout";
 import { Dialog } from "~/features/common/overlay";
-import { categoriesQuery, refresh, spendingQuery } from "~/features/common/queries";
-import { Button, Empty, ErrorText, Input, PageHead, Pill, Tile, TileTitle } from "~/features/common/ui";
+import { budgetSuggestionsQuery, categoriesQuery, refresh, spendingQuery } from "~/features/common/queries";
+import { Button, Empty, ErrorText, Input, PageHead, Pill, Tile, TileTitle, cn } from "~/features/common/ui";
 
 export function SpendingPage() {
   const q = useQuery(spendingQuery);
   const actions = useActions();
   const [budgets, setBudgets] = useState(false);
+  const sug = useQuery(budgetSuggestionsQuery);
+  const offBudgets = (sug.data?.categories ?? []).filter((r) => r.note && r.suggested != null);
   if (q.isError) return <ErrorText>{errorMessage(q.error)}</ErrorText>;
   if (!q.data) return <Loading />;
   const m = q.data.month;
@@ -52,6 +65,27 @@ export function SpendingPage() {
           </>
         }
       />
+      {offBudgets.length > 0 && (
+        <Banner
+          g={I.spending}
+          tone="spending"
+          title={
+            offBudgets.length === 1
+              ? `The ${offBudgets[0].name} budget doesn't match what we usually spend`
+              : `${offBudgets.length} budgets don't match what we usually spend`
+          }
+          action={
+            <Button primary onClick={() => setBudgets(true)}>
+              Review budgets
+            </Button>
+          }
+        >
+          {offBudgets
+            .map((r) => `${r.name} ${r.note === "over" ? "usually goes over" : "is usually well under"}`)
+            .join(", ")}
+          . A budget that fits makes "on track" mean something.
+        </Banner>
+      )}
       <div className="grid gap-4 md:grid-cols-12 [&>*]:min-w-0">
         <Card lit tint="spending" aria-labelledby="sp-hero" className="md:col-span-8">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -274,7 +308,7 @@ export function SpendingPage() {
           </div>
         </Tile>
       </div>
-      <Budgets open={budgets} onClose={() => setBudgets(false)} since={longDate(m.start)} />
+      <Budgets open={budgets} onClose={() => setBudgets(false)} since={longDate(m.start)} allowance={m.allowance} />
     </>
   );
 }
@@ -285,9 +319,36 @@ function nextDay(iso: string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-function Budgets({ open, onClose, since }: { open: boolean; onClose: () => void; since: string }) {
+/** "Groceries went over in 5 of the last 6 months. Usually $1,405; $1,410 would fit." */
+function mismatchText(r: BudgetSuggestions["categories"][number], months: number): string {
+  return r.note === "over"
+    ? `${r.name} went over its ${money(r.budget)} in ${r.over} of the last ${months} months. Usually ${money(r.average)}, so ${money(r.suggested)} would fit.`
+    : `${r.name} stayed well under its ${money(r.budget)} every month. Usually ${money(r.average)}, so ${money(r.suggested)} would free up ${money((r.budget ?? 0) - (r.suggested ?? 0))}.`;
+}
+
+function Budgets({
+  open,
+  onClose,
+  since,
+  allowance,
+}: {
+  open: boolean;
+  onClose: () => void;
+  since: string;
+  allowance?: number;
+}) {
   const qc = useQueryClient();
   const cats = useQuery({ ...categoriesQuery, enabled: open });
+  const sug = useQuery({ ...budgetSuggestionsQuery, enabled: open });
+  const usual = Object.fromEntries((sug.data?.categories ?? []).map((r) => [r.id, r]));
+  // From the categories as they are now, so a suggestion just used drops off the list.
+  const budgetNow = Object.fromEntries((cats.data?.categories ?? []).map((c) => [c.id, c.budget]));
+  const mismatched = (sug.data?.categories ?? []).filter(
+    (r) => r.note && r.suggested != null && budgetNow[r.id] === r.budget,
+  );
+  const budgeted = (cats.data?.categories ?? [])
+    .filter((c) => c.kind === "spending")
+    .reduce((t, c) => t + (c.budget ?? 0), 0);
   const [name, setName] = useState("");
   const save = useMutation({
     mutationFn: ({ id, ...body }: { id?: number; name: string; kind: string; budget: number | null }) =>
@@ -305,26 +366,88 @@ function Budgets({ open, onClose, since }: { open: boolean; onClose: () => void;
           Budgets and categories
         </h2>
         <div className="text-[13px] text-ink-2">
-          A month's budget for each spending category. This month started {since}.
+          A month&apos;s budget for each spending category. This month started {since}.
+          {sug.data?.months
+            ? ` "Usually" is the average month from ${monthYear(sug.data.from?.slice(0, 7))} to last month.`
+            : ""}
         </div>
+        {mismatched.length > 0 && (
+          <div className="flex flex-col gap-2 rounded-2xl border border-line bg-tile-2 p-3.5">
+            <span className="text-[14px] font-semibold">
+              {mismatched.length === 1
+                ? "One budget doesn't match what we usually spend"
+                : `${mismatched.length} budgets don't match what we usually spend`}
+            </span>
+            <ul className="m-0 flex list-disc flex-col gap-1 pl-5 text-[13px] text-ink-2">
+              {mismatched.map((r) => (
+                <li key={r.id}>{mismatchText(r, sug.data?.months ?? 0)}</li>
+              ))}
+            </ul>
+            <Button
+              small
+              primary
+              className="self-start"
+              disabled={save.isPending}
+              onClick={() =>
+                mismatched.forEach((r) =>
+                  save.mutate({ id: r.id, name: r.name, kind: "spending", budget: r.suggested }),
+                )
+              }
+            >
+              {mismatched.length === 1 ? "Use the suggestion" : "Use these suggestions"}
+            </Button>
+          </div>
+        )}
         {(cats.data?.categories ?? [])
           .filter((c) => c.kind === "spending")
-          .map((c) => (
-            <div key={c.id} className="grid grid-cols-[1fr_130px] items-center gap-3 text-[13px]">
-              <span>{c.name}</span>
-              <Input
-                aria-label={`${c.name} budget`}
-                inputMode="decimal"
-                className="text-right"
-                placeholder="No budget"
-                defaultValue={editable(c.budget)}
-                onBlur={(e) => {
-                  const v = e.target.value.trim() ? parseMoney(e.target.value) : null;
-                  if (v !== c.budget) save.mutate({ id: c.id, name: c.name, kind: c.kind, budget: v });
-                }}
-              />
-            </div>
-          ))}
+          .sort((a, b) => (usual[b.id]?.average ?? -1) - (usual[a.id]?.average ?? -1))
+          .map((c) => {
+            const u = usual[c.id];
+            return (
+              <div key={c.id} className="grid grid-cols-[1fr_130px] items-center gap-x-3 gap-y-1 text-[13px]">
+                <span className="min-w-0">
+                  <span className="block">{c.name}</span>
+                  {u && (
+                    <span className={cn("block text-[12px]", u.note ? "text-warn" : "text-ink-3")}>
+                      Usually {money(u.average)} a month
+                      {u.suggested != null && u.suggested !== c.budget && (
+                        <>
+                          {" · "}
+                          <button
+                            type="button"
+                            className="cursor-pointer border-0 bg-transparent p-0 font-semibold text-teal"
+                            onClick={() => save.mutate({ id: c.id, name: c.name, kind: c.kind, budget: u.suggested })}
+                          >
+                            Use {money(u.suggested)}
+                          </button>
+                        </>
+                      )}
+                    </span>
+                  )}
+                </span>
+                <Input
+                  key={`${c.id}:${c.budget}`}
+                  aria-label={`${c.name} budget`}
+                  inputMode="decimal"
+                  className="text-right"
+                  placeholder="No budget"
+                  defaultValue={editable(c.budget)}
+                  onBlur={(e) => {
+                    const v = e.target.value.trim() ? parseMoney(e.target.value) : null;
+                    if (v !== c.budget) save.mutate({ id: c.id, name: c.name, kind: c.kind, budget: v });
+                  }}
+                />
+              </div>
+            );
+          })}
+        {allowance != null && (
+          <div className="border-t border-line pt-2 text-[13px] text-ink-2">
+            Budgets add up to <b className="text-ink">{money(budgeted)}</b> of the {money(allowance)} a month
+            {budgeted <= allowance
+              ? `, leaving ${money(allowance - budgeted)} for everything else.`
+              : `, ${money(budgeted - allowance)} more than the spending money.`}
+          </div>
+        )}
         <div className="grid grid-cols-[1fr_auto] gap-2">
           <Input
             className="font-sans"

@@ -176,6 +176,25 @@ export type BillDetail = {
   transactions: Transaction[];
 };
 
+/** A budget for each spending category from what was actually spent in the last few whole months. */
+export type BudgetSuggestions = {
+  months: number;
+  from: string | null;
+  categories: {
+    id: number;
+    name: string;
+    budget: number | null;
+    months: number[];
+    average: number;
+    highest: number;
+    suggested: number | null;
+    /** How many of the months went over the budget. */
+    over: number;
+    /** Gone over in most months, or well under in every one. */
+    note: "over" | "under" | null;
+  }[];
+};
+
 export type Due = { bill_id: number; name: string; date: string; amount: number; how: string };
 
 export type BillsOverview = {
