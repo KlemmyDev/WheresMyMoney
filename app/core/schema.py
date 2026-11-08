@@ -239,6 +239,12 @@ def _unnamed_payments(conn: sqlite3.Connection) -> None:
     )
 
 
+def _merge_dismissed(conn: sqlite3.Connection) -> None:
+    """merchant_merge_dismissed: merchants the household said aren't the same place (their keys sorted, joined with
+    "|"), so they're not suggested for merging again."""
+    conn.execute("CREATE TABLE IF NOT EXISTS merchant_merge_dismissed (keys TEXT PRIMARY KEY)")
+
+
 def _investments(conn: sqlite3.Connection) -> None:
     """Investments: the ETFs held, entered by hand as they're bought and sold.
 
@@ -370,4 +376,5 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _merchant_book,
     _merchant_sorting,
     _unnamed_payments,
+    _merge_dismissed,
 ]

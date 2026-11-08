@@ -11,8 +11,10 @@ would put HOME LOAN REPAYMENT and HOME INSURANCE together). The household can ma
 from __future__ import annotations
 
 import datetime as dt
+import itertools
 import re
 import sqlite3
+import statistics
 from typing import Any
 
 from app.features.spending import merchants
@@ -153,12 +155,17 @@ def _gather(conn: sqlite3.Connection, book: Book) -> dict[str, dict[str, Any]]:
                 "in_month": {},
                 "cats": {},
                 "texts": {},
+                "visits": [],
+                "person": False,
             },
         )
         month = _month(day)
+        if " ".join(description.upper().split()).startswith(merchants.PERSON):
+            g["person"] = True
         if amount < 0:
             g["spent"] -= amount
             g["count"] += 1
+            g["visits"].append((day, -amount))
             g["by_month"][month] = g["by_month"].get(month, 0) - amount
         else:
             g["received"] += amount
@@ -173,6 +180,235 @@ def _gather(conn: sqlite3.Connection, book: Book) -> dict[str, dict[str, Any]]:
         if day >= t["last"]:
             t["last"], t["transaction_id"] = day, tx_id
     return out
+
+
+# -- regular payments and their price -------------------------------------------------------
+
+_EVERY = [
+    (6, 8, "Every week"),
+    (13, 16, "Every fortnight"),
+    (26, 35, "Every month"),
+    (85, 96, "Every 3 months"),
+    (175, 190, "Every 6 months"),
+    (350, 380, "Every year"),
+]
+
+
+_MONTHS = {"Every month": 1, "Every 3 months": 3, "Every 6 months": 6, "Every year": 12}
+
+
+def _next(last: dt.date, label: str, every: int) -> dt.date:
+    """The next payment: the same day of the month for monthly ones (the 15th stays the 15th), else days on."""
+    months = _MONTHS.get(label)
+    if not months:
+        return last + dt.timedelta(days=every)
+    m = last.month - 1 + months
+    year, month = last.year + m // 12, m % 12 + 1
+    day = min(last.day, [31, 29 if year % 4 == 0 else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1])
+    return dt.date(year, month, day)
+
+
+def regular(visits: list[tuple[str, int]], today: dt.date) -> dict[str, Any] | None:
+    """A merchant paid on a steady schedule (the gym weekly, Spotify monthly, insurance yearly): how often, about how
+    much, and when next; or None. `visits` are (date, cents out), oldest first. Several payments on one day count once."""
+    by_day: dict[str, int] = {}
+    for day, amount in visits:
+        by_day[day] = by_day.get(day, 0) + amount
+    days = sorted(by_day)
+    if len(days) < 3:
+        return None
+    dates_ = [dt.date.fromisoformat(d) for d in days]
+    gaps = [(b - a).days for a, b in itertools.pairwise(dates_)][-8:]
+    gap = statistics.median(gaps)
+    label = next((name for lo, hi, name in _EVERY if lo <= gap <= hi), None)
+    if label is None or (len(days) < 4 and gap < 85):
+        return None
+    slack = max(3, gap * 0.15)
+    if sum(abs(g - gap) <= slack for g in gaps) < 0.75 * len(gaps):
+        return None
+    amounts = [by_day[d] for d in days]
+    recent = amounts[-4:]
+    typical = round(statistics.median(recent))
+    # After a price change, what it costs now, not the old price still in the recent median.
+    change = price_change(visits)
+    if change:
+        typical = change["now"]
+        recent = [a for a in recent if abs(a - typical) <= max(50, typical * 0.02)] or recent[-1:]
+    last = dates_[-1]
+    every = round(gap)
+    return {
+        "every_days": every,
+        "label": label,
+        "amount": amounts[-1],
+        "typical": typical,
+        # The same amount each time (a subscription), rather than about the same (a power bill).
+        "fixed": all(abs(a - typical) <= max(50, typical * 0.02) for a in recent),
+        "last": last.isoformat(),
+        "next": _next(last, label, every).isoformat(),
+        # Paid like clockwork, then not for twice as long: probably cancelled.
+        "stopped": (today - last).days > 2 * every + 3,
+    }
+
+
+def price_change(visits: list[tuple[str, int]]) -> dict[str, Any] | None:
+    """The latest change in a steady price: what it was, what it is now, from when. A run of the same amount, then a
+    run (at least one) of a new one."""
+    by_day: dict[str, int] = {}
+    for day, amount in visits:
+        by_day[day] = by_day.get(day, 0) + amount
+    days = sorted(by_day)
+    amounts = [by_day[d] for d in days]
+    if len(amounts) < 3:
+        return None
+    now = amounts[-1]
+    same = lambda a, b: abs(a - b) <= max(50, b * 0.02)  # noqa: E731
+    run = 1
+    while run < len(amounts) and same(amounts[-run - 1], now):
+        run += 1
+    before = amounts[: len(amounts) - run][-3:]
+    if len(before) < 2 or not all(same(a, before[-1]) for a in before):
+        return None
+    was = before[-1]
+    if same(now, was):
+        return None
+    return {
+        "was": was,
+        "now": now,
+        "date": days[len(amounts) - run],
+        "pct": round((now - was) / was * 100, 1) if was else None,
+        "up": now > was,
+    }
+
+
+def price_changes(conn: sqlite3.Connection, today: dt.date) -> list[dict[str, Any]]:
+    """Regular payments whose price changed, newest change first (for the reminder)."""
+    book = Book(conn)
+    out = []
+    for g in _gather(conn, book).values():
+        reg = regular(g["visits"], today)
+        change = price_change(g["visits"]) if reg and not reg["stopped"] else None
+        if change:
+            out.append({"key": g["key"], "name": book.name(g["key"]), "label": reg["label"], **change})
+    out.sort(key=lambda c: c["date"], reverse=True)
+    return out
+
+
+# -- merchants that look like one ------------------------------------------------------------
+
+
+# First words that say what something is rather than whose it is: "HOME LOAN" and "HOME INSURANCE" aren't one place.
+_COMMON_FIRST = {
+    "HOME",
+    "CAR",
+    "HEALTH",
+    "LIFE",
+    "PET",
+    "PETS",
+    "TRAVEL",
+    "SCHOOL",
+    "KIDS",
+    "WATER",
+    "POWER",
+    "GAS",
+    "COUNCIL",
+    "BANK",
+    "THE",
+    "MY",
+    "AUSTRALIAN",
+    "AUST",
+    "PAYMENT",
+    "DIRECT",
+    "INTERNET",
+    "MOBILE",
+    "ONLINE",
+    "PHONE",
+    "PHONES",
+    "ELECTRICITY",
+    "ENERGY",
+    "STREAMING",
+    "GYM",
+    "RENT",
+    "LOAN",
+    "INSURANCE",
+    "BILLS",
+    "WEEKLY",
+    "MONTHLY",
+}
+
+
+def _compact(key: str) -> str:
+    return re.sub(r"[^A-Z0-9]", "", key)
+
+
+def suggestions(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    """Merchants that look like the same place under different names ("BUNNINGS KEPERRA" and "BUNNINGS WAREHOUSE",
+    "LA VIDA POOLS" and "LAVIDA POOLS"), with the one to merge into: the most visited. Ones the household said aren't
+    the same are left out."""
+    book = Book(conn)
+    groups = _gather(conn, book)
+    dismissed = {r[0] for r in conn.execute("SELECT keys FROM merchant_merge_dismissed").fetchall()}
+    candidates = [
+        g for g in groups.values() if g["key"] and g["key"] != UNNAMED_KEY and not g["person"] and g["count"] > 0
+    ]
+    found: dict[str, dict[str, Any]] = {}
+
+    def add(keys: list[str], reason: str) -> None:
+        keys = sorted(set(keys))
+        if len(keys) < 2 or "|".join(keys) in dismissed or any(k in found for k in keys):
+            return
+        into = max(keys, key=lambda k: (groups[k]["count"], groups[k]["spent"]))
+        entry = {
+            "keys": keys,
+            "names": [book.name(k) for k in keys],
+            "into": into,
+            "into_name": book.name(into),
+            "reason": reason,
+            "count": sum(groups[k]["count"] for k in keys),
+        }
+        for k in keys:
+            found[k] = entry
+
+    # The same name once spaces and punctuation go ("LA VIDA POOLS", "LAVIDA POOLS"), or one inside the other.
+    compact = {g["key"]: _compact(g["key"]) for g in candidates}
+    for a in candidates:
+        for b in candidates:
+            ka, kb = a["key"], b["key"]
+            if ka < kb and len(compact[ka]) >= 6 and len(compact[kb]) >= 6:
+                ca, cb = compact[ka], compact[kb]
+                if ca == cb or ca.startswith(cb) or cb.startswith(ca):
+                    add([ka, kb], "The same name, written differently")
+    # The same distinctive first word ("BUNNINGS KEPERRA", "BUNNINGS WAREHOUSE").
+    by_first: dict[str, list[str]] = {}
+    for g in candidates:
+        first = g["key"].split()[0]
+        if (
+            len(first) >= 4
+            and first not in merchants.GENERIC
+            and first not in _COMMON_FIRST
+            and not merchants.brand(g["key"])
+            and not first.isdigit()
+            # Two of the household's own bills are two things, whatever they're called.
+            and g["key"] not in book.bill_names
+        ):
+            by_first.setdefault(first, []).append(g["key"])
+    for first, keys in by_first.items():
+        add(keys, f"Both start with {pretty(first)}")
+    seen: set[int] = set()
+    out = []
+    for entry in found.values():
+        if id(entry) not in seen:
+            seen.add(id(entry))
+            out.append(entry)
+    out.sort(key=lambda e: -e["count"])
+    return out
+
+
+def dismiss_suggestion(conn: sqlite3.Connection, keys: list[str]) -> dict[str, Any]:
+    keys = sorted({k for k in keys if k})
+    if len(keys) < 2:
+        raise ValueError("Which merchants?")
+    conn.execute("INSERT OR IGNORE INTO merchant_merge_dismissed (keys) VALUES (?)", ("|".join(keys),))
+    return {"keys": keys}
 
 
 def _direction(g: dict[str, Any]) -> str:
@@ -217,6 +453,8 @@ def directory(conn: sqlite3.Connection, today: dt.date) -> list[dict[str, Any]]:
                 # Its own sorting: the default category's name (or None) and how many amount rules.
                 "default_category": defaults.get(g["key"]),
                 "rules": rule_counts.get(g["key"], 0),
+                "regular": (reg := regular(g["visits"], today)),
+                "price_change": price_change(g["visits"]) if reg and not reg["stopped"] else None,
             }
         )
     out.sort(key=lambda m: (-max(m["spent_year"], m["received_year"]), -max(m["spent"], m["received"])))
@@ -272,6 +510,10 @@ def detail(conn: sqlite3.Connection, key: str, today: dt.date) -> dict[str, Any]
             if k == key
         ],
         "unnamed": key == UNNAMED_KEY,
+        "regular": (reg := regular(g["visits"], today)),
+        "price_change": price_change(g["visits"]) if reg and not reg["stopped"] else None,
+        # Each payment's amount, oldest first, for a regular payment's price history.
+        "history": [{"date": d, "amount": a} for d, a in g["visits"][-24:]] if reg else [],
     }
 
 

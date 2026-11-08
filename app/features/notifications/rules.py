@@ -48,6 +48,8 @@ class Facts:
     spending: dict[str, Any] | None  # the spending month
     bills_ahead: list[dict[str, Any]]  # bills due in the next fortnight (BillsService.due)
     last_statement: str | None  # the latest date an imported statement covers
+    # Regular payments whose price changed (app.features.spending.directory.price_changes), newest first.
+    price_changes: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -193,6 +195,22 @@ def _import(f: Facts, v: dict[str, float]) -> Say | None:
     )
 
 
+def _prices(f: Facts, v: dict[str, float]) -> Say | None:
+    today = dt.date.fromisoformat(f.today)
+    fresh = [
+        c
+        for c in f.price_changes
+        if c["up"] and (today - dt.date.fromisoformat(c["date"])).days <= v["days"] and (c["pct"] or 0) >= v["percent"]
+    ]
+    if not fresh:
+        return None
+    lines = [f"{c['name']}: ${c['was'] / 100:,.2f} to ${c['now'] / 100:,.2f}" for c in fresh[:3]]
+    title = f"{fresh[0]['name']} went up" if len(fresh) == 1 else f"{len(fresh)} regular payments went up"
+    # Once per change.
+    key = "prices:" + ",".join(sorted(f"{c['key']}@{c['date']}" for c in fresh))
+    return Say(key, title, "; ".join(lines) + ".", "/merchants")
+
+
 RULES: list[Rule] = [
     Rule(
         "checkin",
@@ -234,6 +252,14 @@ RULES: list[Rule] = [
         _import,
         {"days": 14},
         units={"days": "days old"},
+    ),
+    Rule(
+        "prices",
+        "Regular payments that went up",
+        "When a subscription or other regular payment costs more than it did, by at least this much.",
+        _prices,
+        {"percent": 3, "days": 21},
+        units={"percent": "% more", "days": "days to tell"},
     ),
     Rule(
         "bills_low",

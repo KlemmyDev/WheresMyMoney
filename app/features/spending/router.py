@@ -117,6 +117,18 @@ async def forget_merchant(svc: ServicesDep, body: JsonBody):
     return await run(svc.spending.forget_merchant, str(body.get("text") or ""), body.get("amount"))
 
 
+@router.get("/merchants/suggestions")
+async def merge_suggestions(svc: ServicesDep):
+    """Merchants that look like the same place under different names, each with the one to merge into."""
+    return await run(svc.spending.merge_suggestions)
+
+
+@router.post("/merchants/suggestions/dismiss")
+async def dismiss_merge_suggestion(svc: ServicesDep, body: JsonBody):
+    """They aren't the same: {"keys": ["BUNNINGS KEPERRA", "BUNNINGS WAREHOUSE"]} isn't suggested again."""
+    return await run(svc.spending.dismiss_merge_suggestion, [str(k) for k in body.get("keys") or []])
+
+
 @router.get("/merchants/directory/{key:path}")
 async def merchant_detail(svc: ServicesDep, key: str):
     """One merchant: its months, the statement names mapped to it, and its transactions."""

@@ -15,6 +15,7 @@ import type { MerchantDetail } from "~/features/common/types";
 import { Button, Empty, ErrorText, Input, Pill } from "~/features/common/ui";
 import { MerchantPicker } from "~/features/merchants/MerchantPicker";
 import { MerchantSettings } from "~/features/merchants/MerchantSettings";
+import { RegularCard } from "~/features/merchants/RegularCard";
 import { MerchantMark } from "~/features/spending/MerchantIcon";
 import { TransactionSheet, TxRow } from "~/features/spending/TransactionSheet";
 
@@ -160,6 +161,8 @@ export function MerchantPage({ merchantKey }: { merchantKey: string }) {
         </Details>
       </Card>
 
+      <RegularCard d={d} />
+
       <div className="grid gap-4 md:grid-cols-12 [&>*]:min-w-0">
         <Card aria-labelledby="mp-months" className="flex flex-col gap-3 md:col-span-8">
           <CardHead
@@ -242,7 +245,7 @@ function Title({ d }: { d: MerchantDetail }) {
   });
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <div className="flex min-w-0 flex-1 items-center gap-3">
+      <div className="flex min-w-0 flex-1 basis-full items-center gap-3 sm:basis-auto">
         <MerchantMark name={d.key} size="xl" />
         {editing ? (
           <form

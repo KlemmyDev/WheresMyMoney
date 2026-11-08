@@ -90,6 +90,7 @@ def build_services(config: Config) -> Services:
             spending=board["spending"],
             bills_ahead=bills.due(today, today + dt.timedelta(days=14)),
             last_statement=last_statement(),
+            price_changes=spending.price_changes(),
         )
 
     return Services(
