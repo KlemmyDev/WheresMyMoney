@@ -54,7 +54,7 @@ export function LoanPage() {
     <>
       <PageHead
         over={`Money · ${lo.rate_bp != null ? `${(lo.rate_bp / 100).toFixed(2)}% a year` : "Home loan"}${goal ? ` · aiming to cover it by ${monthYear(goal)}` : ""}`}
-        title="Loan and offset"
+        title="Home loan"
         actions={<Button onClick={() => setRateOpen(true)}>Rate changed?</Button>}
       />
       {spotted && (

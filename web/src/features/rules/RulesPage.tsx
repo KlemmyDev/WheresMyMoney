@@ -109,7 +109,7 @@ export function RulesPage() {
   return (
     <>
       <PageHead
-        over={`Manage · ${rules.length} rules`}
+        over={`Setup · ${rules.length} rules`}
         title="Rules"
         actions={
           <Button primary onClick={() => setEditing("new")}>
