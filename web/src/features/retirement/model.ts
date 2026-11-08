@@ -2,7 +2,8 @@
  * The retirement estimate, a year at a time in today's dollars.
  *
  * Each person's super grows at its fund's return (its investment options' returns weighted by their shares, or the
- * household's assumption), less its fees: those on the balance (admin, investment) come off as a share, those in
+ * household's assumption), less its fees: those on the balance (admin, investment) come off as a share (a capped one
+ * only on the balance up to its cap, like 0.10% on the first $500,000, the cap in today's dollars), those in
  * dollars (admin, insurance) come off each year while there's a balance. Inflation is taken out, so every figure is
  * in today's dollars (dollar fees and salaries are taken to rise with prices). While working, super takes the
  * employer's contributions (and any extra) less the tax on money going in; the ETFs grow at their return less their
@@ -14,7 +15,7 @@
  * pension isn't counted, so it errs on the careful side. Money in cents; rates as fractions (0.07 is 7%).
  */
 
-export type Fee = { name: string; kind: "pct" | "fixed"; amount: number };
+export type Fee = { name: string; kind: "pct" | "fixed"; amount: number; cap?: number | null };
 export type Option = { name: string; share: number; return_pct: number | null; fee_pct: number };
 export type Person = { age: number; balance: number; salary: number; rate: number; fees: Fee[]; options: Option[] };
 
@@ -46,16 +47,25 @@ export type Row = { year: number; age: number; super: number; etfs: number };
 export type Result = { rows: Row[]; out: number | null; gap: number | null; ok: boolean; atRetire: Row | null };
 
 /** A fund's terms: its return before fees, fees on the balance (a share a year), fees in dollars a year, and what
- * a dollar grows by in a year after fees on the balance and inflation (dollar fees aside). */
-export function fundTerms(p: Pick<Person, "fees" | "options">, a: Assumptions) {
+ * a dollar grows by in a year after fees on the balance and inflation (dollar fees aside). A capped fee on the
+ * balance is in `pct` and `real` as it stands on `balance` (all of it when none is given), and in `capped` for the
+ * years ahead, when it's charged only on the balance up to its cap. */
+export function fundTerms(p: Pick<Person, "fees" | "options">, a: Assumptions, balance?: number) {
   const ret = p.options.length
     ? p.options.reduce((s, o) => s + o.share * (o.return_pct ?? a.superReturn), 0)
     : a.superReturn;
-  const pct =
-    p.fees.filter((f) => f.kind === "pct").reduce((s, f) => s + f.amount, 0) +
+  const capped = p.fees.filter((f) => f.kind === "pct" && f.cap).map((f) => ({ rate: f.amount, cap: f.cap! }));
+  const flat =
+    p.fees.filter((f) => f.kind === "pct" && !f.cap).reduce((s, f) => s + f.amount, 0) +
     p.options.reduce((s, o) => s + o.share * o.fee_pct, 0);
+  const pct = flat + (balance ? cappedFee(capped, balance) / balance : capped.reduce((s, c) => s + c.rate, 0));
   const fixed = p.fees.filter((f) => f.kind === "fixed").reduce((s, f) => s + f.amount, 0);
-  return { ret, pct, fixed, real: (1 + ret - pct) / (1 + a.inflation) - 1 };
+  return { ret, pct, flat, capped, fixed, real: (1 + ret - pct) / (1 + a.inflation) - 1 };
+}
+
+/** What capped fees on the balance come to in a year on this balance. */
+export function cappedFee(capped: { rate: number; cap: number }[], balance: number) {
+  return capped.reduce((s, c) => s + c.rate * Math.min(Math.max(balance, 0), c.cap), 0);
 }
 
 const LAST = 100;
@@ -84,7 +94,9 @@ export function project(i: Inputs, retireAge = i.retireAge): Result {
       etfs: Math.max(0, etfs),
     });
     supers.forEach((s, k) => {
-      supers[k] = s > 0 ? Math.max(0, s * (1 + terms[k].real) - terms[k].fixed) : s;
+      const t = terms[k];
+      supers[k] =
+        s > 0 ? Math.max(0, (s * (1 + t.ret - t.flat) - cappedFee(t.capped, s)) / (1 + i.inflation) - t.fixed) : s;
     });
     etfs *= etfGrowth;
     if (age < retireAge) {

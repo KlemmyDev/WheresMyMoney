@@ -39,11 +39,16 @@ async def remove_person(svc: ServicesDep, person_id: int):
 @router.post("/people/{person_id}/statement")
 async def read_statement(svc: ServicesDep, person_id: int, request: Request):
     """Read a super statement (the PDF as the body) for its balance, fees and investment options. Nothing is saved:
-    what's found comes back to be checked, then saved with PUT /people/{id}."""
-    from app.features.retirement import statements
+    what's found comes back to be checked, then saved with PUT /people/{id}. A statement from a fund whose fees are
+    known (by the person's fund, or the statement's own heading) gives the fund's published fees, which grow with the
+    balance, in place of the year's dollars; insurance is the statement's."""
+    from app.features.retirement import funds, statements
 
     raw = await request.body()
-    if not any(p["id"] == person_id for p in await run(svc.retirement.people)):
+    person = next((p for p in await run(svc.retirement.people) if p["id"] == person_id), None)
+    if person is None:
         raise HTTPException(status_code=404, detail="That person's super has gone.")
     text = await run(statements.read_text, raw)
-    return await run(statements.parse, text)
+    found = await run(statements.parse, text)
+    fund = funds.find(person["fund"]) or funds.in_statement(text)
+    return funds.apply(fund, found) if fund else {**found, "fund": None}

@@ -313,13 +313,26 @@ export type SuperAccount = {
   born: number;
   age: number;
   fund: string;
+  /** The key of the known fund this is (see KnownFund), if any. */
+  known_fund: string | null;
   balance: number;
   as_of: string | null;
   salary: number;
   rate: number;
   opens: number;
-  fees: { name: string; kind: "pct" | "fixed"; amount: number }[];
+  fees: { name: string; kind: "pct" | "fixed"; amount: number; cap?: number | null }[];
   options: { name: string; share: number; return_pct: number | null; fee_pct: number }[];
+};
+
+/** A super fund whose fees are known: picking it fills them in. */
+export type KnownFund = {
+  key: string;
+  name: string;
+  source: string;
+  checked: string;
+  fees: { name: string; kind: "pct" | "fixed"; amount: number; cap?: number | null }[];
+  /** Each investment option's fees and costs (with transaction costs), a year. */
+  options: Record<string, number>;
 };
 
 export type RetirementSettings = {
@@ -338,6 +351,7 @@ export type RetirementSettings = {
 export type RetirementData = {
   people: SuperAccount[];
   settings: RetirementSettings;
+  funds: KnownFund[];
   spending_now: number;
   preservation: number;
   year: number;

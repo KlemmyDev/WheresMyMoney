@@ -227,3 +227,25 @@ def test_reading_a_pdf(client: TestClient) -> None:
     blank = client.post(f"/api/retirement/people/{p['id']}/statement", content=pdf(" "))
     assert blank.status_code == 422 and "pictures" in blank.text
     assert client.post("/api/retirement/people/999/statement", content=pdf(STATEMENT)).status_code == 404
+
+
+def test_an_art_statement_gives_arts_published_fees(client: TestClient) -> None:
+    from app.features.retirement import funds
+
+    art = funds.in_statement("... Australian Retirement Trust Pty Ltd ABN 88 010 720 840 ...")
+    assert art is not None and funds.find("ART") is art and funds.find("Hostplus") is None
+    found = parse(ART_2026)
+    r = funds.apply(art, found)
+    assert r["fund"] == "Australian Retirement Trust"
+    names = {f["name"]: f for f in r["fees"]}
+    # The year's admin and investment dollars give way to the rates; insurance is the statement's.
+    assert names["Admin fee (on the balance)"]["cap"] == dollars(500000)
+    assert names["Insurance"] == {"name": "Insurance", "kind": "fixed", "amount": dollars(1450)}
+    assert "Investment fee" not in names and "Other fees" not in names
+    assert [o["fee_pct"] for o in r["options"]] == [0.001, 0.0008, 0.0009]
+    assert "published rates" in r["notes"][0]
+
+    # Through the API: the person's fund is ART, so the statement comes back with ART's fees.
+    p = ok(client.post("/api/retirement/people", json={"person": "Sam", "born": 1992, "fund": "ART"}))
+    r = ok(client.post(f"/api/retirement/people/{p['id']}/statement", content=pdf(STATEMENT)))
+    assert r["fund"] == "Australian Retirement Trust" and any(f.get("cap") for f in r["fees"])
