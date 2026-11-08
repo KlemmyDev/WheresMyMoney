@@ -29,37 +29,10 @@ def key_of(name: str) -> str:
     return " ".join(_KEY_CHARS.sub(" ", name.upper().replace("'", "")).split())[:60]
 
 
-# Brands written the way they write themselves.
-BRAND_NAMES = {
-    "CHEESECAKE SHOP": "The Cheesecake Shop",
-    "MCDONALDS": "McDonald's",
-    "DOMINOS": "Domino's",
-    "HUNGRY JACKS": "Hungry Jack's",
-    "NANDOS": "Nando's",
-    "GRILL D": "Grill'd",
-    "7-ELEVEN": "7-Eleven",
-    "7 ELEVEN": "7-Eleven",
-    "JB HI": "JB Hi-Fi",
-    "DAN MURPHYS": "Dan Murphy's",
-    "GUZMAN Y GOMEZ": "Guzman y Gomez",
-    "IKEA": "IKEA",
-    "EBAY": "eBay",
-    "PAYPAL": "PayPal",
-    "STEAMGAMES": "Steam",
-    "ALDI": "ALDI",
-    "TPG": "TPG",
-    "AGL": "AGL",
-    "HCF": "HCF",
-    "RACQ": "RACQ",
-    "NRMA": "NRMA",
-    "AAMI": "AAMI",
-}
-
-
 def pretty(key: str) -> str:
     """A key as a name: title case, short brand names kept in capitals (BP, KFC, IGA)."""
-    if key in BRAND_NAMES:
-        return BRAND_NAMES[key]
+    if key in merchants.NAMES:
+        return merchants.NAMES[key]
     words = []
     for w in key.split():
         if len(w) <= 3 and (w in merchants.SUGGESTIONS or not re.search(r"[AEIOU]", w)):
@@ -75,7 +48,8 @@ def auto_key(merchant_text: str, description: str = "") -> str:
     bare = merchant_text[4:] if merchant_text.startswith("THE ") else merchant_text
     known = merchants.brand(bare) or merchants.brand(merchant_text)
     if known:
-        return known[4:] if known.startswith("THE ") and merchants.brand(known[4:]) else known
+        # However it showed up ("WOOLIES", "THE CHEESECAKE SHOP"), the business's own key.
+        return merchants.CANONICAL.get(known, known)
     remembered = merchants.learn_pattern(merchant_text, None, None, description)
     # A person's name is kept whole; anything else by its first two words at most.
     if len(remembered.split()) > merchants.WORDS:
@@ -570,6 +544,27 @@ def _named(conn: sqlite3.Connection, key: str | None, name: str | None) -> str |
     return key
 
 
+def _sort_by_business(conn: sqlite3.Connection, key: str) -> int:
+    """Linking statement names or payments to a known business sorts its transactions that aren't sorted yet into that
+    business's usual category (Superloop: Phone & internet). Ones already sorted are left as they are."""
+    category = merchants.SUGGESTIONS.get(key) if key in merchants.NAMES else None
+    row = conn.execute("SELECT id FROM categories WHERE name = ?", (category,)).fetchone() if category else None
+    if not row:
+        return 0
+    book = Book(conn)
+    changed = 0
+    for tx_id, text, description, amount, bill_id in conn.execute(
+        "SELECT id, merchant, description, amount, bill_id FROM transactions WHERE category_id IS NULL"
+        " AND kind != 'adjustment' AND rule_id IS NULL AND (merchant != '' OR merchant_override IS NOT NULL)"
+    ).fetchall():
+        if book.key(text, description, amount, tx_id, bill_id) == key:
+            conn.execute(
+                "UPDATE transactions SET category_id = ?, category_by = 'suggest' WHERE id = ?", (row[0], tx_id)
+            )
+            changed += 1
+    return changed
+
+
 def assign_payment(
     conn: sqlite3.Connection, tx_id: int, scope: str, key: str | None, name: str | None
 ) -> dict[str, Any]:
@@ -589,8 +584,11 @@ def assign_payment(
             (text, abs(amount), key),
         )
         conn.execute("UPDATE transactions SET merchant_override = NULL WHERE id = ?", (tx_id,))
+        _sort_by_business(conn, key)
         return {"text": text, "amount": abs(amount), "key": key}
     conn.execute("UPDATE transactions SET merchant_override = ? WHERE id = ?", (key or None, tx_id))
+    if key:
+        _sort_by_business(conn, key)
     return {"text": text, "key": key or Book(conn).key(text, "", amount, tx_id)}
 
 
@@ -618,6 +616,7 @@ def assign(conn: sqlite3.Connection, text: str, key: str | None, name: str | Non
             "INSERT INTO merchant_aliases (text, key) VALUES (?, ?) ON CONFLICT (text) DO UPDATE SET key = excluded.key",
             (text, key),
         )
+    _sort_by_business(conn, key)
     return {"text": text, "key": key}
 
 
@@ -757,6 +756,7 @@ def merge(conn: sqlite3.Connection, sources: list[str], key: str | None, name: s
     for text in texts:
         assign(conn, text, key, None)
     conn.executemany("UPDATE transactions SET merchant_override = ? WHERE id = ?", [(key, i) for i in payments])
+    _sort_by_business(conn, key)
     return {"key": key, "moved": len(texts) + len(payments)}
 
 
@@ -772,15 +772,12 @@ def unmerge(conn: sqlite3.Connection, key: str) -> dict[str, Any]:
 
 
 def catalogue() -> list[dict[str, Any]]:
-    """Businesses the app knows: each one's key (how its statement lines start), its name, and the category it's
-    usually in. Picking one when naming a merchant links the merchant to it, so its mark and name follow."""
-    out: dict[str, dict[str, Any]] = {}
-    for key, category in merchants.SUGGESTIONS.items():
-        # "THE CHEESECAKE SHOP" and "CHEESECAKE SHOP" are one business.
-        if key.startswith("THE ") and key[4:] in merchants.SUGGESTIONS:
-            continue
-        out[key] = {"key": key, "name": pretty(key), "category": category}
-    return sorted(out.values(), key=lambda b: b["name"].lower())
+    """Businesses the app knows (businesses.json): each one's key, name, usual category and other spellings. Picking
+    one when naming a merchant links the merchant to it, so its mark and name follow."""
+    return [
+        {"key": b["key"], "name": b["name"], "category": b["category"], "aliases": b["aliases"]}
+        for b in merchants.CATALOGUE
+    ]
 
 
 def forget(conn: sqlite3.Connection, text: str, amount: int | None = None) -> dict[str, Any]:

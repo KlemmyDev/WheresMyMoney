@@ -68,7 +68,15 @@ function Art({ shapes }: { shapes: Shape[] }) {
     >
       {shapes.map((sh, i) =>
         "d" in sh ? (
-          <path key={i} d={sh.d} fill={sh.fill ?? "none"} fillRule="evenodd" stroke={sh.stroke} strokeWidth={sh.w} />
+          <path
+            key={i}
+            transform={sh.g ? "translate(7 7) scale(0.75)" : undefined}
+            d={sh.d}
+            fill={sh.fill ?? "none"}
+            fillRule="evenodd"
+            stroke={sh.stroke}
+            strokeWidth={sh.w}
+          />
         ) : (
           <text
             key={i}
