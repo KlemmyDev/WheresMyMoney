@@ -27,17 +27,15 @@ export const SECTIONS: readonly Section[] = [
     g: I.overview,
     pages: [
       { to: "/", label: "Overview", sub: "Today, and the month ahead", g: I.overview, tone: "grad" },
-      { to: "/net-worth", label: "Net worth", sub: "Owned minus owed", g: I.networth, tone: "invest" },
+      { to: "/net-worth", label: "Net worth", sub: "What we own, less what we owe", g: I.networth, tone: "invest" },
     ],
   },
+  // Everyday pages first: what's been spent and what's due, then the accounts and the loan behind them.
   {
     id: "money",
     label: "Money",
     g: I.accounts,
     pages: [
-      { to: "/accounts", label: "Accounts", sub: "Four accounts and what moved them", g: I.accounts, tone: "" },
-      { to: "/loan", label: "Loan and offset", sub: "What your accounts save you", g: I.loan, tone: "loan" },
-      { to: "/bills", label: "Bills", sub: "What's due, and what's held", g: I.bills, tone: "bills" },
       // "All transactions" and "Sort by merchant" are reached from Spending, so they keep Spending lit.
       {
         to: "/spending",
@@ -47,6 +45,9 @@ export const SECTIONS: readonly Section[] = [
         tone: "spending",
         also: ["/transactions", "/sort"],
       },
+      { to: "/bills", label: "Bills", sub: "What's due, and what's set aside", g: I.bills, tone: "bills" },
+      { to: "/accounts", label: "Accounts", sub: "Each account and its job", g: I.accounts, tone: "" },
+      { to: "/loan", label: "Home loan", sub: "What our accounts save on it", g: I.loan, tone: "loan" },
     ],
   },
   {
@@ -54,18 +55,19 @@ export const SECTIONS: readonly Section[] = [
     label: "Future",
     g: I.invest,
     pages: [
-      { to: "/investments", label: "Investments", sub: "ETFs and shares", g: I.invest, tone: "invest" },
-      { to: "/retirement", label: "Retirement", sub: "When you could stop", g: I.retire, tone: "savings" },
+      { to: "/investments", label: "Investments", sub: "Shares and funds", g: I.invest, tone: "invest" },
+      { to: "/retirement", label: "Retirement", sub: "When we could stop work", g: I.retire, tone: "savings" },
     ],
   },
   {
+    // Set up once and looked after by whoever runs the household's money; not needed day to day.
     id: "manage",
-    label: "Manage",
+    label: "Setup",
     g: I.settings,
     pages: [
-      { to: "/rules", label: "Rules", sub: "Your plan for moving money", g: I.rules, tone: "neutral" },
-      { to: "/import", label: "Import", sub: "Drop in a uBank CSV", g: I.import, tone: "neutral" },
-      { to: "/settings", label: "Settings", sub: "Household, alerts, updates", g: I.settings, tone: "neutral" },
+      { to: "/rules", label: "Rules", sub: "The transfers set up in uBank", g: I.rules, tone: "neutral" },
+      { to: "/import", label: "Import", sub: "Add a uBank statement file", g: I.import, tone: "neutral" },
+      { to: "/settings", label: "Settings", sub: "People, alerts, retirement, look", g: I.settings, tone: "neutral" },
     ],
   },
 ];
@@ -511,7 +513,7 @@ function SectionPages({ section, path }: { section: Section; path: string }) {
             className="chip-host press flex h-14 flex-col items-center justify-center gap-1 rounded-[14px] text-[12px] font-semibold text-ink-3 no-underline aria-[current=page]:bg-teal/12 aria-[current=page]:text-ink"
           >
             <Chip g={p.g} tone={p.tone} size="sm" />
-            {p.label === "Loan and offset" ? "Loan" : p.label}
+            {p.label === "Home loan" ? "Loan" : p.label}
           </Link>
         ))}
       </div>

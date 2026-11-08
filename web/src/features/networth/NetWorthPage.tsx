@@ -389,7 +389,7 @@ function Owed({ n, home }: { n: NetWorth; home: boolean }) {
             </p>
           </div>
           <Link to="/loan" className="text-[14px] font-semibold text-teal no-underline">
-            Loan and offset →
+            The home loan →
           </Link>
         </>
       )}

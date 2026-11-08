@@ -446,7 +446,7 @@ function Plan({
             ["Inflation", "Taken out, so it's all in today's dollars", pct(inputs.inflation)],
             ["Tax on money going in", "Employer and extra contributions", pct(inputs.contribTax)],
             ["Into ETFs while working", "What went in over the last year", `${k(etfPerYear)}/yr`],
-            ["Loan repayments until gone", "From Loan and offset", loanEnds ? `${k(loanRepayment)}/yr` : "No loan"],
+            ["Loan repayments until gone", "From the home loan", loanEnds ? `${k(loanRepayment)}/yr` : "No loan"],
             ["Plan to", "How long the money should last", `Age ${s.plan_to}`],
           ].map(([n, sb, v]) => (
             <div key={n} className="flex items-center gap-3 border-t border-line py-2.5 first:border-t-0">

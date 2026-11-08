@@ -52,7 +52,7 @@ export function SettingsPage() {
   );
   return (
     <>
-      <PageHead over="Manage" title="Settings" />
+      <PageHead over="Setup" title="Settings" />
       <p className="-mt-2 mb-0 text-[14px] text-ink-3">
         Running on your home server. Nothing leaves it but update checks and the notifications you set up.
       </p>
