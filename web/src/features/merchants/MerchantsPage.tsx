@@ -91,7 +91,15 @@ export function MerchantsPage({ search }: { search: MerchantSearch }) {
   // Money out: anywhere we've spent. Money in: anyone who's paid us (refunds from a shop count there too).
   const side = q.data.filter((m) => (dir === "in" ? m.received_count > 0 : m.count > 0));
   const shown = side
-    .filter((m) => !needle || m.name.toLowerCase().includes(needle) || m.key.toLowerCase().includes(needle))
+    // By its name, how it shows up on statements, or its note ("mazda").
+    .filter(
+      (m) =>
+        !needle ||
+        m.name.toLowerCase().includes(needle) ||
+        m.key.toLowerCase().includes(needle) ||
+        m.note.toLowerCase().includes(needle) ||
+        m.aliases.some((a) => a.toLowerCase().includes(needle)),
+    )
     .filter((m) => !unset || !m.default_category)
     .sort(SORTS[sort].by(dir));
   const unsetCount = side.filter((m) => !m.default_category).length;
@@ -130,7 +138,7 @@ export function MerchantsPage({ search }: { search: MerchantSearch }) {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <Input
               type="search"
-              placeholder="Find a merchant"
+              placeholder="Find a merchant, statement name or note"
               aria-label="Find a merchant"
               value={find}
               onChange={(e) => setFind(e.target.value)}

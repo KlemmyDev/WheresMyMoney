@@ -507,6 +507,13 @@ class SpendingService:
         with self.db.reading() as conn:
             return directory.price_changes(conn, dates.today())
 
+    def unmerge_merchant(self, key: str) -> dict[str, Any]:
+        with self.db.writing() as conn:
+            return directory.unmerge(conn, key)
+
+    def businesses(self) -> list[dict[str, Any]]:
+        return directory.catalogue()
+
     def forget_merchant(self, text: str, amount: Any = None) -> dict[str, Any]:
         with self.db.writing() as conn:
             return directory.forget(conn, text, int(amount) if amount not in (None, "") else None)

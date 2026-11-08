@@ -166,6 +166,9 @@ export type Regular = {
 /** The latest change in a regular payment's price. */
 export type MerchantPriceChange = { was: number; now: number; date: string; pct: number | null; up: boolean };
 
+/** A business the app knows: its key (how its statement lines start), name and usual category. */
+export type Business = { key: string; name: string; category: string };
+
 /** Merchants that look like one place, and the one to merge into. */
 export type MergeSuggestion = {
   keys: string[];
@@ -202,6 +205,8 @@ export type MerchantSummary = {
   rules: number;
   regular: Regular | null;
   price_change: MerchantPriceChange | null;
+  /** Its statement names, most used first. */
+  aliases: string[];
 };
 
 export type MerchantDetail = {
@@ -237,6 +242,8 @@ export type MerchantDetail = {
   amounts: { text: string; amount: number }[];
   /** The catch-all for BPAY payments nobody has named yet. */
   unnamed: boolean;
+  /** How many statement names, BPAY amounts and single payments were put here by hand (what Unmerge undoes). */
+  mapped: number;
   regular: Regular | null;
   price_change: MerchantPriceChange | null;
   /** Each payment (cents out), oldest first, when it's a regular one. */

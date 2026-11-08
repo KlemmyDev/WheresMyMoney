@@ -163,7 +163,9 @@ def _months_back(today: dt.date, n: int) -> list[str]:
 # accounts, balance fixes or uBank's automatic rules.
 _SPENDING = (
     "SELECT t.id, t.merchant, t.description, t.amount, t.date, c.name, t.bill_id FROM transactions t"
-    " LEFT JOIN categories c ON c.id = t.category_id WHERE t.kind != 'adjustment' AND t.rule_id IS NULL"
+    " LEFT JOIN categories c ON c.id = t.category_id WHERE t.kind != 'adjustment'"
+    # uBank's rules move money between our own accounts, except pay: that's money in from an employer.
+    " AND (t.rule_id IS NULL OR c.kind = 'income')"
     " AND COALESCE(c.kind, 'spending') IN ('spending', 'bills', 'income') AND t.merchant != ''"
 )
 
@@ -486,6 +488,8 @@ def directory(conn: sqlite3.Connection, today: dt.date) -> list[dict[str, Any]]:
                 "rules": rule_counts.get(g["key"], 0),
                 "regular": (reg := regular(g["visits"], today)),
                 "price_change": price_change(g["visits"]) if reg and not reg["stopped"] else None,
+                # Its statement names, most used first, so the list can be searched by them too.
+                "aliases": [t["text"] for t in sorted(g["texts"].values(), key=lambda t: -t["count"])[:8]],
             }
         )
     out.sort(key=lambda m: (-max(m["spent_year"], m["received_year"]), -max(m["spent"], m["received"])))
@@ -541,6 +545,10 @@ def detail(conn: sqlite3.Connection, key: str, today: dt.date) -> dict[str, Any]
             if k == key
         ],
         "unnamed": key == UNNAMED_KEY,
+        # How much was put here by hand (statement names, BPAY amounts, single payments): what Unmerge undoes.
+        "mapped": sum(1 for k in book.aliases.values() if k == key)
+        + sum(1 for k in book.by_amount.values() if k == key)
+        + sum(1 for k in book.overrides.values() if k == key),
         "regular": (reg := regular(g["visits"], today)),
         "price_change": price_change(g["visits"]) if reg and not reg["stopped"] else None,
         # Each payment's amount, oldest first, for a regular payment's price history.
@@ -750,6 +758,29 @@ def merge(conn: sqlite3.Connection, sources: list[str], key: str | None, name: s
         assign(conn, text, key, None)
     conn.executemany("UPDATE transactions SET merchant_override = ? WHERE id = ?", [(key, i) for i in payments])
     return {"key": key, "moved": len(texts) + len(payments)}
+
+
+def unmerge(conn: sqlite3.Connection, key: str) -> dict[str, Any]:
+    """Undo everything put into a merchant by hand: statement names, BPAY amounts and single payments go back to
+    where they'd be by themselves."""
+    moved = conn.execute("DELETE FROM merchant_aliases WHERE key = ?", (key,)).rowcount
+    moved += conn.execute("DELETE FROM merchant_amount_aliases WHERE key = ?", (key,)).rowcount
+    moved += conn.execute(
+        "UPDATE transactions SET merchant_override = NULL WHERE merchant_override = ?", (key,)
+    ).rowcount
+    return {"key": key, "moved": moved}
+
+
+def catalogue() -> list[dict[str, Any]]:
+    """Businesses the app knows: each one's key (how its statement lines start), its name, and the category it's
+    usually in. Picking one when naming a merchant links the merchant to it, so its mark and name follow."""
+    out: dict[str, dict[str, Any]] = {}
+    for key, category in merchants.SUGGESTIONS.items():
+        # "THE CHEESECAKE SHOP" and "CHEESECAKE SHOP" are one business.
+        if key.startswith("THE ") and key[4:] in merchants.SUGGESTIONS:
+            continue
+        out[key] = {"key": key, "name": pretty(key), "category": category}
+    return sorted(out.values(), key=lambda b: b["name"].lower())
 
 
 def forget(conn: sqlite3.Connection, text: str, amount: int | None = None) -> dict[str, Any]:

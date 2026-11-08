@@ -104,3 +104,45 @@ def test_merchants_and_suggestions_over_the_api(client: TestClient, household: d
     assert bakery["keys"] == ["PADDOCK BAKERY", "PADDOCK CAFE"] and bakery["reason"] == "Both start with Paddock"
     ok(client.post("/api/merchants/suggestions/dismiss", json={"keys": bakery["keys"]}))
     assert bakery["keys"] not in [s["keys"] for s in ok(client.get("/api/merchants/suggestions"))]
+
+
+def test_pay_from_a_rule_shows_under_money_in(client: TestClient, household: dict) -> None:
+    from tests.test_imports import ubank, upload
+
+    rows = [("29 Oct 2026", "SALARY ACME PTY LTD", "", "$6,950.00", "+$101,550.00")]
+    opened = upload(client, ubank(rows), "Offset-2210_2026-10.csv")
+    a = ok(client.post(f"/api/imports/{opened['token']}/analyse", json={"account_id": household["Offset"]}))
+    assert a["rows"][0]["rule_kind"] == "pay"
+    ok(client.post(f"/api/imports/{opened['token']}/commit", json={"account_id": household["Offset"]}))
+    listed = {m["key"]: m for m in ok(client.get("/api/merchants/directory"))}
+    acme = next(m for k, m in listed.items() if k.startswith("SALARY"))
+    assert acme["direction"] == "in" and acme["received"] == 695000
+    # Transfers between our own accounts still aren't merchants.
+    assert not any(k.startswith("TRANSFER") for k in listed)
+
+
+def test_catalogue_search_names_unmerge(client: TestClient, household: dict) -> None:
+    acc = household["Spending"]
+    shops = {b["key"]: b for b in ok(client.get("/api/businesses"))}
+    assert shops["CHEESECAKE SHOP"]["name"] == "The Cheesecake Shop" and "THE CHEESECAKE SHOP" not in shops
+    assert shops["WOOLWORTHS"]["category"] == "Groceries"
+
+    # A cake shop under a name the app doesn't know, linked to the known business by merging into its key.
+    tx = ok(
+        client.post(
+            "/api/transactions",
+            json={"account_id": acc, "amount": -4995, "description": "THE CHEESECAKE KEPERRA", "date": "2026-10-11"},
+        )
+    )
+    ok(client.post("/api/merchants/merge", json={"from": [tx["merchant_key"]], "into": "CHEESECAKE SHOP"}))
+    again = next(t for t in ok(client.get("/api/transactions")) if t["id"] == tx["id"])
+    assert again["merchant_key"] == "CHEESECAKE SHOP" and again["merchant_name"] == "The Cheesecake Shop"
+    row = next(m for m in ok(client.get("/api/merchants/directory")) if m["key"] == "CHEESECAKE SHOP")
+    assert "THE CHEESECAKE KEPERRA" in row["aliases"]
+    d = ok(client.get("/api/merchants/directory/CHEESECAKE SHOP"))
+    assert d["mapped"] == 1
+
+    # Unmerge puts it back where it was.
+    assert ok(client.post("/api/merchants/unmerge", json={"key": "CHEESECAKE SHOP"}))["moved"] == 1
+    back = next(t for t in ok(client.get("/api/transactions")) if t["id"] == tx["id"])
+    assert back["merchant_key"] == tx["merchant_key"]
