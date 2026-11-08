@@ -209,13 +209,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             onClick={() => navigate({ to: "/bills" })}
           />
           <ActionTile
-            g={I.import}
-            tone="neutral"
-            label="Import"
-            sub="A uBank statement"
-            onClick={() => navigate({ to: "/import" })}
-          />
-          <ActionTile
             g={I.savings}
             tone="savings"
             label="New goal"
@@ -224,13 +217,6 @@ export function AppShell({ children }: { children: ReactNode }) {
               setSheet(null);
               setGoal(true);
             }}
-          />
-          <ActionTile
-            g={I.loan}
-            tone="loan"
-            label="Rate changed"
-            sub="The loan's rate moved"
-            onClick={() => navigate({ to: "/loan", search: { rate: 1 } })}
           />
         </div>
       </Sheet>

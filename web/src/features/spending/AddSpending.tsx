@@ -9,7 +9,7 @@ import { useState } from "react";
 import { apiSend, errorMessage } from "~/features/common/api";
 import { CategoryPicker } from "~/features/common/CategoryPicker";
 import { ChoiceChip, Keypad, Sheet, useSheetTop } from "~/features/common/ds";
-import { dayDate, money, todayIso } from "~/features/common/format";
+import { money, todayIso } from "~/features/common/format";
 import { Chip, I, type Glyph, type Tone } from "~/features/common/icons";
 import { accountsQuery, categoriesQuery, refresh, spendingQuery } from "~/features/common/queries";
 import type { Account, Transaction } from "~/features/common/types";
@@ -360,12 +360,7 @@ function AddForm({ onClose }: { onClose: () => void }) {
         </label>
       )}
 
-      <div className="grid grid-cols-2 gap-2.5">
-        <div className="rounded-2xl bg-sunken p-3.5">
-          <div className="eyebrow">When</div>
-          <div className="text-[15px]">{date === todayIso() ? "Today" : dayDate(date)}</div>
-          <div className="text-[13px] text-ink-3">Saved as entered by hand</div>
-        </div>
+      <div>
         {month && safeAfter != null ? (
           <div className="rounded-2xl bg-sunken p-3.5">
             <div className="eyebrow">Left to spend after</div>
@@ -374,9 +369,7 @@ function AddForm({ onClose }: { onClose: () => void }) {
             </div>
             <div className="text-[13px] text-ink-3">this month, with {month.remaining} days to go</div>
           </div>
-        ) : (
-          <span />
-        )}
+        ) : null}
       </div>
 
       {save.isError && <ErrorText>{errorMessage(save.error)}</ErrorText>}
