@@ -80,6 +80,8 @@ DEFAULT_CATEGORIES: list[tuple[str, str, int | None]] = [
     ("Investments", "transfer", None),
 ]
 MAX_NOTE = 200
+SUGGEST_MONTHS = 6  # whole months a budget suggestion looks back over
+UNDER = 0.6  # a budget is well under when every month spent less than this share of it
 
 
 def seed_categories(conn: sqlite3.Connection) -> None:
@@ -548,6 +550,89 @@ class SpendingService:
             return start, end
         start = today.replace(day=1)
         return start, dates.add_months(start, 1) - dt.timedelta(days=1)
+
+    def budget_suggestions(self, accounts: list[int], months: int = SUGGEST_MONTHS) -> dict[str, Any]:
+        """A budget for each spending category from what the spending accounts actually spent in the last few whole
+        months (calendar months, this one left out), and the budgets that don't match: gone over in most of them,
+        or well under in every one.
+
+        Spending counts as in the spending month: not transfers by a rule, not what someone's paying back, splits
+        by their parts. A suggestion is the average month rounded up to the next $10, over the months since the
+        first transaction (so a new household isn't averaged with empty months).
+        """
+        first = dates.today().replace(day=1)
+        start = dates.add_months(first, -months)
+        cats = [c for c in self.categories() if c["kind"] == "spending"]
+        ids = {c["id"] for c in cats}
+        totals: dict[int, list[int]] = {c["id"]: [0] * months for c in cats}
+        seen_from = months
+        if accounts:
+            marks = ",".join("?" * len(accounts))
+            with self.db.reading() as conn:
+                earliest = conn.execute(
+                    f"SELECT MIN(date) FROM transactions WHERE account_id IN ({marks}) AND kind != 'adjustment'",
+                    accounts,
+                ).fetchone()[0]
+                rows = conn.execute(
+                    "SELECT id, date, amount, category_id, rule_id, category_by, excluded FROM transactions"
+                    f" WHERE account_id IN ({marks}) AND date >= ? AND date < ? AND kind IN ('statement', 'manual', 'cash')",
+                    [*accounts, start.isoformat(), first.isoformat()],
+                ).fetchall()
+                parts = _splits(conn, [r[0] for r in rows if r[5] == "split"])
+            if earliest:
+                e = dates.parse(earliest)
+                # A month counts once the statements cover it from (about) its start.
+                seen_from = next(
+                    (i for i in range(months) if dates.add_months(start, i) >= e - dt.timedelta(days=3)), months
+                )
+            for tx_id, day, amount, category, rule_id, _by, excluded in rows:
+                if excluded or rule_id is not None:
+                    continue
+                pieces = (
+                    [(p["category_id"], -p["amount"] if amount < 0 else p["amount"]) for p in parts[tx_id]]
+                    if tx_id in parts
+                    else [(category, amount)]
+                )
+                d = dates.parse(day)
+                i = (d.year - start.year) * 12 + d.month - start.month
+                for cat, part in pieces:
+                    if cat in ids and 0 <= i < months:
+                        totals[cat][i] -= part
+        counted = max(months - seen_from, 0)
+        out = []
+        for c in cats:
+            series = [max(v, 0) for v in totals[c["id"]][seen_from:]]
+            average = round(sum(series) / counted) if counted else 0
+            suggested = -(-average // 1000) * 1000 if average else None
+            budget = c["budget"]
+            over = sum(1 for v in series if budget and v > budget)
+            note = None
+            if budget and counted >= 3:
+                if over * 3 >= counted * 2:
+                    note = "over"
+                elif all(v < budget * UNDER for v in series):
+                    note = "under"
+            if not budget and not average:
+                continue
+            out.append(
+                {
+                    "id": c["id"],
+                    "name": c["name"],
+                    "budget": budget,
+                    "months": series,
+                    "average": average,
+                    "highest": max(series, default=0),
+                    "suggested": suggested,
+                    "over": over,
+                    "note": note,
+                }
+            )
+        out.sort(key=lambda r: -int(r["average"]))
+        return {
+            "months": counted,
+            "from": dates.add_months(start, seen_from).isoformat() if counted else None,
+            "categories": out,
+        }
 
     def month(self, accounts: list[int], left: int, allowance: int, top_up: Any | None) -> dict[str, Any]:
         """The spending month for the spending accounts: what's left, the pace, safe to spend, by category and day."""

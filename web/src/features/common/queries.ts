@@ -2,6 +2,7 @@
 import { queryOptions, type QueryClient } from "@tanstack/react-query";
 import { apiGet } from "~/features/common/api";
 import type {
+  BudgetSuggestions,
   BillDetail,
   Account,
   AccountsOverview,
@@ -90,6 +91,11 @@ export const billQuery = (id: number) =>
     queryKey: ["bills", id],
     queryFn: ({ signal }) => apiGet<BillDetail>(`bills/${id}`, undefined, { signal }),
   });
+
+export const budgetSuggestionsQuery = queryOptions({
+  queryKey: ["categories", "suggestions"],
+  queryFn: ({ signal }) => apiGet<BudgetSuggestions>("categories/suggestions", undefined, { signal }),
+});
 
 export const rulesQuery = queryOptions({
   queryKey: ["rules"],

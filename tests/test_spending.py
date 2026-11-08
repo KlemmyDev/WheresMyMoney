@@ -145,3 +145,37 @@ def test_an_older_household_gets_the_new_categories_once(tmp_path) -> None:
     assert {"Coffee", "Childcare", "Rent", "Side income", "Savings"} <= set(names)
     assert len(names) == len(set(n.lower() for n in names))
     assert names.index("Coffee") < names.index("Bills") < names.index("Rent") < names.index("Pay")
+
+
+def test_budgets_are_suggested_from_what_was_spent(client: TestClient, household: dict) -> None:
+    cats = {c["name"]: c for c in ok(client.get("/api/categories"))["categories"]}
+
+    def spend(day: str, dollars_: float, category: str) -> None:
+        tx = {
+            "amount": -round(dollars_ * 100),
+            "description": f"{category} shop",
+            "account_id": household["Spending"],
+            "date": day,
+            "category_id": cats[category]["id"],
+        }
+        ok(client.post("/api/transactions", json=tx))
+
+    # May to October (today is 12 November): groceries always over the $1,200 budget, eating out well under its
+    # $300, coffee with no budget at all.
+    for month in range(5, 11):
+        spend(f"2026-{month:02d}-01", 700, "Groceries")
+        spend(f"2026-{month:02d}-15", 700 + month, "Groceries")
+        spend(f"2026-{month:02d}-10", 50, "Eating out")
+        spend(f"2026-{month:02d}-12", 31.5, "Coffee")
+    spend("2026-11-02", 999, "Groceries")  # this month isn't counted
+
+    s = ok(client.get("/api/categories/suggestions"))
+    assert s["months"] == 6 and s["from"] == "2026-05-01"
+    rows = {r["name"]: r for r in s["categories"]}
+    g = rows["Groceries"]
+    assert g["months"][0] == dollars(1405) and g["average"] == round(sum(dollars(1400 + m) for m in range(5, 11)) / 6)
+    assert g["suggested"] == dollars(1410) and g["over"] == 6 and g["note"] == "over"
+    assert rows["Eating out"]["note"] == "under" and rows["Eating out"]["suggested"] == dollars(50)
+    assert rows["Coffee"]["budget"] is None and rows["Coffee"]["suggested"] == dollars(40)
+    assert rows["Coffee"]["note"] is None
+    assert next(iter(rows)) == "Groceries"  # biggest first

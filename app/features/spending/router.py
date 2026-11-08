@@ -27,6 +27,15 @@ async def categories(svc: ServicesDep):
     }
 
 
+@router.get("/categories/suggestions")
+async def budget_suggestions(svc: ServicesDep):
+    """A budget for each spending category from the last six whole months on the spending accounts, and the
+    budgets that don't match what's spent: {"months": 6, "from": "2026-05-01", "categories": [...]}."""
+    ov = await run(svc.accounts.overview)
+    spend = [a["id"] for a in ov["accounts"] if a["role"] == "spending"]
+    return await run(svc.spending.budget_suggestions, spend)
+
+
 @router.post("/categories")
 async def add_category(svc: ServicesDep, body: JsonBody):
     return await run(svc.spending.save_category, body)
