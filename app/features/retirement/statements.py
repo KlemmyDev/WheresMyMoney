@@ -24,7 +24,7 @@ DATE = r"(\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}|\d{1,2}\s+[A-Za-z]{3,9}\.?\s+\d{4})"
 # What a fee line is called on statements, and the name it's kept under (the order matters: first match wins).
 FEES = [
     (r"insurance|premium|death|tpd|income protection|salary continuance", "Insurance"),
-    (r"admin\w*\s+fee|member\s+fee|account\s+(keeping\s+)?fee|administration", "Admin fee"),
+    (r"admin\w*\s+fee|member\s+fee|account\s+(keeping\s+)?fee|administration|met\s+from\s+reserves", "Admin fee"),
     (r"investment\s+(fee|cost|management)|indirect\s+cost|management\s+fee", "Investment fee"),
     (r"transaction\s+cost|buy.?sell|activity\s+fee|advice\s+fee|switch\w*\s+fee", "Other fees"),
 ]
@@ -89,6 +89,86 @@ def _period(text: str) -> tuple[dt.date, dt.date] | None:
     return None
 
 
+# A row of a holdings table: the option, its unit prices and units, then its balance (and maybe the year's return):
+# "Australian Shares - Index 2.94280 2.81551 8,267.0776 $23,276.04".
+HOLDING = re.compile(
+    r"([A-Za-z][A-Za-z&()'’\s-]*?)\s+[\d.]+\s+[\d.]+\s+[\d,]+\.\d+\s+\$([\d,]+\.\d{2})(?:\s+-?[\d.]+%)?"
+)
+
+
+def _balance(lines: list[str], period: tuple[dt.date, dt.date] | None) -> tuple[int | None, dt.date | None]:
+    """The closing balance and its date. Statements put it as "Closing balance at 30 June 2026 $112,600.00", as
+    "Balance on 30 June 2026 $209,384.65" in a summary that starts with the opening one, or as a heading with the
+    amount on the lines below ("Your finishing balance" / "$57,964.13" / "as at 30 June 2022")."""
+
+    def amount(line: str) -> int | None:
+        found = re.findall(MONEY, line)
+        return _money(found[-1]) if found and _money(found[-1]) > 0 else None
+
+    def dated(line: str) -> dt.date | None:
+        d = re.search(DATE, line)
+        return _date(d.group(1)) if d else None
+
+    opening = re.compile(r"opening|starting|beginning", re.I)
+    # A balance line dated the period's last day.
+    if period:
+        for line in lines:
+            if (
+                re.search(r"balance", line, re.I)
+                and not opening.search(line)
+                and dated(line) == period[1]
+                and (v := amount(line)) is not None
+            ):
+                return v, period[1]
+    closing = re.compile(r"closing\s+balance|ending\s+balance|finishing\s+balance|balance\s+at\s+the\s+end", re.I)
+    for i, line in enumerate(lines):
+        if not closing.search(line):
+            continue
+        if (v := amount(line)) is not None:
+            return v, dated(line)
+        # The heading on its own: the amount (and its date) are on the next few lines.
+        for j, nxt in enumerate(lines[i + 1 : i + 4]):
+            if (v := amount(nxt)) is not None and re.fullmatch(r"-?\$?\s?[\d,]+\.\d{2}", nxt.strip()):
+                return v, next((d for d in map(dated, lines[i + 1 : i + j + 3]) if d), None)
+    for line in lines:
+        if re.search(r"account\s+balance|your\s+balance|balance\s+(?:at|as\s+at|on)", line, re.I):
+            if opening.search(line) or (period and dated(line) == period[0]):
+                continue
+            if (v := amount(line)) is not None:
+                return v, dated(line)
+    return None, None
+
+
+def _summary(lines: list[str]) -> tuple[list[str], int | None]:
+    """The statement's fees summary, if it has one ("Fees and costs summary" down to "Total fees and costs you paid"),
+    and that total. Funds list each fee once there, where elsewhere they're broken down by month too."""
+    start = next((i for i, line in enumerate(lines) if re.search(r"fees\s+and\s+costs\s+summary", line, re.I)), None)
+    if start is None:
+        return [], None
+    for j in range(start + 1, min(start + 40, len(lines))):
+        if re.search(r"total\s+fees\s+and\s+costs\s+(?:you\s+paid|paid)", lines[j], re.I):
+            found = re.findall(MONEY, " ".join(lines[j : j + 2]))
+            return lines[start + 1 : j], abs(_money(found[0])) if found else None
+    return [], None
+
+
+def _holdings(lines: list[str]) -> list[tuple[str, int]]:
+    """How the balance was invested, from the table of units held in each option. When there's more than one table
+    (a statement covering a change of options shows the balance before and after), the last is how it's invested now."""
+    tables: list[list[tuple[str, int]]] = []
+    run: list[tuple[str, int]] = []
+    for line in lines:
+        m = HOLDING.fullmatch(line)
+        if m and not re.match(r"total\b", m.group(1), re.I):
+            run.append((" ".join(m.group(1).split()), _money(m.group(2))))
+        elif run:
+            tables.append(run)
+            run = []
+    if run:
+        tables.append(run)
+    return tables[-1] if tables else []
+
+
 def parse(text: str) -> dict[str, Any]:
     """What a statement's text says: {"balance", "as_of", "period", "fees", "options", "notes"}. Anything not found
     is None (or empty), and `notes` says what was assumed."""
@@ -96,33 +176,21 @@ def parse(text: str) -> dict[str, Any]:
     notes: list[str] = []
     period = _period(text)
 
-    # The closing balance: a line naming it, with the last amount on the line.
-    balance = as_of = None
-    for pattern in (
-        r"closing\s+balance|ending\s+balance|balance\s+at\s+the\s+end",
-        r"account\s+balance|your\s+balance|balance\s+(?:at|as\s+at|on)",
-    ):
-        for line in lines:
-            if re.search(pattern, line, re.I):
-                amounts = re.findall(MONEY, line)
-                if amounts and _money(amounts[-1]) > 0:
-                    balance = _money(amounts[-1])
-                    d = re.search(DATE, line)
-                    as_of = _date(d.group(1)) if d else None
-                    break
-        if balance is not None:
-            break
+    balance, as_of = _balance(lines, period)
     if balance is not None and as_of is None and period:
         as_of = period[1]
 
     # Fees: each line naming a fee with an amount, totalled by kind. Percentages are kept as a share of the balance.
     dollars: dict[str, int] = {}
     shares: dict[str, float] = {}
-    for line in lines:
+    summary, summary_total = _summary(lines)
+    for line in summary or lines:
         low = line.lower()
         if "fee" not in low and "cost" not in low and "premium" not in low and "insurance" not in low:
             continue
         if re.search(r"total|contribution|tax", low) and "fee" not in low:
+            continue
+        if summary and re.match(r"total\b", low):
             continue
         name = next((n for pat, n in FEES if re.search(pat, low)), None)
         if name is None:
@@ -147,12 +215,25 @@ def parse(text: str) -> dict[str, Any]:
         notes.append("The statement's period wasn't found, so its fees are taken as a year's.")
     fees = [{"name": n, "kind": "fixed", "amount": round(v * scale)} for n, v in dollars.items()]
     fees += [{"name": f"{n} (on the balance)", "kind": "pct", "amount": round(v, 5)} for n, v in shares.items()]
-    if dollars:
+    if summary and summary_total is not None:
+        if abs(sum(dollars.values()) - summary_total) > 100:
+            notes.append("The fees found don't add up to the statement's total fees, so check them.")
+    elif dollars:
         notes.append("Fees in dollars include any charged as a share of the balance; check none are counted twice.")
 
-    # Investment options: a line with an option's name and a share of the balance.
+    # Investment options: the balance held in each (from the holdings table), or else a line with an option's name
+    # and a share of the balance. A line with several percentages is a table of returns, not a share.
     found: dict[str, float] = {}
-    for line in lines:
+    held = _holdings(lines)
+    total_held = sum(v for _, v in held)
+    if held and total_held > 0:
+        for name, v in held:
+            found[name] = found.get(name, 0) + round(v / total_held, 4)
+        if balance and abs(total_held - balance) > max(100, balance // 100):
+            notes.append("The balances in each investment option don't add up to the closing balance; check them.")
+    for line in [] if found else lines:
+        if len(re.findall(r"%", line)) > 1:
+            continue
         m = re.search(
             rf"((?:[A-Z][\w&-]*\s+)*?(?:{OPTION_WORDS})(?:\s+[A-Z][\w&-]*)*)\D*?(\d{{1,3}}(?:\.\d+)?)\s?%", line, re.I
         )
@@ -163,7 +244,7 @@ def parse(text: str) -> dict[str, Any]:
         if 0 < share <= 1 and name not in found and "fee" not in line.lower() and "return" not in line.lower():
             found[name] = share
     options = [{"name": n, "share": s, "return_pct": None, "fee_pct": 0} for n, s in found.items()]
-    if options and abs(sum(o["share"] for o in options) - 1) > 0.01:
+    if options and abs(sum(found.values()) - 1) > 0.01:
         notes.append("The investment options found don't add up to 100%, so they're left out.")
         options = []
 
