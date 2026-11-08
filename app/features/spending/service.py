@@ -345,7 +345,7 @@ class SpendingService:
         sql = (
             "SELECT t.id, t.account_id, t.date, t.amount, t.description, t.kind, t.category_id, c.name, c.kind, t.note,"
             " t.rule_id, t.bill_id, t.user_id, u.display_name, u.username, t.merged, t.merchant, t.category_by,"
-            " t.excluded FROM transactions t"
+            " t.excluded, t.one_off FROM transactions t"
             " LEFT JOIN categories c ON c.id = t.category_id LEFT JOIN users u ON u.id = t.user_id WHERE 1 = 1"
         )
         args: list[Any] = []
@@ -391,6 +391,7 @@ class SpendingService:
                 "remember_as": merchants.learn_pattern(r[16], None, None, r[4]) if r[16] else "",
                 "category_by": r[17],
                 "excluded": bool(r[18]),
+                "one_off": bool(r[19]),
                 "splits": parts.get(r[0], []),
             }
             for r in rows
@@ -429,6 +430,8 @@ class SpendingService:
                 conn.execute("UPDATE transactions SET bill_id = ? WHERE id = ?", (bill, tx_id))
             if "excluded" in body:
                 conn.execute("UPDATE transactions SET excluded = ? WHERE id = ?", (int(bool(body["excluded"])), tx_id))
+            if "one_off" in body:
+                conn.execute("UPDATE transactions SET one_off = ? WHERE id = ?", (int(bool(body["one_off"])), tx_id))
             if "splits" in body:
                 _save_splits(conn, tx_id, body["splits"])
             if "description" in body and row[1] in ("manual", "cash"):
@@ -646,12 +649,12 @@ class SpendingService:
         names = {c["id"]: c["name"] for c in cats}
         # The month, plus the year before it that the forecast learns from (and the four weeks it's checked on).
         since = start - dt.timedelta(days=forecast.LOOKBACK + forecast.BACKTEST)
-        rows: list[tuple[int, str, int, int | None, int | None, int | None, str | None, int, str]] = []
+        rows: list[tuple[int, str, int, int | None, int | None, int | None, str | None, int, str, int]] = []
         parts: dict[int, list[dict[str, Any]]] = {}
         if accounts:
             with self.db.reading() as conn:
                 rows = conn.execute(
-                    "SELECT id, date, amount, category_id, rule_id, user_id, category_by, excluded, merchant"
+                    "SELECT id, date, amount, category_id, rule_id, user_id, category_by, excluded, merchant, one_off"
                     f" FROM transactions WHERE account_id IN ({','.join('?' * len(accounts))}) AND date BETWEEN ? AND ?"
                     " AND kind IN ('statement', 'manual', 'cash') ORDER BY date, id",
                     [*accounts, since.isoformat(), end.isoformat()],
@@ -664,7 +667,7 @@ class SpendingService:
         # Spent on someone's behalf (less what they've paid back): it's coming back, so it counts as still there.
         owed_back = 0
         history: list[forecast.Spend] = []
-        for tx_id, day, amount, category, rule_id, user_id, _by, excluded, merchant_text in rows:
+        for tx_id, day, amount, category, rule_id, user_id, _by, excluded, merchant_text, one_off in rows:
             date = dates.parse(day)
             this_month = date >= start
             if excluded:
@@ -690,6 +693,7 @@ class SpendingService:
                         out,
                         names.get(cat, "Not sorted yet") if cat is not None else "Not sorted yet",
                         merchant_text,
+                        bool(one_off),
                     )
                 )
                 if not this_month:

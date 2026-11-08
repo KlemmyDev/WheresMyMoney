@@ -84,7 +84,7 @@ export function MonthCard({ m }: { m: Month }) {
       <Details label="How it's worked out">
         <p className="m-0 text-[14px] text-ink-2">
           {learned
-            ? "Expected is learned from up to a year of your spending before this month began: recent weeks count most, each weekday has its own pattern (more on a Saturday, less on a Tuesday), and payments that repeat, like the gym or a subscription, are expected on their days. It learns more each month."
+            ? "Expected is learned from up to a year of your spending before this month began: recent weeks count most, each weekday has its own pattern (more on a Saturday, less on a Tuesday), and payments that repeat, like the gym or a subscription, are expected on their days. Spending you mark as a one-off is left out. It learns more each month."
             : `There isn't enough spending history to learn from yet (${e.history_days} of ${e.needs_days} days), so the line is the plan: the month's ${money(s.allowance)} spread evenly. An expected line takes over once there's enough.`}
           {e.accuracy != null &&
             ` Over the last four weeks it was ${Math.round(e.accuracy * 100)}% right, and the likely range is as wide as it has been wrong.`}

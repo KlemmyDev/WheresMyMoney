@@ -79,6 +79,8 @@ export type Transaction = {
   /** How its category was chosen: you, rule, suggest, bill, auto, or null. */
   category_by: string | null;
   excluded: boolean;
+  /** Won't happen again (a birthday party): still counted, but the spending forecast doesn't learn from it. */
+  one_off: boolean;
   splits: { category_id: number; category: string | null; amount: number }[];
 };
 
