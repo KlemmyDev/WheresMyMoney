@@ -7,8 +7,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState, type KeyboardEvent, type PointerEvent } from "react";
-import { Count } from "~/features/common/charts";
-import { Bar, BigNumber, Card, CardHead, ChoiceChip, Eyebrow, Stat } from "~/features/common/ds";
+import { Bar, Card, CardHead, Stat } from "~/features/common/ds";
 import { dayDate, money, parseDate, shortDate } from "~/features/common/format";
 import { Chip, I, type Glyph, type Tone } from "~/features/common/icons";
 import { transactionsQuery } from "~/features/common/queries";
@@ -238,66 +237,6 @@ export function MonthCard({ m, sel, setSel }: { m: Month; sel: number | null; se
           role="spending"
         />
         <Stat label="Left after" value={money(m.left[day], { cents: true })} role="accent" />
-      </div>
-    </Card>
-  );
-}
-
-/** Safe to spend, with "what if I spend…". */
-export function SafeCard({ s }: { s: SpendingMonth }) {
-  const [amt, setAmt] = useState<number | null>(null);
-  const likely = Math.max(0, s.left - s.projected);
-  const after = amt != null && s.remaining ? (s.left - amt) / s.remaining : null;
-  return (
-    <Card lit tint="accent" aria-labelledby="safe-h" className="md:col-span-4">
-      <div className="flex items-center justify-between gap-2">
-        <Eyebrow id="safe-h">Safe to spend</Eyebrow>
-        <Pill tone={s.vs_pace <= 0 ? "good" : "warn"}>
-          {money(Math.abs(s.vs_pace))} {s.vs_pace <= 0 ? "under" : "over"} pace
-        </Pill>
-      </div>
-      <div className="flex items-baseline gap-2">
-        <BigNumber>
-          <Count k="dash:safe" value={s.safe_per_day} format={(v) => money(v, { cents: true })} />
-        </BigNumber>
-        <span className="text-[15px] text-ink-3">a day</span>
-      </div>
-      <div className="-mt-1 text-[13px] text-ink-3">
-        {s.remaining ? `for ${s.remaining} days, from ${money(s.left)} left` : "The last day: whatever's left is yours"}
-      </div>
-      <Bar
-        label={`Spent ${money(s.spent)}, likely ${money(likely)} more, of ${money(s.allowance)}`}
-        max={Math.max(s.allowance, s.spent + likely, 1)}
-        segments={[
-          { value: s.spent, role: "spending" },
-          { value: likely, role: "spending", likely: true },
-        ]}
-      />
-      <div className="mt-1">
-        <div className="text-[13px] font-semibold">What if I spend…</div>
-        <div className="no-scrollbar -mx-1 mt-2 flex gap-2 overflow-x-auto px-1">
-          {[50, 100, 250, 500].map((v) => (
-            <ChoiceChip key={v} pressed={amt === v * 100} onClick={() => setAmt(amt === v * 100 ? null : v * 100)}>
-              ${v}
-            </ChoiceChip>
-          ))}
-        </div>
-        {after != null && amt != null && (
-          <div className="mt-2.5 grid grid-cols-2 gap-2">
-            <Stat
-              label="Then a day"
-              value={money(after, { cents: true })}
-              note={`−${money(s.safe_per_day - after, { cents: true })}`}
-              noteColor="var(--color-warn)"
-            />
-            <Stat
-              label="Likely last day"
-              value={money(s.projected - amt)}
-              note={s.projected - amt >= 0 ? "still spare" : "short"}
-              role={s.projected - amt >= 0 ? "savings" : "bills"}
-            />
-          </div>
-        )}
       </div>
     </Card>
   );

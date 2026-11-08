@@ -23,7 +23,7 @@ import { Chip, I, type Glyph, type Tone } from "~/features/common/icons";
 import { useActions } from "~/features/common/layout";
 import { useStoredFlag } from "~/features/common/theme";
 import type { Dashboard, Role } from "~/features/common/types";
-import { Button, Pill, Segmented, cn } from "~/features/common/ui";
+import { Button, Pill, Segmented } from "~/features/common/ui";
 import { TopUpSheet, goalLook } from "~/features/goals/GoalFlows";
 
 const ROLE_DS: Record<Role, DsRole> = {
@@ -327,56 +327,6 @@ export function QuickActions() {
         Import
       </Link>
     </nav>
-  );
-}
-
-export function AccountsCard({ d }: { d: Dashboard }) {
-  const [hide] = useHidden();
-  return (
-    <Card aria-labelledby="ov-acc" className="md:col-span-6">
-      <CardHead
-        id="ov-acc"
-        title="Accounts"
-        right={
-          <Link to="/accounts" className="text-[14px] font-semibold text-teal no-underline">
-            All accounts
-          </Link>
-        }
-      />
-      <div className="-mx-1 flex flex-col">
-        {d.accounts.map((a) => {
-          const sp = line(a.spark, 80, 30, 3);
-          return (
-            <Link
-              key={a.id}
-              to="/accounts"
-              className="chip-host press flex min-h-16 items-center gap-3 rounded-2xl px-1.5 text-ink no-underline hover:bg-tile-2"
-            >
-              <Chip g={ROLE_GLYPH[a.role]} tone={ROLE_TONE[a.role]} size="lg" />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate">{a.name}</span>
-                <span className="block truncate text-[13px] text-ink-3">
-                  {a.offsets_loan ? "Offsets the loan" : a.role === "track" ? "Tracked" : "Doesn't offset"}
-                </span>
-              </span>
-              {sp && (
-                <svg viewBox="0 0 80 30" width="80" height="30" aria-hidden className="hidden flex-none sm:block">
-                  <path d={sp} fill="none" stroke={ROLE[ROLE_DS[a.role]]} strokeWidth={1.8} />
-                </svg>
-              )}
-              <span className="flex flex-col items-end">
-                <span className="num">{hide ? "••••••" : money(a.balance, { cents: true })}</span>
-                {a.change_30d != null && a.change_30d !== 0 && (
-                  <span className={cn("num text-[12px]", a.change_30d > 0 ? "text-good" : "text-ink-3")}>
-                    {money(a.change_30d, { sign: true })} 30d
-                  </span>
-                )}
-              </span>
-            </Link>
-          );
-        })}
-      </div>
-    </Card>
   );
 }
 
