@@ -265,7 +265,7 @@ function CheckinBody({ form, onClose, onImport }: { form: Form; onClose: () => v
             role="savings"
           />
           <Stat
-            label="Bills buffer"
+            label="Bills set aside"
             value={e.bills_months != null ? `${e.bills_months.toFixed(1)} months` : "—"}
             role="bills"
           />
@@ -274,12 +274,12 @@ function CheckinBody({ form, onClose, onImport }: { form: Form; onClose: () => v
       )}
       <label className="flex items-center gap-3 rounded-2xl border border-line p-3.5">
         <span className="min-w-0 flex-1">
-          <span className="block font-semibold">These are exact</span>
+          <span className="block font-semibold">These are to the cent</span>
           <span className="block text-[13px] text-ink-3">
-            Adds a balance adjustment where the transactions don't add up. Leave off for a rough check-in.
+            Corrects any account whose transactions don't add up to it. Leave off if they're just close.
           </span>
         </span>
-        <Switch checked={exact} onChange={setExact} label="These are exact" />
+        <Switch checked={exact} onChange={setExact} label="These are to the cent" />
       </label>
       {save.isError && <ErrorText>{errorMessage(save.error)}</ErrorText>}
       <div className="flex flex-wrap justify-end gap-2">
@@ -347,10 +347,10 @@ function AccountStep({
     pill = loanLike
       ? { text: loanDue ? `Optional · repayment due ${dayDate(loanDue)}` : "Optional", tone: "mute" }
       : a.expected != null
-        ? { text: `App expects ${money(a.expected, { cents: true })}`, tone: "mute" }
+        ? { text: `The app expects ${money(a.expected, { cents: true })}`, tone: "mute" }
         : { text: `Last checked ${money(a.last, { cents: true })}`, tone: "mute" };
   else if (diff == null) pill = { text: loanLike ? "Updates the loan" : "Noted", tone: "mute" };
-  else if (Math.abs(diff) < 1) pill = { text: "Same as the app", tone: "good" };
+  else if (Math.abs(diff) < 1) pill = { text: "Matches what the app expects", tone: "good" };
   else pill = { text: `${diff > 0 ? "+" : "−"}${money(Math.abs(diff), { cents: true })} vs the app`, tone: "warn" };
   if (has && check && (check.status === "short" || check.status === "over") && check.explanation)
     pill = { ...pill, tone: "warn" };
@@ -383,7 +383,7 @@ function AccountStep({
       <div className="grid grid-cols-2 gap-2">
         {first ? (
           onImport ? (
-            <Button onClick={onImport}>Import a CSV instead</Button>
+            <Button onClick={onImport}>I have a statement file</Button>
           ) : (
             <span />
           )
@@ -402,7 +402,7 @@ function AccountStep({
               onNext();
             }}
           >
-            {a.expected != null ? "Same as app" : "Same as last time"}
+            {a.expected != null ? "That's right" : "Same as last time"}
           </Button>
         )}
       </div>

@@ -90,7 +90,7 @@ export const JOBS: Role[] = ["offset", "bills", "spending", "savings", "track"];
 export const JOB: Record<Role, { what: string; get: string }> = {
   offset: { what: "Grows until it covers the loan", get: "Target: 100% of the loan" },
   bills: { what: "Holds a few months of bills", get: "Months-of-bills target, alert if it dips" },
-  spending: { what: "Everyday money, topped up monthly", get: "Monthly allowance and pace" },
+  spending: { what: "Everyday money, topped up monthly", get: "Spending money each month" },
   savings: { what: "Split into things you're saving for", get: "Goals with progress bars" },
   track: { what: "Just a balance, no target", get: "Balance and trend" },
 };

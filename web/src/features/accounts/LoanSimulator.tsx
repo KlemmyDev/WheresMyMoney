@@ -84,9 +84,9 @@ export function LoanSimulator({
   const offPath = path(sim.off, sim.months, sim.end);
   return (
     <Card lit aria-labelledby="sim">
-      <CardHead id="sim" title="When could it be gone?" right={<Pill tone="mute">Estimate</Pill>} />
+      <CardHead id="sim" title="When could the loan be covered?" right={<Pill tone="mute">Estimate</Pill>} />
       <p className="m-0 -mt-1 text-[13px] text-ink-3">
-        Move the levers. The loan counts as gone when the offsets match it.
+        Try some changes. The loan is covered once our accounts match it, and then no interest is charged.
       </p>
       <div className="grid gap-6 md:grid-cols-[320px_1fr]">
         <div className="flex flex-col gap-5">
@@ -110,15 +110,17 @@ export function LoanSimulator({
             />
           </div>
           <div>
-            <div className="font-semibold">Offsets grow by, each month</div>
+            <div className="font-semibold">Our accounts grow by, each month</div>
             <div className="mt-2 flex flex-wrap gap-2">
               {choices.map((v) => (
                 <ChoiceChip key={v} pressed={grow === v} onClick={() => setGrow(v)}>
-                  {v === 0 ? "Nothing" : v === pace ? `+${money(v)} · your pace` : `+${money(v)}`}
+                  {v === 0 ? "Nothing" : v === pace ? `+${money(v)} · lately` : `+${money(v)}`}
                 </ChoiceChip>
               ))}
             </div>
-            <div className="mt-1.5 text-[13px] text-ink-3">Your recent pace: about {money(recentGrowth)}.</div>
+            <div className="mt-1.5 text-[13px] text-ink-3">
+              Lately they've grown about {money(recentGrowth)} a month.
+            </div>
           </div>
           <div>
             <div className="font-semibold">If the rate moves</div>
@@ -143,15 +145,15 @@ export function LoanSimulator({
         </div>
         <div className="flex min-w-0 flex-col gap-4">
           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-            <Stat label="Gone by" value={monthYear(addMonths(sim.months))} note={`in ${span(sim.months)}`} />
+            <Stat label="Covered by" value={monthYear(addMonths(sim.months))} note={`in ${span(sim.months)}`} />
             <Stat
-              label="Sooner than no offset"
+              label="Sooner than without our accounts"
               value={span(Math.max(0, sooner))}
               note={`without: ${monthYear(addMonths(none.months))}`}
               role="savings"
             />
             <Stat
-              label="Interest saved"
+              label="Interest saved over the loan"
               value={money(Math.max(0, none.interest - sim.interest))}
               note="over the life of the loan"
               role="offset"

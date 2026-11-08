@@ -16,7 +16,7 @@ import { useState, type CSSProperties } from "react";
 import { AccountTransactions, ActivityChart, type Bucket, type Range } from "~/features/accounts/Activity";
 import { apiSend, errorMessage } from "~/features/common/api";
 import { Count } from "~/features/common/charts";
-import { Card, Details } from "~/features/common/ds";
+import { Card, Details, Term } from "~/features/common/ds";
 import {
   amount,
   capsDate,
@@ -84,7 +84,7 @@ export function AccountsPage({ selected }: { selected?: number }) {
   return (
     <>
       <PageHead
-        over={`${data.accounts.length} ACCOUNTS · ${data.loan ? "1 LOAN" : "NO LOAN"}${last ? ` · BALANCES CHECKED IN ${dayDate(last).toUpperCase()}` : ""}`}
+        over={`Money · ${data.accounts.length} accounts${last ? ` · balances checked ${dayDate(last)}` : ""}`}
         title="Accounts"
         actions={
           <>
@@ -164,7 +164,8 @@ function Summary({ data }: { data: AccountsOverview }) {
       <p className="m-0 text-[17px] leading-relaxed text-ink">
         {loan ? (
           <>
-            Our accounts hold <b>{money(data.offsetting)}</b>. Because they sit against the home loan, they save about{" "}
+            Our accounts hold <b>{money(data.offsetting)}</b>. Because they{" "}
+            <Term k="offset">sit against the home loan</Term>, they save about{" "}
             <b>{money(perDay, { cents: true })} a day</b> in interest, about {money(perDay * 365)} a year.
           </>
         ) : (
@@ -465,7 +466,7 @@ function Detail({ account, goals }: { account: Account; goals: Goal[] }) {
             <Count k={`acct:${a.id}`} value={a.balance} format={(v) => money(v, { cents: true })} />
           </div>
           {a.transactions > 0 && (
-            <div className="mono text-xs text-ink-3">LEDGER {money(a.ledger, { cents: true })}</div>
+            <div className="mono text-xs text-ink-3">FROM TRANSACTIONS {money(a.ledger, { cents: true })}</div>
           )}
           {t?.kind === "months" && (
             <Pill tone={(t.held ?? 0) >= t.months ? "good" : "warn"}>
@@ -483,13 +484,13 @@ function Detail({ account, goals }: { account: Account; goals: Goal[] }) {
             {a.known?.source === "statement" ? "statement" : "check-in"} said {a.known?.exact ? "" : "about "}
             <b className="mono">{money(a.balance, { cents: true })}</b>. History before your first import isn't here.
           </span>
-          <Button onClick={() => (setValue(editable(a.balance)), setUpd(true))}>Set exact balance</Button>
+          <Button onClick={() => (setValue(editable(a.balance)), setUpd(true))}>Set the balance to the cent</Button>
         </div>
       )}
       {!gapShown && !upd && (
         <div>
           <Button small onClick={() => (setValue(editable(a.balance)), setUpd(true))}>
-            Set exact balance
+            Set the balance to the cent
           </Button>
         </div>
       )}
@@ -562,7 +563,7 @@ function Detail({ account, goals }: { account: Account; goals: Goal[] }) {
         {a.role === "spending" && (
           <Field label="Topped up to">
             <Input
-              aria-label="Monthly allowance"
+              aria-label="Spending money each month"
               inputMode="decimal"
               className="w-32 text-right"
               defaultValue={editable(a.allowance)}

@@ -19,6 +19,7 @@ import {
   Sheet,
   Stat,
   Details,
+  Term,
 } from "~/features/common/ds";
 import { money, monthYear, parseMoney } from "~/features/common/format";
 import { Chip, I, type Glyph, type Tone } from "~/features/common/icons";
@@ -60,8 +61,8 @@ export function RetirementPage() {
     <>
       <PageHead over="Future" title="Retirement" />
       <p className="m-0 -mt-2 max-w-[640px] text-[14px] text-ink-3">
-        When you could stop work, from your super, your ETFs and the loan plan. All in today's dollars. An estimate to
-        plan with, not advice.
+        When you could stop work, from your <Term k="super">super</Term>, your ETFs and the loan plan. All in today's
+        dollars. An estimate to plan with, not advice.
       </p>
       {r.people.length === 0 ? (
         <EmptyState
@@ -345,7 +346,7 @@ function Plan({
         <Stat
           label="Loan gone"
           value={loanEnds ?? "—"}
-          note={loanEnds ? `at today's pace, ${lead.person} ${lead.age + (loanEnds - data.year)}` : "no loan"}
+          note={loanEnds ? `at the rate it's going, ${lead.person} ${lead.age + (loanEnds - data.year)}` : "no loan"}
           role="offset"
         />
         <Stat
@@ -444,7 +445,7 @@ function Plan({
             ],
             ["Inflation", "Taken out, so it's all in today's dollars", pct(inputs.inflation)],
             ["Tax on money going in", "Employer and extra contributions", pct(inputs.contribTax)],
-            ["Into ETFs while working", "Your pace over the last year", `${k(etfPerYear)}/yr`],
+            ["Into ETFs while working", "What went in over the last year", `${k(etfPerYear)}/yr`],
             ["Loan repayments until gone", "From Loan and offset", loanEnds ? `${k(loanRepayment)}/yr` : "No loan"],
             ["Plan to", "How long the money should last", `Age ${s.plan_to}`],
           ].map(([n, sb, v]) => (

@@ -33,7 +33,7 @@ const STATUS: Record<string, [string, "good" | "warn" | "mute" | "bad"]> = {
   ok: ["Added up", "good"],
   missing: ["Didn't show up", "warn"],
   differed: ["Amount differed", "warn"],
-  nothing: ["Nothing to sweep", "mute"],
+  nothing: ["Nothing over", "mute"],
   skipped: ["Skipped", "mute"],
 };
 
@@ -346,8 +346,8 @@ function Chip({ id, names, colours }: { id: number; names: Record<number, string
 const KINDS = [
   { value: "pay", label: "Pay comes in" },
   { value: "transfer", label: "A transfer" },
-  { value: "top_up", label: "Top up to an amount" },
-  { value: "sweep", label: "Sweep what's over" },
+  { value: "top_up", label: "Top back up to an amount" },
+  { value: "sweep", label: "Move back what's over" },
 ] as const;
 
 export function RuleDialog({
@@ -444,7 +444,7 @@ function RuleForm({ rule, accounts, onClose }: { rule: Rule | "new"; accounts: A
         </div>
         <div>
           <Label htmlFor="r-amt">
-            {f.kind === "top_up" ? "Top up to" : f.kind === "sweep" ? "Keep this many months of bills" : "Amount"}
+            {f.kind === "top_up" ? "Top back up to" : f.kind === "sweep" ? "Keep this many months of bills" : "Amount"}
           </Label>
           <Input
             id="r-amt"

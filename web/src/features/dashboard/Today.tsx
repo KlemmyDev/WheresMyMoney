@@ -5,7 +5,7 @@
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { Count } from "~/features/common/charts";
-import { BigNumber, Card, ChoiceChip, Eyebrow } from "~/features/common/ds";
+import { BigNumber, Card, ChoiceChip, Eyebrow, Term } from "~/features/common/ds";
 import { dayDate, money, parseDate } from "~/features/common/format";
 import { Chip, I, type Glyph, type Tone } from "~/features/common/icons";
 import { useActions } from "~/features/common/layout";
@@ -29,7 +29,7 @@ function Line({
   g: Glyph;
   tone: Tone;
   title: string;
-  sub?: string;
+  sub?: React.ReactNode;
   action?: React.ReactNode;
 }) {
   return (
@@ -87,7 +87,11 @@ export function TodayCard({ d, m }: { d: Dashboard; m: Month | null }) {
         g={I.shield}
         tone="offset"
         title="Time for a check-in"
-        sub="Type in what uBank shows for each account. About 30 seconds."
+        sub={
+          <>
+            Type in what uBank shows for each account. About 30 seconds. <Term k="checkin">What's this?</Term>
+          </>
+        }
         action={
           <Button small primary onClick={actions.checkin}>
             Check in
@@ -136,9 +140,15 @@ export function TodayCard({ d, m }: { d: Dashboard; m: Month | null }) {
                   ? `${money(s.left)} left for the next ${s.remaining} days, until it's topped up on the ${restart ? ordinal(restart.getDate()) : "next month"}. `
                   : "It's the last day of the month: whatever's left is yours. "}
               {s.left >= 0 &&
-                (s.vs_pace <= 0
-                  ? `You're ${money(-s.vs_pace)} under plan.`
-                  : `You're ${money(s.vs_pace)} over plan, so the daily amount is lower.`)}
+                (s.vs_pace <= 0 ? (
+                  <>
+                    You're {money(-s.vs_pace)} <Term k="plan">under plan</Term>.
+                  </>
+                ) : (
+                  <>
+                    You're {money(s.vs_pace)} <Term k="plan">over plan</Term>, so the daily amount is lower.
+                  </>
+                ))}
             </p>
             {s.remaining > 0 && s.left > 0 && (
               <div className="flex flex-wrap items-center gap-2">

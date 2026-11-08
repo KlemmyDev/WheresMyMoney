@@ -324,7 +324,7 @@ function Owned({ n, home, onEdit }: { n: NetWorth; home: boolean; onEdit: (a: As
           sub={
             a.known
               ? `${a.known.source === "checkin" ? "Checked in" : "Known"} ${longDate(a.known.date)}`
-              : "From the ledger"
+              : "From imported statements"
           }
           value={a.balance}
           badge={{ text: a.known?.source === "checkin" ? "Check-in" : "Statement", tone: "teal" }}
@@ -372,7 +372,7 @@ function Owed({ n, home }: { n: NetWorth; home: boolean }) {
           </div>
           <div>
             <div className="flex items-baseline justify-between text-[14px]">
-              <span>Offset against it</span>
+              <span>Our accounts against it</span>
               <span className="num">{lo.balance ? Math.round((lo.offsetting / lo.balance) * 1000) / 10 : 0}%</span>
             </div>
             <div className="mt-2">

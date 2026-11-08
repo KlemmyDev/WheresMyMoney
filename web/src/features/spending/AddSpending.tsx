@@ -194,7 +194,7 @@ function AddForm({ onClose }: { onClose: () => void }) {
           {kind === "spend" && cash
             ? "Paid in cash, so the account's balance stays as it is."
             : "The next statement import looks for a match and merges it, so it won't count twice."}
-          {safeThen != null && ` Safe to spend is now ${money(Math.max(safeThen, 0))} a day.`}
+          {safeThen != null && ` You can now spend ${money(Math.max(safeThen, 0))} a day.`}
         </p>
         {undo.isError && <ErrorText>{errorMessage(undo.error)}</ErrorText>}
         <div className="mt-2 flex flex-wrap justify-center gap-2">
@@ -367,7 +367,7 @@ function AddForm({ onClose }: { onClose: () => void }) {
         </div>
         {month && safeAfter != null ? (
           <div className="rounded-2xl bg-sunken p-3.5">
-            <div className="eyebrow">Safe to spend after</div>
+            <div className="eyebrow">Then you can spend</div>
             <div className="num text-[20px]" style={{ color: safeAfter < 0 ? "var(--color-bad)" : undefined }}>
               {money(Math.max(safeAfter, 0))}
             </div>

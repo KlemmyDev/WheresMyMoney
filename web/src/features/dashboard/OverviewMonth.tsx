@@ -88,16 +88,16 @@ export function MonthCard({ m, sel, setSel }: { m: Month; sel: number | null; se
           <Stat label="Spent so far" value={money(s.spent)} note={`of ${money(s.allowance)}`} role="spending" />
           <Stat label="Left" value={money(s.left)} note={`${s.remaining} days to go`} role="accent" />
           <Stat
-            label="Likely on the last day"
+            label="Likely left over"
             value={money(likelyLeft)}
-            note={likelyLeft >= 0 ? "spare, back to Offset" : "short"}
+            note={likelyLeft >= 0 ? "goes back to the offset" : "short"}
             role={likelyLeft >= 0 ? "savings" : "bills"}
             noteColor={likelyLeft >= 0 ? undefined : "var(--color-warn)"}
           />
           <Stat
-            label="Vs even pace"
+            label="Compared with plan"
             value={money(Math.abs(s.vs_pace))}
-            note={s.vs_pace <= 0 ? "under, adds to tomorrow" : "over, takes from tomorrow"}
+            note={s.vs_pace <= 0 ? "under plan so far" : "over plan so far"}
             role={s.vs_pace <= 0 ? "savings" : "bills"}
           />
         </div>
@@ -259,7 +259,7 @@ export function MonthCard({ m, sel, setSel }: { m: Month; sel: number | null; se
             </span>
           </div>
           <Stat
-            label={done ? "Spent" : isToday ? "Spent today" : "Safe to spend"}
+            label={done ? "Spent" : isToday ? "Spent today" : "You could spend"}
             value={money(done || isToday ? s.daily[day] : s.safe_per_day, { cents: true })}
             role="spending"
           />

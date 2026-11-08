@@ -637,3 +637,43 @@ export function Details({
     </div>
   );
 }
+
+/** What a term means, in a sentence or two, for someone new to it. */
+export const GLOSSARY = {
+  offset: [
+    "The offset",
+    "Our accounts sit against the home loan. The bank only charges interest on the part of the loan they don't cover, so every dollar in them saves interest, and the money is still ours to use whenever we need it.",
+  ],
+  checkin: [
+    "Check-ins",
+    "Every so often, someone types in what the banking app shows for each account. The app compares that with what it expected, so it knows what you can spend and can spot a transfer that didn't happen.",
+  ],
+  plan: [
+    "The plan",
+    "The month's spending money spread evenly over its days. Under plan means less has been spent so far than that; over plan means more, so there's a little less to spend each day for the rest of the month.",
+  ],
+  super: [
+    "Super",
+    "Money your employer pays into a retirement fund for you, invested until you can use it, from age 60 once you've stopped work.",
+  ],
+} as const;
+
+/** A term with a dotted underline: tap it to see what it means. */
+export function Term({ k, children }: { k: keyof typeof GLOSSARY; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const [title, text] = GLOSSARY[k];
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="cursor-help border-0 bg-transparent p-0 text-inherit underline decoration-ink-3 decoration-dotted underline-offset-4 [font:inherit]"
+      >
+        {children}
+      </button>
+      <Sheet open={open} onClose={() => setOpen(false)} title={title}>
+        <p className="m-0 pb-2 text-[16px] leading-relaxed text-ink-2">{text}</p>
+      </Sheet>
+    </>
+  );
+}
