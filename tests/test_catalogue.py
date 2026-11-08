@@ -51,3 +51,21 @@ def test_assigning_a_known_business_sorts_what_isnt_sorted(client: TestClient, h
     ok(client.post("/api/merchants/assign", json={"text": eida["merchant"], "key": "SUPERLOOP"}))
     again = next(t for t in ok(client.get("/api/transactions")) if t["id"] == eida["id"])
     assert again["merchant_name"] == "Superloop" and again["category"] == "Phone & internet"
+
+
+def test_a_transaction_with_no_name_can_be_given_a_merchant(client: TestClient, household: dict) -> None:
+    acc = household["Spending"]
+    tx = ok(
+        client.post(
+            "/api/transactions",
+            json={"account_id": acc, "amount": -8900, "description": "EFTPOS 123456", "date": "2026-10-07"},
+        )
+    )
+    assert tx["merchant"] == "" and tx["merchant_key"] == ""
+    # "Every payment like it" has nothing to match on, so it's just this one.
+    ok(client.post("/api/merchants/assign", json={"transaction_id": tx["id"], "scope": "amount", "key": "SUPERLOOP"}))
+    again = next(t for t in ok(client.get("/api/transactions")) if t["id"] == tx["id"])
+    assert again["merchant_key"] == "SUPERLOOP" and again["merchant_name"] == "Superloop"
+    assert again["category"] == "Phone & internet"
+    loop = ok(client.get("/api/merchants/directory/SUPERLOOP"))
+    assert [t["id"] for t in loop["transactions"]] == [tx["id"]] and loop["names"] == []

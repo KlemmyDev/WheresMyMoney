@@ -24,8 +24,9 @@ export function MerchantPicker({
   current?: string;
   /** Merchant keys to merge into the one chosen, instead of placing a statement name. */
   merge?: string[];
-  /** A payment that doesn't say who it was to (BPAY): place just it, or every one of its amount. */
-  payment?: { id: number; amount: number };
+  /** A payment that doesn't say who it was to (BPAY): place just it, or every one of its amount. `single`: only
+   * ever this one (a line with no name to go on, or a transfer). */
+  payment?: { id: number; amount: number; single?: boolean };
   /** Called with the merchant chosen, or nothing when cancelled. */
   onDone: (key?: string) => void;
 }) {
@@ -33,7 +34,8 @@ export function MerchantPicker({
   const all = useQuery(merchantDirectoryQuery);
   const known = useQuery(businessesQuery);
   const [find, setFind] = useState("");
-  const [scope, setScope] = useState<"amount" | "this">("amount");
+  const [chosen, setScope] = useState<"amount" | "this">("amount");
+  const scope = payment?.single ? "this" : chosen;
   const assign = useMutation({
     mutationFn: (body: { key?: string; name?: string }) =>
       merge
@@ -64,7 +66,7 @@ export function MerchantPicker({
   const knownExact = businesses.some((b) => sameName(find, b));
   return (
     <div className="flex flex-col gap-2 rounded-2xl border border-line bg-tile-2 p-2.5">
-      {payment && (
+      {payment && !payment.single && (
         <Segmented
           label="Which payments"
           value={scope}
@@ -130,11 +132,13 @@ export function MerchantPicker({
         <span className="min-w-0 text-[12px] text-ink-3">
           {merge
             ? `All their transactions and statement names move into the one you pick.`
-            : payment
-              ? scope === "amount"
-                ? `This one, and every BPAY of that amount from now on.`
-                : `Only this payment. Other BPAY payments stay as they are.`
-              : `Every “${text}” transaction moves with it.`}
+            : payment?.single
+              ? "Only this transaction."
+              : payment
+                ? scope === "amount"
+                  ? `This one, and every BPAY of that amount from now on.`
+                  : `Only this payment. Other BPAY payments stay as they are.`
+                : `Every “${text}” transaction moves with it.`}
         </span>
         <Button small onClick={() => onDone()}>
           Cancel

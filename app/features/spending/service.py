@@ -396,11 +396,19 @@ class SpendingService:
                 "remember_as": merchants.learn_pattern(r[16], None, None, r[4]) if r[16] else "",
                 "category_by": r[17],
                 # The merchant it belongs to (its own, or the one the household mapped its statement name to).
-                "merchant_key": (key := book.key(r[16], r[4], r[3], r[0], r[11])) if r[16] else "",
+                # Its statement name's, or one chosen for this transaction alone (a line with no name to go on).
+                "merchant_key": (
+                    key := (
+                        book.key(r[16] or "", r[4], r[3], r[0], r[11])
+                        # Money moving between our own accounts isn't a merchant, unless one was picked for it.
+                        if r[8] != "transfer" or r[0] in book.overrides
+                        else ""
+                    )
+                ),
                 # A statement line that doesn't say who was paid (BPAY): its merchant is set payment by payment.
                 "merchant_unnamed": directory.is_unnamed(r[16] or ""),
-                "merchant_name": book.name(key) if r[16] else "",
-                "merchant_note": noted.get(key, "") if r[16] else "",
+                "merchant_name": book.name(key) if key else "",
+                "merchant_note": noted.get(key, "") if key else "",
                 "excluded": bool(r[18]),
                 "one_off": bool(r[19]),
                 "splits": parts.get(r[0], []),

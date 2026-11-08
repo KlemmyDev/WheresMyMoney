@@ -140,7 +140,8 @@ _SPENDING = (
     " LEFT JOIN categories c ON c.id = t.category_id WHERE t.kind != 'adjustment'"
     # uBank's rules move money between our own accounts, except pay: that's money in from an employer.
     " AND (t.rule_id IS NULL OR c.kind = 'income')"
-    " AND COALESCE(c.kind, 'spending') IN ('spending', 'bills', 'income') AND t.merchant != ''"
+    " AND COALESCE(c.kind, 'spending') IN ('spending', 'bills', 'income')"
+    " AND (t.merchant != '' OR t.merchant_override IS NOT NULL)"
 )
 
 
@@ -182,6 +183,8 @@ def _gather(conn: sqlite3.Connection, book: Book) -> dict[str, dict[str, Any]]:
         g["last"] = max(g["last"], day)
         if category:
             g["cats"][category] = g["cats"].get(category, 0) + 1
+        if not text:
+            continue  # put here on its own, with no statement name to list
         t = g["texts"].setdefault(text, {"text": text, "count": 0, "last": day, "transaction_id": tx_id})
         t["count"] += 1
         if day >= t["last"]:
@@ -575,6 +578,8 @@ def assign_payment(
         raise LookupError("That transaction has gone.")
     text, amount = row
     key = _named(conn, key, name)
+    if scope == "amount" and not text:
+        scope = "this"  # with no statement name, there's nothing for other payments to be matched by
     if scope == "amount":
         if not key:
             raise ValueError("Pick a merchant, or name a new one.")

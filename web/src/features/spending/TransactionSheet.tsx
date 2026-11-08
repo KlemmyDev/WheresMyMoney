@@ -121,33 +121,53 @@ function Body({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
           {tx.description}
         </div>
       )}
-      {tx.merchant && tx.merchant_key && tx.kind !== "adjustment" && tx.category_kind !== "transfer" && (
+      {tx.kind !== "adjustment" && (
         <div className="flex flex-col gap-2 rounded-2xl border border-line bg-tile-2 px-3.5 py-3">
           <div className="flex min-w-0 items-center gap-3">
-            <MerchantMark name={tx.merchant_key} size="md" />
+            <MerchantMark name={tx.merchant_key || "?"} size="md" />
             <span className="min-w-0 flex-1">
-              <span className={cn("block text-[12px]", tx.merchant_key === "BPAY" ? "text-warn" : "text-ink-3")}>
-                {tx.merchant_key === "BPAY" ? "Who was this BPAY to?" : "Merchant"}
-              </span>
-              <Link
-                to="/merchants/$key"
-                params={{ key: tx.merchant_key }}
-                onClick={onClose}
-                className="block truncate text-[14px] font-semibold text-ink no-underline hover:text-teal"
+              <span
+                className={cn(
+                  "block text-[12px]",
+                  tx.merchant_key === "BPAY" || !tx.merchant_key ? "text-warn" : "text-ink-3",
+                )}
               >
-                {tx.merchant_name} →
-              </Link>
+                {tx.merchant_key === "BPAY"
+                  ? "Who was this BPAY to?"
+                  : tx.merchant_key
+                    ? "Merchant"
+                    : "No merchant yet"}
+              </span>
+              {tx.merchant_key ? (
+                <Link
+                  to="/merchants/$key"
+                  params={{ key: tx.merchant_key }}
+                  onClick={onClose}
+                  className="block truncate text-[14px] font-semibold text-ink no-underline hover:text-teal"
+                >
+                  {tx.merchant_name} →
+                </Link>
+              ) : (
+                <span className="block text-[13px] text-ink-2">The statement doesn't say who it was.</span>
+              )}
               {tx.merchant_note && <span className="block truncate text-[12px] text-ink-3">{tx.merchant_note}</span>}
             </span>
             <Button small onClick={() => setPicking((p) => !p)}>
-              {picking ? "Close" : tx.merchant_key === "BPAY" ? "Say who" : "Change"}
+              {picking ? "Close" : tx.merchant_key === "BPAY" ? "Say who" : tx.merchant_key ? "Change" : "Pick one"}
             </Button>
           </div>
           {picking && (
             <MerchantPicker
               text={tx.merchant}
-              current={tx.merchant_key}
-              payment={tx.merchant_unnamed ? { id: tx.id, amount: tx.amount } : undefined}
+              current={tx.merchant_key || undefined}
+              payment={
+                tx.merchant_unnamed
+                  ? { id: tx.id, amount: tx.amount }
+                  : // No statement name to go on, or a transfer: this one transaction, not every one like it.
+                    !tx.merchant || tx.category_kind === "transfer"
+                    ? { id: tx.id, amount: tx.amount, single: true }
+                    : undefined
+              }
               onDone={() => setPicking(false)}
             />
           )}
