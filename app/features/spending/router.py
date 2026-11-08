@@ -122,6 +122,13 @@ async def merchant_detail(svc: ServicesDep, key: str):
     return await run(svc.spending.merchant_detail, key)
 
 
+@router.put("/merchants/settings/{key:path}")
+async def merchant_settings(svc: ServicesDep, key: str, body: JsonBody):
+    """A merchant's sorting: {"category_id": 4, "rules": [{"over": true, "amount": 3000, "category_id": 7}]}. Its
+    transactions not sorted by hand are re-sorted."""
+    return await run(svc.spending.save_merchant_settings, key, body)
+
+
 @router.put("/merchants/directory/{key:path}")
 async def rename_merchant(svc: ServicesDep, key: str, body: JsonBody):
     """Give a merchant a name: {"name": "Domino's"} (empty goes back to the one it gets by itself)."""

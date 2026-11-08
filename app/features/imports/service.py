@@ -42,7 +42,7 @@ from app.features.bills.service import BillsService
 from app.features.imports import loan as loan_rows
 from app.features.imports.statement import Columns, Row, Statement, StatementError, parse, recognise, signature, table
 from app.features.rules.service import RulesService
-from app.features.spending import merchants
+from app.features.spending import directory, merchants
 from app.features.spending.service import category_by_name, learn, learned, rule_for
 
 KEEP = 3600
@@ -245,6 +245,7 @@ class ImportService:
                 (account_id, first, last),
             ).fetchall()
             rules_learned = learned(conn)
+            sorter = directory.Sorter(conn)
             cats = {r[0]: r[1] for r in conn.execute("SELECT id, name FROM categories")}
             transfer_cat = category_by_name(conn, "Transfer")
             pay_cat = category_by_name(conn, "Pay")
@@ -308,6 +309,7 @@ class ImportService:
                     rule_list,
                     bills,
                     rules_learned,
+                    sorter,
                     by_name,
                     transfer_cat,
                     pay_cat,
@@ -407,6 +409,7 @@ class ImportService:
         rule_list: list[Any],
         bills: list[Any],
         rules_learned: list[tuple[str, int]],
+        sorter: directory.Sorter,
         by_name: dict[str, int],
         transfer_cat: int | None,
         pay_cat: int | None,
@@ -471,6 +474,11 @@ class ImportService:
                         bill=bill.name,
                     )
                     return
+        # The merchant's own sorting (its amount rules, then its default) beats what was learned from choices.
+        own = sorter.category(m, r.description, r.amount)
+        if own is not None:
+            item.update(category_id=own, why="rule", sure=True)
+            return
         learned_cat = rule_for(rules_learned, m)
         if learned_cat is not None:
             item.update(category_id=learned_cat, why="rule", sure=True)

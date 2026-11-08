@@ -115,6 +115,7 @@ def _gather(conn: sqlite3.Connection, book: Book) -> dict[str, dict[str, Any]]:
 def directory(conn: sqlite3.Connection, today: dt.date) -> list[dict[str, Any]]:
     """Every merchant with money out, the most spent at over the last year first."""
     book = Book(conn)
+    noted = notes(conn)
     months = _months_back(today, LIST_MONTHS)
     out = []
     for g in _gather(conn, book).values():
@@ -133,6 +134,7 @@ def directory(conn: sqlite3.Connection, today: dt.date) -> list[dict[str, Any]]:
                 "last": g["last"],
                 "category": max(g["cats"].items(), key=lambda kv: kv[1])[0] if g["cats"] else None,
                 "names": len(g["texts"]),
+                "note": noted.get(g["key"], ""),
             }
         )
     out.sort(key=lambda m: (-m["spent_year"], -m["spent"]))
@@ -159,6 +161,7 @@ def detail(conn: sqlite3.Connection, key: str, today: dt.date) -> dict[str, Any]
         "key": key,
         "name": book.name(key),
         "named": key in book.names,
+        "settings": settings(conn, key),
         "count": g["count"],
         "spent": g["spent"],
         "spent_year": year,
@@ -201,6 +204,106 @@ def assign(conn: sqlite3.Connection, text: str, key: str | None, name: str | Non
             (text, key),
         )
     return {"text": text, "key": key}
+
+
+class Sorter:
+    """Each merchant's own sorting: its amount rules, then its default category. Read once."""
+
+    def __init__(self, conn: sqlite3.Connection, book: Book | None = None):
+        self.book = book or Book(conn)
+        self.default: dict[str, int] = {
+            k: c for k, c in conn.execute("SELECT key, category_id FROM merchant_settings").fetchall() if c is not None
+        }
+        self.rules: dict[str, list[tuple[bool, int, int]]] = {}
+        for key, over, amount, category in conn.execute(
+            "SELECT key, over, amount, category_id FROM merchant_amount_rules ORDER BY key, sort, id"
+        ).fetchall():
+            self.rules.setdefault(key, []).append((bool(over), amount, category))
+
+    def category(self, merchant_text: str, description: str, amount: int) -> int | None:
+        """The category this merchant's settings give a transaction, or None (fall back to learned rules)."""
+        if not merchant_text or (not self.default and not self.rules):
+            return None
+        key = self.book.key(merchant_text, description)
+        spent = abs(amount)
+        for over, limit, category in self.rules.get(key, []):
+            if (spent > limit) if over else (spent < limit):
+                return category
+        return self.default.get(key)
+
+
+MAX_NOTE = 200
+
+
+def notes(conn: sqlite3.Connection) -> dict[str, str]:
+    return dict(
+        conn.execute("SELECT key, note FROM merchant_settings WHERE note IS NOT NULL AND note != ''").fetchall()
+    )
+
+
+def settings(conn: sqlite3.Connection, key: str) -> dict[str, Any]:
+    row = conn.execute("SELECT category_id, note FROM merchant_settings WHERE key = ?", (key,)).fetchone()
+    rules = conn.execute(
+        "SELECT over, amount, category_id FROM merchant_amount_rules WHERE key = ? ORDER BY sort, id", (key,)
+    ).fetchall()
+    return {
+        "category_id": row[0] if row else None,
+        "note": (row[1] or "") if row else "",
+        "rules": [{"over": bool(o), "amount": a, "category_id": c} for o, a, c in rules],
+    }
+
+
+# Categories the household chose themselves, or that came from a bill, a uBank rule or a split, are left alone.
+_RESORTABLE = ("rule", "suggest")
+
+
+def save_settings(conn: sqlite3.Connection, key: str, body: dict[str, Any]) -> dict[str, Any]:
+    """Set a merchant's default category and amount rules, then re-sort its transactions that weren't sorted by hand.
+    Returns the settings and how many transactions changed."""
+    known = {r[0] for r in conn.execute("SELECT id FROM categories")}
+    category = body.get("category_id")
+    category = int(category) if category not in (None, "") else None
+    if category is not None and category not in known:
+        raise ValueError("That category has gone.")
+    rules = []
+    for r in body.get("rules") or []:
+        try:
+            amount = int(r.get("amount"))
+            cat = int(r.get("category_id"))
+        except (TypeError, ValueError):
+            raise ValueError("Each rule needs an amount and a category.") from None
+        if amount <= 0:
+            raise ValueError("A rule's amount should be more than $0.")
+        if cat not in known:
+            raise ValueError("That category has gone.")
+        rules.append((bool(r.get("over", True)), amount, cat))
+    note = " ".join(str(body.get("note") or "").split())[:MAX_NOTE]
+    conn.execute("DELETE FROM merchant_settings WHERE key = ?", (key,))
+    if category is not None or note:
+        conn.execute(
+            "INSERT INTO merchant_settings (key, category_id, note) VALUES (?, ?, ?)", (key, category, note or None)
+        )
+    conn.execute("DELETE FROM merchant_amount_rules WHERE key = ?", (key,))
+    conn.executemany(
+        "INSERT INTO merchant_amount_rules (key, over, amount, category_id, sort) VALUES (?, ?, ?, ?, ?)",
+        [(key, int(o), a, c, i) for i, (o, a, c) in enumerate(rules)],
+    )
+    # Re-sort this merchant's transactions.
+    sorter = Sorter(conn)
+    changed = 0
+    for tx_id, text, description, amount, current in conn.execute(
+        "SELECT id, merchant, description, amount, category_id FROM transactions WHERE merchant != ''"
+        " AND kind != 'adjustment' AND rule_id IS NULL AND bill_id IS NULL"
+        f" AND (category_id IS NULL OR category_by IS NULL OR category_by IN ({','.join('?' * len(_RESORTABLE))}))",
+        _RESORTABLE,
+    ).fetchall():
+        if sorter.book.key(text, description) != key:
+            continue
+        cat = sorter.category(text, description, amount)
+        if cat is not None and cat != current:
+            conn.execute("UPDATE transactions SET category_id = ?, category_by = 'rule' WHERE id = ?", (cat, tx_id))
+            changed += 1
+    return {**settings(conn, key), "changed": changed}
 
 
 def merge(conn: sqlite3.Connection, sources: list[str], key: str | None, name: str | None) -> dict[str, Any]:

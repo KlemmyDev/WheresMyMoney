@@ -86,3 +86,50 @@ def test_merging_merchants(client: TestClient, household: dict) -> None:
     ok(client.post("/api/merchants/merge", json={"from": "LAVIDA POOL", "into": "LA VIDA POOLS"}))
     assert ok(client.get("/api/merchants/directory/LA VIDA POOLS"))["count"] == 4
     assert client.post("/api/merchants/merge", json={"from": []}).status_code == 422
+
+
+def test_a_merchants_own_sorting_by_amount(client: TestClient, household: dict) -> None:
+    acc = household["Spending"]
+    cats = {c["name"]: c["id"] for c in ok(client.get("/api/categories"))["categories"]}
+    fuel, eating = cats["Fuel"], cats["Eating out"]
+    small = spend(client, acc, 650, "7-ELEVEN 2201 KEPERRA", "2026-10-03")
+    big = spend(client, acc, 7200, "7-ELEVEN 2201 KEPERRA", "2026-10-04")
+    mine = spend(client, acc, 4100, "7-ELEVEN 2201 KEPERRA", "2026-10-05")
+    groceries = cats["Groceries"]
+    ok(client.put(f"/api/transactions/{mine['id']}", json={"category_id": groceries}))  # chosen by hand
+    key = small["merchant_key"]
+    out = ok(
+        client.put(
+            f"/api/merchants/settings/{key}",
+            json={"category_id": eating, "rules": [{"over": True, "amount": 3000, "category_id": fuel}]},
+        )
+    )
+    assert (
+        out["note"] == ""
+        and out["category_id"] == eating
+        and out["rules"] == [{"over": True, "amount": 3000, "category_id": fuel}]
+    )
+    assert out["changed"] == 2
+    by_id = {t["id"]: t for t in ok(client.get("/api/transactions"))}
+    assert by_id[small["id"]]["category_id"] == eating  # a drink and a pie
+    assert by_id[big["id"]]["category_id"] == fuel  # filled up
+    assert by_id[mine["id"]]["category_id"] == groceries  # left as chosen
+    # New spending there is sorted the same way.
+    later = spend(client, acc, 5500, "7-ELEVEN 2201 KEPERRA", "2026-10-09")
+    assert later["category_id"] == fuel
+    assert ok(client.get(f"/api/merchants/directory/{key}"))["settings"]["category_id"] == eating
+    bad = client.put(
+        f"/api/merchants/settings/{key}", json={"rules": [{"over": True, "amount": 0, "category_id": fuel}]}
+    )
+    assert bad.status_code == 422
+
+
+def test_a_merchant_note(client: TestClient, household: dict) -> None:
+    tx = spend(client, household["Spending"], 9800, "HOLLARD INSURANCE", "2026-10-15")
+    key = tx["merchant_key"]
+    out = ok(client.put(f"/api/merchants/settings/{key}", json={"note": "  Car insurance  for the Mazda "}))
+    assert out["note"] == "Car insurance for the Mazda" and out["category_id"] is None
+    assert ok(client.get(f"/api/merchants/directory/{key}"))["settings"]["note"] == "Car insurance for the Mazda"
+    assert next(m for m in ok(client.get("/api/merchants/directory")) if m["key"] == key)["note"].startswith("Car")
+    again = next(t for t in ok(client.get("/api/transactions")) if t["id"] == tx["id"])
+    assert again["merchant_note"] == "Car insurance for the Mazda"

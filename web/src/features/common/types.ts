@@ -84,6 +84,8 @@ export type Transaction = {
   /** The merchant it belongs to: by itself, or the one its statement name was mapped to (see the Merchants page). */
   merchant_key: string;
   merchant_name: string;
+  /** The household's note about the merchant ("car insurance for the Mazda"). */
+  merchant_note: string;
   splits: { category_id: number; category: string | null; amount: number }[];
 };
 
@@ -159,6 +161,7 @@ export type MerchantSummary = {
   category: string | null;
   /** How many statement names belong to it. */
   names: number;
+  note: string;
 };
 
 export type MerchantDetail = {
@@ -166,6 +169,12 @@ export type MerchantDetail = {
   name: string;
   /** The household chose its name. */
   named: boolean;
+  /** Its note, default category, and categories by amount (cents), tried in order before the default. */
+  settings: {
+    note: string;
+    category_id: number | null;
+    rules: { over: boolean; amount: number; category_id: number }[];
+  };
   count: number;
   spent: number;
   spent_year: number;

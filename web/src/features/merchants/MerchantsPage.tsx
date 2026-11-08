@@ -146,6 +146,7 @@ function MerchantRow({ m, picked, onPick }: { m: MerchantSummary; picked?: boole
           {m.count} {m.count === 1 ? "visit" : "visits"} · last{" "}
           {m.last.startsWith(thisYear) ? dayDate(m.last) : longDate(m.last)}
           {m.category ? ` · ${m.category}` : ""}
+          {m.note ? ` · ${m.note}` : ""}
         </span>
       </span>
       {/* The last 12 months, a bar each. */}
