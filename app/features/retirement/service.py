@@ -96,7 +96,7 @@ def _options(raw: Any) -> list[dict[str, Any]]:
     """How a fund's balance is invested, checked: the shares add up to the whole."""
     if not isinstance(raw, list) or len(raw) > 12:
         raise ValueError("Investment options are a list, each with a name and a share.")
-    out = []
+    out: list[dict[str, Any]] = []
     for o in raw:
         try:
             name = " ".join(str(o.get("name") or "").split())[:40] or "Option"
@@ -214,7 +214,7 @@ class RetirementService:
                 born = int(b.get("born"))  # type: ignore[arg-type]
                 balance = int(b.get("balance") or 0)
                 salary = int(b.get("salary") or 0)
-                rate = float(b.get("rate") if b.get("rate") not in (None, "") else 0.12)
+                rate = 0.12 if b.get("rate") in (None, "") else float(b["rate"])
             except (TypeError, ValueError):
                 raise ValueError("Enter the year they were born, the balance and the salary.") from None
             year = dates.today().year

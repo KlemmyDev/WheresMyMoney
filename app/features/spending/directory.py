@@ -297,7 +297,7 @@ def price_changes(conn: sqlite3.Connection, today: dt.date) -> list[dict[str, An
     for g in _gather(conn, book).values():
         reg = regular(g["visits"], today)
         change = price_change(g["visits"]) if reg and not reg["stopped"] else None
-        if change:
+        if reg and change:
             out.append({"key": g["key"], "name": book.name(g["key"]), "label": reg["label"], **change})
     out.sort(key=lambda c: c["date"], reverse=True)
     return out
@@ -721,9 +721,9 @@ def save_settings(conn: sqlite3.Connection, key: str, body: dict[str, Any]) -> d
     ).fetchall():
         if sorter.book.key(text, description, amount, tx_id) != key:
             continue
-        cat = sorter.category(text, description, amount, tx_id)
-        if cat is not None and cat != current:
-            conn.execute("UPDATE transactions SET category_id = ?, category_by = 'rule' WHERE id = ?", (cat, tx_id))
+        new_cat = sorter.category(text, description, amount, tx_id)
+        if new_cat is not None and new_cat != current:
+            conn.execute("UPDATE transactions SET category_id = ?, category_by = 'rule' WHERE id = ?", (new_cat, tx_id))
             changed += 1
     return {**settings(conn, key), "changed": changed}
 

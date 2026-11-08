@@ -531,7 +531,8 @@ class InvestmentsService:
                         "long": s.long,
                     }
                 )
-            price = prices[f["id"]][1] if prices[f["id"]] else None
+            latest = prices[f["id"]]
+            price = latest[1] if latest else None
             for p in h.parcels:
                 b = dt.date.fromisoformat(p.date)
                 try:
