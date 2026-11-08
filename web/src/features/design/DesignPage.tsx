@@ -3,7 +3,7 @@
  * in dark and light before it goes on a page, and as the reference for which piece to reach for.
  */
 import { MerchantMark } from "~/features/spending/MerchantIcon";
-import { MARKS, PLACES } from "~/features/spending/merchantMarks";
+import { ALL_MARKS, PLACES } from "~/features/spending/merchantMarks";
 import { useState, type ReactNode } from "react";
 import {
   Banner,
@@ -274,7 +274,7 @@ export function DesignPage() {
         note="Drawn impressions in each merchant's colours, then kinds of place for merchants without one (merchantMarks.ts)"
       >
         <div className="grid grid-cols-[repeat(auto-fill,minmax(88px,1fr))] gap-x-2 gap-y-4">
-          {Object.keys(MARKS).map((k) => (
+          {Object.keys(ALL_MARKS).map((k) => (
             <div key={k} className="flex min-w-0 flex-col items-center gap-1.5 text-center">
               <MerchantMark name={k.trim()} size="xl" />
               <span className="w-full truncate text-[11px] text-ink-3">{k.trim()}</span>

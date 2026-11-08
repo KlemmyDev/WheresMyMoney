@@ -7,6 +7,8 @@
  * (GYM, INSURANCE, WATER…) so it still says what kind of place it is.
  */
 
+import { MORE_MARKS } from "~/features/spending/merchantMarksAu";
+
 export type Shape =
   | { d: string; fill?: string; stroke?: string; w?: number }
   | { t: string; x?: number; y?: number; s?: number; fill: string; weight?: number; italic?: boolean };
@@ -611,7 +613,9 @@ export const MARKS: Record<string, Mark> = {
   "BUDGET DIRECT": { bg: "#f37021", art: [word("BD", W, 10)] },
   YOUI: { bg: "#e4007c", art: [word("youi", W, 8, 18.6)] },
 };
-const KEYS = Object.keys(MARKS).sort((a, b) => b.length - a.length);
+/** Every mark: the ones here and the hundred more Australian ones (merchantMarksAu.ts). */
+export const ALL_MARKS: Record<string, Mark> = { ...MARKS, ...MORE_MARKS };
+const KEYS = Object.keys(ALL_MARKS).sort((a, b) => b.length - a.length);
 
 export function markFor(merchant: string): Mark | null {
   const m = merchant.toUpperCase().replace(/'/g, "");
@@ -621,7 +625,7 @@ export function markFor(merchant: string): Mark | null {
       m.startsWith(k.endsWith(" ") ? k : k + " ") ||
       (k.length >= 5 && !k.includes(" ") && m.startsWith(k)),
   );
-  return key ? MARKS[key] : null;
+  return key ? ALL_MARKS[key] : null;
 }
 
 /** Glyphs for kinds of place (24 × 24 strokes), found by a word in a merchant's name nobody has described. */
