@@ -10,38 +10,34 @@ import { useEffect, useState, type CSSProperties } from "react";
 import { apiSend, errorMessage } from "~/features/common/api";
 import { Loading } from "~/features/common/brand";
 import { short } from "~/features/common/charts";
-import { Bar, Card, CardHead, Details, Stat } from "~/features/common/ds";
+import { Card, CardHead } from "~/features/common/ds";
+import {
+  EntityHeader,
+  EntityHero,
+  Legend,
+  LikelyCard,
+  MONTH_RANGES,
+  MonthBars,
+  Timeframe,
+  rangeName,
+  useTimeframe,
+  type MonthRange,
+} from "~/features/common/entity";
 import { dayDate, editable, longDate, money, monthYear, parseMoney, shortDate } from "~/features/common/format";
 import { useToast } from "~/features/common/overlay";
 import { categoryInsightsQuery, refresh } from "~/features/common/queries";
 import type { CategoryInsights } from "~/features/common/types";
-import { Button, Empty, ErrorText, Input, Pill, Segmented, cn } from "~/features/common/ui";
+import { Button, Empty, ErrorText, Input, Pill, cn } from "~/features/common/ui";
 import { CategoryGlyph, MerchantMark } from "~/features/spending/MerchantIcon";
 import { TransactionSheet, TxRow } from "~/features/spending/TransactionSheet";
 
 const FIRST = 12;
-const RANGES = [
-  { value: "1", label: "Month" },
-  { value: "3", label: "3 months" },
-  { value: "6", label: "6 months" },
-  { value: "12", label: "Year" },
-] as const;
-type Range = (typeof RANGES)[number]["value"];
 const RANGE_KEY = "wmm:category-range";
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const WEEKDAY_NAMES = ["Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays", "Sundays"];
 
-function savedRange(): Range {
-  try {
-    const v = localStorage.getItem(RANGE_KEY);
-    return RANGES.some((r) => r.value === v) ? (v as Range) : "3";
-  } catch {
-    return "3";
-  }
-}
-
 export function CategoryPage({ categoryId }: { categoryId: number }) {
-  const [range, setRange] = useState<Range>(savedRange);
+  const [range, setRange] = useTimeframe<MonthRange>(RANGE_KEY, MONTH_RANGES, "3");
   const q = useQuery(categoryInsightsQuery(categoryId, Number(range)));
   const [open, setOpen] = useState<number | null>(null);
   const [all, setAll] = useState(false);
@@ -49,14 +45,9 @@ export function CategoryPage({ categoryId }: { categoryId: number }) {
   useEffect(() => {
     if (name) document.title = `${name} · WheresMyMoney`;
   }, [name]);
-  const pick = (r: Range) => {
+  const pick = (r: MonthRange) => {
     setRange(r);
     setAll(false);
-    try {
-      localStorage.setItem(RANGE_KEY, r);
-    } catch {
-      /* remembered only while the page is open */
-    }
   };
   if (q.isError)
     return (
@@ -77,24 +68,13 @@ export function CategoryPage({ categoryId }: { categoryId: number }) {
   const openTx = d.transactions.find((t) => t.id === open) ?? null;
   return (
     <>
-      <div className="flex flex-col gap-3">
-        <Link to="/spending" className="self-start text-[14px] font-semibold text-teal no-underline">
-          ← Spending
-        </Link>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3.5">
-            <CategoryGlyph name={d.name} kind={d.kind} size="xl" />
-            <div className="min-w-0">
-              <h1 className="m-0 truncate text-[28px] font-semibold tracking-tight">{d.name}</h1>
-              <div className="text-[14px] text-ink-3">
-                {d.kind === "bills" ? "A bills category" : "A spending category"}
-                {d.budget != null ? ` · ${money(d.budget)} a month budget` : " · no budget"}
-              </div>
-            </div>
-          </div>
-          <Segmented label="Timeframe" options={[...RANGES]} value={range} onChange={pick} />
-        </div>
-      </div>
+      <EntityHeader
+        back={{ to: "/spending", label: "Spending" }}
+        mark={<CategoryGlyph name={d.name} kind={d.kind} size="xl" />}
+        title={d.name}
+        sub={`${d.kind === "bills" ? "A bills category" : "A spending category"}${d.budget != null ? ` · ${money(d.budget)} a month budget` : " · no budget"}`}
+        timeframe={<Timeframe options={MONTH_RANGES} value={range} onChange={pick} />}
+      />
 
       <Hero d={d} />
 
@@ -104,24 +84,13 @@ export function CategoryPage({ categoryId }: { categoryId: number }) {
             id="cat-months"
             title="Month by month"
             right={
-              <span className="flex flex-wrap gap-3.5 text-[13px] font-medium text-ink-2">
-                <span className="inline-flex items-center gap-1.5">
-                  <i className="size-2 rounded-sm bg-spending" />
-                  Spent
-                </span>
-                {d.likely.ready && (
-                  <span className="inline-flex items-center gap-1.5">
-                    <i className="hatched size-2.5 rounded-sm" style={{ ["--c" as string]: "var(--color-spending)" }} />
-                    Likely
-                  </span>
-                )}
-                {d.budget != null && (
-                  <span className="inline-flex items-center gap-1.5">
-                    <i className="w-3.5 border-t-2 border-dashed border-ink-2" />
-                    Budget
-                  </span>
-                )}
-              </span>
+              <Legend
+                items={[
+                  { label: "Spent", kind: "solid", role: "spending" },
+                  ...(d.likely.ready ? [{ label: "Likely", kind: "likely" as const, role: "spending" as const }] : []),
+                  ...(d.budget != null ? [{ label: "Budget", kind: "line" as const, role: "ink" as const }] : []),
+                ]}
+              />
             }
           />
           <MonthChart d={d} />
@@ -165,10 +134,6 @@ export function CategoryPage({ categoryId }: { categoryId: number }) {
   );
 }
 
-function rangeName(months: number): string {
-  return months === 1 ? "this month" : `the last ${months} months`;
-}
-
 /** The timeframe in a sentence, and how it compares with the stretch before it. */
 function Hero({ d }: { d: CategoryInsights }) {
   const r = d.range;
@@ -176,7 +141,24 @@ function Hero({ d }: { d: CategoryInsights }) {
   const before = r.months === 1 ? "the same days last month" : `the ${r.months} months before`;
   const perMonth = r.months > 1 ? Math.round(r.spent / r.months) : null;
   return (
-    <Card lit tint={d.kind === "bills" ? "bills" : "spending"} aria-label={`${d.name} in a sentence`}>
+    <EntityHero
+      tint={d.kind === "bills" ? "bills" : "spending"}
+      label={`${d.name} in a sentence`}
+      numbers={[
+        { label: "This month", value: money(d.this_month), note: `day ${d.day} of ${d.days}` },
+        {
+          label: "Usual month",
+          value: money(d.average),
+          note: d.average_months ? `last ${d.average_months} months` : "not enough yet",
+        },
+        { label: "Most in a month", value: money(d.highest), note: "of those" },
+        {
+          label: "Last 12 months",
+          value: money(d.year),
+          note: d.first ? `since ${monthYear(d.first.slice(0, 7))}` : "nothing yet",
+        },
+      ]}
+    >
       <p className="m-0 text-[17px] leading-relaxed text-ink">
         We've spent <b>{money(r.spent)}</b> on {d.name} {r.months === 1 ? "so far this month" : rangeName(r.months)}
         {perMonth != null && (
@@ -197,136 +179,36 @@ function Hero({ d }: { d: CategoryInsights }) {
             : `That's ${money(Math.abs(r.spent - (r.previous ?? 0)))} ${change > 0 ? "more" : "less"} than ${before} (${change > 0 ? "up" : "down"} ${Math.round(Math.abs(change) * 100)}%).`}
         {d.average_months > 0 && ` A usual month is ${money(d.average)}.`}
       </p>
-      <Details label="See the numbers">
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-          <Stat label="This month" value={money(d.this_month)} note={`day ${d.day} of ${d.days}`} role="spending" />
-          <Stat
-            label="Usual month"
-            value={money(d.average)}
-            note={d.average_months ? `last ${d.average_months} months` : "not enough yet"}
-            role="spending"
-          />
-          <Stat label="Most in a month" value={money(d.highest)} note="of those" role="spending" />
-          <Stat
-            label="Last 12 months"
-            value={money(d.year)}
-            note={d.first ? `since ${monthYear(d.first.slice(0, 7))}` : "nothing yet"}
-            role="spending"
-          />
-        </div>
-      </Details>
-    </Card>
+    </EntityHero>
   );
-}
-
-function ticks(hi: number): number[] {
-  const raw = hi / 3;
-  const mag = 10 ** Math.floor(Math.log10(raw || 1));
-  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s * 3 >= hi) ?? mag * 10;
-  return [0, step, step * 2, step * 3];
 }
 
 /** Bars for each month, this month's likely rest hatched on top, the budget as a dashed line; the timeframe is lit. */
 function MonthChart({ d }: { d: CategoryInsights }) {
-  const n = d.months.length;
-  const [picked, setPicked] = useState<number | null>(null);
-  const at = picked ?? n - 1;
   const rest = d.likely.ready ? (d.likely.rest ?? 0) : 0;
-  const hi = Math.max(1, d.budget ?? 0, ...d.months.map((m, i) => m.spent + (i === n - 1 ? rest : 0)));
-  const t = ticks(hi);
-  const top = t[t.length - 1];
-  const inRange = (m: string) => m >= d.range.start.slice(0, 7);
-  const m = d.months[at];
-  const isNow = at === n - 1;
   return (
-    <div className="flex flex-col gap-2">
-      <div className="min-h-6 text-[14px] text-ink-2" aria-live="polite">
-        {m && (
-          <>
-            <b className="text-ink">{monthYear(m.month)}</b>: {money(m.spent)}
-            {isNow ? " so far" : ""}
-            {isNow && rest > 0 ? `, likely about ${money(m.spent + rest)} by the end` : ""}
-            {d.budget != null && !isNow
-              ? m.spent > d.budget
-                ? `, ${money(m.spent - d.budget)} over the budget`
-                : `, ${money(d.budget - m.spent)} under the budget`
-              : ""}
-            .
-          </>
-        )}
-      </div>
-      <div className="flex gap-2.5">
-        <div className="mono flex h-[200px] flex-col justify-between text-right text-xs text-ink-3">
-          {[...t].reverse().map((v) => (
-            <span key={v}>${short(v)}</span>
-          ))}
-        </div>
-        <div className="relative min-w-0 flex-1">
-          <div
-            className="relative flex h-[200px] items-end gap-1 border-b border-line"
-            role="group"
-            aria-label={`What went on ${d.name} each month, oldest first`}
-            onKeyDown={(e) => {
-              if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-                e.preventDefault();
-                const next = Math.max(0, Math.min(n - 1, at + (e.key === "ArrowLeft" ? -1 : 1)));
-                setPicked(next);
-                (e.currentTarget.children[next] as HTMLElement | undefined)?.focus();
-              }
-            }}
-          >
-            {d.months.map((mo, i) => {
-              const likely = i === n - 1 ? rest : 0;
-              const lit = inRange(mo.month);
-              return (
-                <button
-                  key={mo.month}
-                  type="button"
-                  tabIndex={i === at ? 0 : -1}
-                  aria-label={`${monthYear(mo.month)}: ${money(mo.spent)}`}
-                  aria-pressed={i === at}
-                  onClick={() => setPicked(i)}
-                  onMouseEnter={() => setPicked(i)}
-                  className="relative flex h-full min-w-0 flex-1 cursor-pointer flex-col justify-end border-0 bg-transparent p-0"
-                >
-                  {likely > 0 && (
-                    <span
-                      className="hatched block w-full rounded-t-[4px]"
-                      style={{ height: `${(likely / top) * 100}%`, ["--c" as string]: "var(--color-spending)" }}
-                    />
-                  )}
-                  <span
-                    className={cn(
-                      "striped block w-full grow bg-spending-fill transition-opacity",
-                      likely > 0 ? "" : "rounded-t-[4px]",
-                      !lit && "opacity-35",
-                      lit && i !== at && "opacity-75",
-                    )}
-                    style={
-                      {
-                        height: `max(2px, ${(mo.spent / top) * 100}%)`,
-                        flexGrow: 0,
-                        "--i": i,
-                      } as CSSProperties
-                    }
-                  />
-                </button>
-              );
-            })}
-            {d.budget != null && (
-              <div
-                className="pointer-events-none absolute inset-x-0 border-t-[1.5px] border-dashed border-ink"
-                style={{ bottom: `${(d.budget / top) * 100}%` }}
-              />
-            )}
-          </div>
-          <div className="mono mt-1.5 flex justify-between text-xs text-ink-3">
-            <span>{monthYear(d.months[0].month)}</span>
-            <span>{monthYear(d.months[n - 1].month)}</span>
-          </div>
-        </div>
-      </div>
-    </div>
+    <MonthBars
+      name={`What went on ${d.name}`}
+      months={d.months.map((m) => ({ key: m.month, label: monthYear(m.month), value: m.spent }))}
+      rest={rest}
+      line={d.budget != null ? { value: d.budget, label: "Budget" } : undefined}
+      role="spending"
+      litFrom={d.range.start.slice(0, 7)}
+      format={money}
+      describe={(m, isNow) => (
+        <>
+          <b className="text-ink">{m.label}</b>: {money(m.value)}
+          {isNow ? " so far" : ""}
+          {isNow && rest > 0 ? `, likely about ${money(m.value + rest)} by the end` : ""}
+          {d.budget != null && !isNow
+            ? m.value > d.budget
+              ? `, ${money(m.value - d.budget)} over the budget`
+              : `, ${money(d.budget - m.value)} under the budget`
+            : ""}
+          .
+        </>
+      )}
+    />
   );
 }
 
@@ -335,55 +217,55 @@ function Likely({ d }: { d: CategoryInsights }) {
   const l = d.likely;
   if (!l.ready)
     return (
-      <Card className="md:col-span-4" aria-labelledby="cat-likely">
-        <CardHead id="cat-likely" title="What's likely" />
-        <p className="m-0 text-[14px] text-ink-2">
-          {l.history_days > 0
+      <LikelyCard
+        id="cat-likely"
+        className="md:col-span-4"
+        notReady={
+          l.history_days > 0
             ? `After ${l.needs_days - l.history_days} more days of ${d.name} we can say what's likely to go on it.`
-            : `Nothing's gone on ${d.name} yet, so there's nothing to learn from.`}
-        </p>
-      </Card>
+            : `Nothing's gone on ${d.name} yet, so there's nothing to learn from.`
+        }
+      />
     );
   const total = l.month_total ?? d.this_month;
   const scale = Math.max(total, l.high ?? 0, d.budget ?? 0, 1);
   return (
-    <Card className="md:col-span-4" tint="accent" aria-labelledby="cat-likely">
-      <CardHead id="cat-likely" title="What's likely" />
-      <div className="flex flex-col gap-2">
-        <div className="text-[13px] text-ink-3">This month</div>
-        <div className="mono text-[26px] font-semibold">{money(total)}</div>
-        <Bar
-          label={`Spent ${money(d.this_month)}, likely ${money(l.rest)} more${d.budget != null ? `, against a ${money(d.budget)} budget` : ""}`}
-          max={scale}
-          height={12}
-          marker={d.budget ?? undefined}
-          segments={[
+    <LikelyCard
+      id="cat-likely"
+      className="md:col-span-4"
+      now={{
+        label: "This month",
+        total: money(total),
+        bar: {
+          label: `Spent ${money(d.this_month)}, likely ${money(l.rest)} more${d.budget != null ? `, against a ${money(d.budget)} budget` : ""}`,
+          max: scale,
+          marker: d.budget ?? undefined,
+          segments: [
             { value: d.this_month, role: "spending" },
             { value: l.rest ?? 0, role: "spending", likely: true },
-          ]}
-        />
-        <div className="text-[13px] text-ink-2">
-          {money(d.this_month)} so far, likely {money(l.low)} to {money(l.high)} by the end of the month.
-          {d.budget != null &&
-            (total > d.budget
-              ? ` That's about ${money(total - d.budget)} over the budget.`
-              : ` That leaves about ${money(d.budget - total)} of the budget.`)}
-        </div>
-      </div>
-      <div className="flex flex-col gap-1 border-t border-line pt-3">
-        <div className="text-[13px] text-ink-3">{monthYear(l.next_month)}</div>
-        <div className="mono text-[22px] font-semibold">{money(l.next)}</div>
-        <div className="text-[13px] text-ink-2">
-          Likely {money(l.next_low)} to {money(l.next_high)}. The next three months, about {money(l.next_three)}.
-        </div>
-      </div>
-      {l.accuracy != null && (
-        <div className="text-[12px] text-ink-3">
-          Over the last four weeks this guess was {Math.round(l.accuracy * 100)}% right for {d.name}, so the range is as
-          wide as it was off.
-        </div>
-      )}
-    </Card>
+          ],
+        },
+        text: (
+          <>
+            {money(d.this_month)} so far, likely {money(l.low)} to {money(l.high)} by the end of the month.
+            {d.budget != null &&
+              (total > d.budget
+                ? ` That's about ${money(total - d.budget)} over the budget.`
+                : ` That leaves about ${money(d.budget - total)} of the budget.`)}
+          </>
+        ),
+      }}
+      next={{
+        label: monthYear(l.next_month),
+        total: money(l.next),
+        text: `Likely ${money(l.next_low)} to ${money(l.next_high)}. The next three months, about ${money(l.next_three)}.`,
+      }}
+      note={
+        l.accuracy != null
+          ? `Over the last four weeks this guess was ${Math.round(l.accuracy * 100)}% right for ${d.name}, so the range is as wide as it was off.`
+          : undefined
+      }
+    />
   );
 }
 
