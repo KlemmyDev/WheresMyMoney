@@ -1,50 +1,109 @@
 /**
- * Every transaction, newest first and grouped by day (the canvas's "All transactions"), a month at a time with the
- * one before a tap away: filter by account, show only what's not sorted, or search (searching looks back over
- * everything). Tap one for its sheet: its category (or a split), a note, someone's paying it back,
- * and deleting one typed in by hand.
+ * Every transaction, a month at a time (the canvas's "All transactions"): step back and forward through the months,
+ * for every account or one, with what came in and went out that month and where it went by category. Tap a category
+ * to see only its transactions, or show only what's not sorted, money in or money out. Searching looks back over
+ * every month. Tap a transaction for its sheet: its category (or a split), making it a recurring bill, a note,
+ * someone paying it back, and deleting one typed in by hand.
  */
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { errorMessage } from "~/features/common/api";
-import { Card, ChoiceChip, EmptyState } from "~/features/common/ds";
-import { dayDate, longDate, money } from "~/features/common/format";
+import { CategoryPicker } from "~/features/common/CategoryPicker";
+import { Card, ChoiceChip, EmptyState, Eyebrow } from "~/features/common/ds";
+import { dayDate, money } from "~/features/common/format";
 import { I } from "~/features/common/icons";
-import { accountsQuery, transactionsQuery } from "~/features/common/queries";
+import { accountsQuery, categoriesQuery, transactionsQuery } from "~/features/common/queries";
 import type { Transaction } from "~/features/common/types";
-import { Button, ErrorText, Input, PageHead } from "~/features/common/ui";
+import { Button, ErrorText, Input, PageHead, Segmented, cn } from "~/features/common/ui";
 import { TransactionSheet, TxRow } from "~/features/spending/TransactionSheet";
 
-/** The month before the ones shown: "October", or "October 2025" in an earlier year. */
-function monthName(shown: number): string {
+export type TxSearch = { account?: number; month?: string; category?: number | "unsorted" };
+
+/** This month, as "2026-11". */
+export function thisMonth(): string {
   const d = new Date();
-  d.setDate(1);
-  d.setMonth(d.getMonth() - shown);
-  const name = d.toLocaleString("en-AU", { month: "long" });
-  return d.getFullYear() === new Date().getFullYear() ? name : `${name} ${d.getFullYear()}`;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-export function TransactionsPage({ account }: { account?: number }) {
+function shift(month: string, by: number): string {
+  const [y, m] = month.split("-").map(Number);
+  const d = new Date(y, m - 1 + by, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/** "November", or "November 2025" in another year. */
+function monthName(month: string): string {
+  const [y, m] = month.split("-").map(Number);
+  const name = new Date(y, m - 1, 1).toLocaleString("en-AU", { month: "long" });
+  return y === new Date().getFullYear() ? name : `${name} ${y}`;
+}
+
+function lastDay(month: string): string {
+  const [y, m] = month.split("-").map(Number);
+  return `${month}-${String(new Date(y, m, 0).getDate()).padStart(2, "0")}`;
+}
+
+/** Counted in money in and out: not a balance correction, not paid back, not a move between our own accounts. */
+const counted = (t: Transaction) => t.kind !== "adjustment" && !t.excluded && t.category_kind !== "transfer";
+const unsortedTx = (t: Transaction) => t.category_id == null && t.kind !== "adjustment" && !t.splits?.length;
+
+/** How many categories show before "Every category". */
+const TOP = 6;
+
+export function TransactionsPage({ search }: { search: TxSearch }) {
   const navigate = useNavigate();
+  const { account, category } = search;
+  const month = search.month ?? thisMonth();
+  const current = month === thisMonth();
   const [q, setQ] = useState("");
-  const [unsorted, setUnsorted] = useState(false);
+  const [dir, setDir] = useState<"all" | "out" | "in">("all");
   const [open, setOpen] = useState<number | null>(null);
-  // How many months back to show: this month to start with, one more each time "Show earlier" is tapped.
-  const [months, setMonths] = useState(1);
-  const from = new Date();
-  from.setDate(1);
-  from.setMonth(from.getMonth() - (months - 1));
-  const start = `${from.getFullYear()}-${String(from.getMonth() + 1).padStart(2, "0")}-01`;
+  const [everyCat, setEveryCat] = useState(false);
   const accounts = useQuery(accountsQuery);
+  const cats = useQuery(categoriesQuery);
   const txs = useQuery({
-    ...transactionsQuery(q ? { account_id: account, q, limit: 500 } : { account_id: account, start, limit: 3000 }),
+    ...transactionsQuery(
+      q
+        ? { account_id: account, q, limit: 500 }
+        : { account_id: account, start: `${month}-01`, end: lastDay(month), limit: 3000 },
+    ),
     placeholderData: keepPreviousData,
   });
+  const go = (next: Partial<TxSearch>) =>
+    navigate({ to: "/transactions", search: { ...search, ...next }, replace: true });
+
   const banks = (accounts.data?.accounts ?? []).filter((a) => a.kind === "bank");
   const byId = Object.fromEntries(banks.map((a) => [a.id, a]));
-  const shown = (txs.data ?? []).filter(
-    (t) => !unsorted || (t.category_id == null && t.kind !== "adjustment" && !t.splits?.length),
+  const all = txs.data ?? [];
+
+  // The month in numbers: what came in, what went out, and where it went.
+  const counting = all.filter(counted);
+  const moneyIn = counting.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0);
+  const moneyOut = counting.filter((t) => t.amount < 0).reduce((s, t) => s - t.amount, 0);
+  const where = new Map<string, { id: number | "unsorted"; name: string; total: number }>();
+  const add = (id: number | "unsorted", name: string, cents: number) => {
+    const key = String(id);
+    const row = where.get(key) ?? { id, name, total: 0 };
+    row.total += cents;
+    where.set(key, row);
+  };
+  for (const t of counting.filter((x) => x.amount < 0)) {
+    if (t.splits?.length) for (const p of t.splits) add(p.category_id, p.category ?? "Other", p.amount);
+    else if (t.category_id != null) add(t.category_id, t.category ?? "Other", -t.amount);
+    else add("unsorted", "Not sorted", -t.amount);
+  }
+  const breakdown = [...where.values()].sort((a, b) => b.total - a.total);
+  const biggest = breakdown[0]?.total ?? 1;
+  const unsortedCount = all.filter(unsortedTx).length;
+
+  const shown = all.filter(
+    (t) =>
+      (category == null ||
+        (category === "unsorted"
+          ? unsortedTx(t)
+          : t.category_id === category || !!t.splits?.some((p) => p.category_id === category))) &&
+      (dir === "all" || (dir === "in" ? t.amount > 0 : t.amount < 0)),
   );
   const days: [string, Transaction[]][] = [];
   for (const t of shown) {
@@ -52,52 +111,206 @@ export function TransactionsPage({ account }: { account?: number }) {
     if (last && last[0] === t.date) last[1].push(t);
     else days.push([t.date, [t]]);
   }
-  const openTx = (txs.data ?? []).find((t) => t.id === open) ?? null;
-  const go = (id: number | null) =>
-    navigate({ to: "/transactions", search: id != null ? { account: id } : {}, replace: true });
+  const openTx = all.find((t) => t.id === open) ?? null;
+  const catName =
+    category === "unsorted"
+      ? "Not sorted"
+      : category != null
+        ? ((cats.data?.categories ?? []).find((c) => c.id === category)?.name ?? "That category")
+        : null;
+  const where1 = account != null && byId[account] ? ` in ${byId[account].name}` : "";
+
   return (
     <>
       <PageHead
-        over={q ? `Money · ${shown.length} found` : `Money · ${shown.length} since ${longDate(start)}`}
+        over={q ? `Money · ${shown.length} found in every month` : `Money · ${monthName(month)}`}
         title="Transactions"
       />
       <div className="flex flex-col gap-3">
         <div role="group" aria-label="Account" className="no-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1">
-          <ChoiceChip pressed={account == null} onClick={() => go(null)}>
+          <ChoiceChip pressed={account == null} onClick={() => go({ account: undefined })}>
             Every account
           </ChoiceChip>
           {banks.map((a) => (
-            <ChoiceChip key={a.id} pressed={account === a.id} onClick={() => go(a.id)}>
+            <ChoiceChip key={a.id} pressed={account === a.id} onClick={() => go({ account: a.id })}>
               {a.name}
             </ChoiceChip>
           ))}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Input
-            aria-label="Search"
-            className="max-w-[320px] flex-1"
-            placeholder="Search descriptions and notes"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-          />
-          <ChoiceChip pressed={unsorted} onClick={() => setUnsorted((u) => !u)} role="bills">
-            Not sorted
-          </ChoiceChip>
-        </div>
+        <Input
+          aria-label="Search every month"
+          className="font-sans sm:max-w-[360px]"
+          placeholder="Search every month: descriptions and notes"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
       </div>
+
+      {!q && (
+        <Card lit tint="spending" aria-labelledby="tx-month" className="flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-2">
+            <Button
+              aria-label={`Back to ${monthName(shift(month, -1))}`}
+              onClick={() => go({ month: shift(month, -1) })}
+            >
+              ‹
+            </Button>
+            <div className="flex min-w-0 flex-col items-center text-center">
+              <h2 id="tx-month" className="m-0 text-[19px] leading-6 font-semibold">
+                {monthName(month)}
+              </h2>
+              {!current && (
+                <button
+                  type="button"
+                  className="cursor-pointer border-0 bg-transparent p-0 text-[13px] font-semibold text-teal"
+                  onClick={() => go({ month: undefined })}
+                >
+                  Back to this month
+                </button>
+              )}
+            </div>
+            <Button
+              aria-label={`On to ${monthName(shift(month, 1))}`}
+              disabled={current}
+              onClick={() => go({ month: shift(month, 1) === thisMonth() ? undefined : shift(month, 1) })}
+            >
+              ›
+            </Button>
+          </div>
+          <p className="m-0 text-[16px] leading-relaxed text-ink">
+            {current ? "So far this month" : `In ${monthName(month)}`}
+            {where1}, <b>{money(moneyIn)}</b> came in and <b>{money(moneyOut)}</b> went out.{" "}
+            <span className="text-ink-2">
+              {moneyIn >= moneyOut
+                ? `That's ${money(moneyIn - moneyOut)} more in than out.`
+                : `That's ${money(moneyOut - moneyIn)} more out than in.`}
+            </span>
+          </p>
+          <span className="text-[13px] text-ink-3">Money moved between our own accounts isn&apos;t counted.</span>
+          {breakdown.length > 0 && (
+            <div className="flex flex-col gap-1">
+              <Eyebrow>Where it went · tap one to see its transactions</Eyebrow>
+              <ul className="m-0 flex list-none flex-col p-0">
+                {(everyCat ? breakdown : breakdown.slice(0, TOP)).map((r) => {
+                  const on = category === r.id;
+                  return (
+                    <li key={String(r.id)}>
+                      <button
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => go({ category: on ? undefined : r.id })}
+                        className={cn(
+                          "press flex min-h-11 w-full cursor-pointer items-center gap-3 rounded-xl border-0 bg-transparent px-1.5 text-left text-ink hover:bg-tile-2",
+                          on && "bg-teal/12",
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "w-[38%] min-w-0 truncate text-[14px] sm:w-[200px]",
+                            r.id === "unsorted" && "text-warn",
+                          )}
+                        >
+                          {r.name}
+                        </span>
+                        <span className="relative h-2 min-w-0 flex-1 rounded-full bg-raised">
+                          <i
+                            className={cn(
+                              "absolute inset-y-0 left-0 rounded-full",
+                              r.id === "unsorted" ? "bg-warn" : "bg-spending-fill",
+                            )}
+                            style={{ width: `${Math.max(2, (r.total / biggest) * 100)}%` }}
+                          />
+                        </span>
+                        <span className="num w-[84px] text-right text-[14px]">{money(r.total)}</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+              {breakdown.length > TOP && (
+                <button
+                  type="button"
+                  className="cursor-pointer self-start border-0 bg-transparent p-1.5 text-[14px] font-semibold text-teal"
+                  onClick={() => setEveryCat((v) => !v)}
+                >
+                  {everyCat ? "Fewer categories" : `Every category (${breakdown.length})`}
+                </button>
+              )}
+            </div>
+          )}
+        </Card>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Segmented
+          label="Show"
+          options={[
+            { value: "all", label: "Everything" },
+            { value: "out", label: "Money out" },
+            { value: "in", label: "Money in" },
+          ]}
+          value={dir}
+          onChange={setDir}
+        />
+        <ChoiceChip
+          pressed={category === "unsorted"}
+          onClick={() => go({ category: category === "unsorted" ? undefined : "unsorted" })}
+          role="bills"
+        >
+          Not sorted{!q && unsortedCount ? ` · ${unsortedCount}` : ""}
+        </ChoiceChip>
+        <div className="w-44">
+          <CategoryPicker
+            label="Only this category"
+            value={typeof category === "number" ? category : null}
+            categories={cats.data?.categories ?? []}
+            placeholder="Any category"
+            onChange={(c) => go({ category: c ?? undefined })}
+            className="min-h-11 rounded-full border-line-2 bg-transparent text-[14px] text-ink-2"
+          />
+        </div>
+        {unsortedCount > 0 && category === "unsorted" && (
+          <Link to="/sort" className="text-[14px] font-semibold text-teal no-underline">
+            Sort them by merchant
+          </Link>
+        )}
+      </div>
+
       {txs.isError && <ErrorText>{errorMessage(txs.error)}</ErrorText>}
       {txs.data && !shown.length ? (
-        <EmptyState g={I.list} tone="neutral" title={unsorted ? "Everything's sorted" : "No transactions match"}>
-          {unsorted ? "Nothing here is waiting for a category." : "Try another account, or fewer words."}
+        <EmptyState
+          g={I.list}
+          tone="neutral"
+          title={category === "unsorted" ? "Everything's sorted" : "No transactions here"}
+        >
+          {category === "unsorted"
+            ? "Nothing here is waiting for a category."
+            : q
+              ? "Try fewer words, or another account."
+              : `Nothing${catName ? ` in ${catName}` : ""}${where1} in ${monthName(month)}. Try another month or account.`}
         </EmptyState>
       ) : (
-        <Card className="flex flex-col gap-1">
+        <Card className="flex flex-col gap-1" aria-label="Transactions">
+          {catName && (
+            <div className="flex items-center justify-between gap-2 px-1.5 pb-1">
+              <span className="text-[14px] text-ink-2">
+                Only <b className="text-ink">{catName}</b> · {shown.length}
+              </span>
+              <button
+                type="button"
+                className="cursor-pointer border-0 bg-transparent p-0 text-[13px] font-semibold text-teal"
+                onClick={() => go({ category: undefined })}
+              >
+                Show everything
+              </button>
+            </div>
+          )}
           {days.map(([day, list]) => {
             const net = list.reduce((s, t) => s + (t.excluded ? 0 : t.amount), 0);
             return (
               <section key={day} aria-label={dayDate(day)} className="flex flex-col">
                 <div className="flex items-baseline justify-between px-1.5 pt-3 pb-1 text-[12px] font-semibold tracking-[0.06em] text-ink-3 uppercase first:pt-0">
-                  <span>{dayDate(day)}</span>
+                  <span>{q ? `${dayDate(day)} ${day.slice(0, 4)}` : dayDate(day)}</span>
                   <span className="num normal-case">{money(net, { cents: true, sign: true })}</span>
                 </div>
                 {list.map((t) => (
@@ -109,10 +322,8 @@ export function TransactionsPage({ account }: { account?: number }) {
         </Card>
       )}
       {!q && txs.data && (
-        <div className="flex justify-center">
-          <Button onClick={() => setMonths((n) => n + 1)} disabled={txs.isFetching}>
-            {txs.isFetching ? "Loading…" : `Show ${monthName(months)} too`}
-          </Button>
+        <div className="flex justify-center gap-2">
+          <Button onClick={() => go({ month: shift(month, -1) })}>See {monthName(shift(month, -1))}</Button>
         </div>
       )}
       <TransactionSheet tx={openTx} onClose={() => setOpen(null)} />

@@ -4,13 +4,15 @@
  * rows are the bank's, so the sheet says so instead. Deleting asks first.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { apiSend, errorMessage } from "~/features/common/api";
 import { ChoiceChip, Sheet } from "~/features/common/ds";
 import { longDate, money, parseMoney } from "~/features/common/format";
 import { Chip, I } from "~/features/common/icons";
 import { useToast } from "~/features/common/overlay";
-import { categoriesQuery, refresh } from "~/features/common/queries";
+import { billsQuery, categoriesQuery, refresh } from "~/features/common/queries";
+import { BillDialog } from "~/features/bills/BillsPage";
 import { CategoryPicker } from "~/features/common/CategoryPicker";
 import type { Category, Transaction } from "~/features/common/types";
 import { Button, ErrorText, Input, Pill, Switch } from "~/features/common/ui";
@@ -41,6 +43,12 @@ function Body({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
   const [mode, setMode] = useState<"view" | "split">("view");
   const [splits, setSplits] = useState(tx.splits ?? []);
   const [excluded, setExcluded] = useState(!!tx.excluded);
+  const [making, setMaking] = useState(false);
+  const bills = useQuery(billsQuery);
+  // Unlinking shows straight away, before the list comes back.
+  const [unlinked, setUnlinked] = useState<number | null>(null);
+  const bill =
+    tx.bill_id != null && unlinked !== tx.bill_id ? bills.data?.bills.find((b) => b.id === tx.bill_id) : undefined;
   const save = useMutation({
     mutationFn: (body: Record<string, unknown>) => apiSend<Transaction>("PUT", `transactions/${tx.id}`, body),
     onSuccess: (t) => {
@@ -160,6 +168,51 @@ function Body({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
           </div>
         </div>
       )}
+      {tx.amount < 0 && tx.kind !== "adjustment" && (
+        <div className="flex items-center gap-3 rounded-2xl border border-line bg-tile-2 px-3.5 py-3">
+          <Chip g={I.bills} tone="bills" size="md" />
+          {bill ? (
+            <>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[14px] font-semibold">Part of the {bill.name} bill</span>
+                <button
+                  type="button"
+                  className="cursor-pointer border-0 bg-transparent p-0 text-[12px] text-ink-3 underline"
+                  disabled={save.isPending}
+                  onClick={() =>
+                    save.mutate(
+                      { bill_id: null },
+                      { onSuccess: () => (setUnlinked(bill.id), toast(`No longer part of ${bill.name}`)) },
+                    )
+                  }
+                >
+                  Not part of this bill
+                </button>
+              </span>
+              <Link
+                to="/bills/$billId"
+                params={{ billId: String(bill.id) }}
+                className="inline-flex min-h-[34px] items-center rounded-[10px] px-3 text-[13px] font-medium text-ink no-underline shadow-[inset_0_0_0_1px_var(--color-line-2)]"
+              >
+                See the bill
+              </Link>
+            </>
+          ) : (
+            <>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[14px] font-semibold">Comes out regularly?</span>
+                <span className="block text-[12px] text-ink-3">
+                  Make it a bill to plan for it and see what it costs.
+                </span>
+              </span>
+              <Button small onClick={() => setMaking(true)}>
+                Make it a bill
+              </Button>
+            </>
+          )}
+        </div>
+      )}
+      <BillDialog bill={making ? "new" : null} fromTx={making ? tx : null} onClose={() => setMaking(false)} />
       <label className="flex items-center gap-3 rounded-2xl border border-line bg-tile-2 px-3.5 py-3">
         <span className="min-w-0 flex-1">
           <span className="block text-[14px] font-semibold">

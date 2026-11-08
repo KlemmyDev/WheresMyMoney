@@ -30,6 +30,7 @@ DEFAULT_CATEGORIES: list[tuple[str, str, int | None]] = [
     ("Fuel", "spending", 38000),
     ("Car", "spending", None),
     ("Transport", "spending", None),
+    ("Parking & tolls", "spending", None),
     ("Shopping", "spending", None),
     ("Clothing", "spending", None),
     ("Electronics", "spending", None),
@@ -41,6 +42,8 @@ DEFAULT_CATEGORIES: list[tuple[str, str, int | None]] = [
     ("Childcare", "spending", None),
     ("Pets", "spending", None),
     ("Home", "spending", 25000),
+    ("Home maintenance", "spending", None),
+    ("Furniture", "spending", None),
     ("Garden", "spending", None),
     ("Health", "spending", 20000),
     ("Pharmacy", "spending", None),
@@ -61,6 +64,8 @@ DEFAULT_CATEGORIES: list[tuple[str, str, int | None]] = [
     ("Rego", "bills", None),
     ("Rent", "bills", None),
     ("Rates", "bills", None),
+    ("Loans", "bills", None),
+    ("School fees", "bills", None),
     ("Pay", "income", None),
     ("Side income", "income", None),
     ("Interest", "income", None),
@@ -390,8 +395,9 @@ class SpendingService:
         ]
 
     def update_transaction(self, tx_id: int, body: dict[str, Any]) -> dict[str, Any]:
-        """Change a transaction's category or note. With `always`, remember the category for its merchant and
-        apply it to the merchant's earlier transactions that have no category yet."""
+        """Change a transaction's category, note or bill (`bill_id`, or null for not part of one). With `always`,
+        remember the category for its merchant and apply it to the merchant's earlier transactions that have no
+        category yet."""
         with self.db.writing() as conn:
             row = conn.execute("SELECT merchant, kind, description FROM transactions WHERE id = ?", (tx_id,)).fetchone()
             if not row:
@@ -410,6 +416,15 @@ class SpendingService:
                 conn.execute(
                     "UPDATE transactions SET note = ? WHERE id = ?", (str(body["note"] or "")[:MAX_NOTE], tx_id)
                 )
+            if "bill_id" in body:
+                bill = body["bill_id"]
+                bill = int(bill) if bill not in (None, "") else None
+                if (
+                    bill is not None
+                    and not conn.execute("SELECT 1 FROM bills WHERE id = ? AND active = 1", (bill,)).fetchone()
+                ):
+                    raise LookupError("That bill has gone.")
+                conn.execute("UPDATE transactions SET bill_id = ? WHERE id = ?", (bill, tx_id))
             if "excluded" in body:
                 conn.execute("UPDATE transactions SET excluded = ? WHERE id = ?", (int(bool(body["excluded"])), tx_id))
             if "splits" in body:

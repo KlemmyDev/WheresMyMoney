@@ -36,14 +36,21 @@ export const SECTIONS: readonly Section[] = [
     label: "Money",
     g: I.accounts,
     pages: [
-      // "All transactions" and "Sort by merchant" are reached from Spending, so they keep Spending lit.
+      // "Sort by merchant" is reached from Spending, so it keeps Spending lit.
       {
         to: "/spending",
         label: "Spending",
         sub: "This month, by category",
         g: I.spending,
         tone: "spending",
-        also: ["/transactions", "/sort"],
+        also: ["/sort"],
+      },
+      {
+        to: "/transactions",
+        label: "Transactions",
+        sub: "Every account, month by month",
+        g: I.list,
+        tone: "neutral",
       },
       { to: "/bills", label: "Bills", sub: "What's due, and what's set aside", g: I.bills, tone: "bills" },
       { to: "/accounts", label: "Accounts", sub: "Each account and its job", g: I.accounts, tone: "" },
@@ -486,17 +493,15 @@ function SectionPages({ section, path }: { section: Section; path: string }) {
           </Link>
         ))}
       </div>
-      <div
-        className="grid gap-1 rounded-[18px] border border-line bg-tile p-1 sm:hidden"
-        style={{ gridTemplateColumns: `repeat(${section.pages.length}, minmax(0, 1fr))` }}
-      >
+      {/* Each takes its label's width and shares what's left, so a long name like Transactions still fits. */}
+      <div className="flex gap-0.5 rounded-[18px] border border-line bg-tile p-1 sm:hidden">
         {section.pages.map((p) => (
           <Link
             key={p.to}
             to={p.to}
             activeProps={{}}
             aria-current={current(p) ? "page" : undefined}
-            className="chip-host press flex h-14 flex-col items-center justify-center gap-1 rounded-[14px] text-[12px] font-semibold text-ink-3 no-underline aria-[current=page]:bg-teal/12 aria-[current=page]:text-ink"
+            className="chip-host press flex h-14 min-w-0 flex-auto flex-col items-center justify-center gap-1 rounded-[14px] px-1 text-[12px] font-semibold whitespace-nowrap text-ink-3 no-underline aria-[current=page]:bg-teal/12 aria-[current=page]:text-ink"
           >
             <Chip g={p.g} tone={p.tone} size="sm" />
             {p.label === "Home loan" ? "Loan" : p.label}

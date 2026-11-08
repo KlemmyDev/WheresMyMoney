@@ -68,7 +68,13 @@ export const accountActivityQuery = (id: number) =>
       }>(`accounts/${id}/activity`, { days: 365 }, { signal }),
   });
 
-export const transactionsQuery = (params: { account_id?: number; start?: string; q?: string; limit?: number }) =>
+export const transactionsQuery = (params: {
+  account_id?: number;
+  start?: string;
+  end?: string;
+  q?: string;
+  limit?: number;
+}) =>
   queryOptions({
     queryKey: ["transactions", params],
     queryFn: ({ signal }) => apiGet<Transaction[]>("transactions", params, { signal }),
