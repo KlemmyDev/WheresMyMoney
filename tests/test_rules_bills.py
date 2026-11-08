@@ -126,3 +126,26 @@ def test_a_payment_can_become_a_bill_with_the_ones_like_it(client: TestClient, h
 def test_there_are_categories_for_budgeting(client: TestClient, household: dict) -> None:
     names = {c["name"] for c in ok(client.get("/api/categories"))["categories"]}
     assert {"Groceries", "Parking & tolls", "Home maintenance", "Furniture", "Loans", "School fees"} <= names
+
+
+def test_yearly_costs_are_set_aside_for_month_by_month(client: TestClient, household: dict) -> None:
+    def bill(name: str, dollars_: float, every: str, next_due: str) -> None:
+        body = {"name": name, "amount": dollars(dollars_), "every": every, "next_due": next_due}
+        ok(client.post("/api/bills", json={**body, "account_id": household["Bills"]}))
+
+    bill("Rego", 900, "yearly", "2027-05-12")  # last due 12 May 2026: half the year's gone
+    bill("Home insurance", 1800, "yearly", "2026-12-12")  # due in a month: nearly all built up
+    bill("Streaming", 26, "monthly", "2026-11-20")  # monthly: not one to set aside for
+    b = ok(client.get("/api/bills"))
+    s = b["set_aside"]
+    names = [x["name"] for x in s["items"]]
+    assert "Streaming" not in names and names.index("Home insurance") < names.index("Rego")
+    assert names == [x["name"] for x in sorted(s["items"], key=lambda x: x["next_due"])]
+    rego = next(x for x in s["items"] if x["name"] == "Rego")
+    assert rego["per_month"] == dollars(75) and rego["days"] == 181
+    assert rego["built"] == round(dollars(900) * 184 / 365)
+    home = next(x for x in s["items"] if x["name"] == "Home insurance")
+    assert home["built"] == round(dollars(1800) * 335 / 365) and home["next_due"] == "2026-12-12"
+    assert s["per_month"] == sum(x["per_month"] for x in s["items"])
+    assert s["built"] == sum(x["built"] for x in s["items"])
+    assert b["into_account"] >= 0

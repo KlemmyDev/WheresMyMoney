@@ -23,6 +23,7 @@ import { Dialog, useToast } from "~/features/common/overlay";
 import { accountsQuery, billsQuery, categoriesQuery, refresh } from "~/features/common/queries";
 import type { Account, Bill, Every, SpottedBill, Transaction } from "~/features/common/types";
 import { SpottedBills } from "~/features/bills/Spotted";
+import { YearlyCosts } from "~/features/bills/YearlyCosts";
 import { CategoryPicker } from "~/features/common/CategoryPicker";
 import { Button, ErrorText, Input, Label, PageHead, Pill, Select, Tile, TileTitle, cn } from "~/features/common/ui";
 
@@ -124,6 +125,7 @@ export function BillsPage() {
           </div>
         </Details>
       </Card>
+      <YearlyCosts b={b} />
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,520px),1fr))] gap-4">
         {acct && t && (
           <Tile i={4} aria-labelledby="bl-bal">
@@ -273,6 +275,7 @@ export function BillDialog({
   bill,
   spotted,
   fromTx,
+  yearly,
   onClose,
 }: {
   bill: Bill | "new" | null;
@@ -280,6 +283,8 @@ export function BillDialog({
   spotted?: SpottedBill | null;
   /** A payment to make a bill from: it (and the merchant's others like it) become part of the bill. */
   fromTx?: Transaction | null;
+  /** A cost that comes once a year, like Christmas or the holidays, to set money aside for. */
+  yearly?: boolean;
   onClose: () => void;
 }) {
   return (
@@ -290,6 +295,7 @@ export function BillDialog({
           bill={bill}
           spotted={spotted}
           fromTx={fromTx}
+          yearly={yearly}
           onClose={onClose}
         />
       )}
@@ -325,11 +331,13 @@ function BillForm({
   bill,
   spotted,
   fromTx,
+  yearly,
   onClose,
 }: {
   bill: Bill | "new";
   spotted?: SpottedBill | null;
   fromTx?: Transaction | null;
+  yearly?: boolean;
   onClose: () => void;
 }) {
   const qc = useQueryClient();
@@ -364,10 +372,10 @@ function BillForm({
           ? {
               name: "",
               amount: "",
-              every: "monthly" as Every,
+              every: (yearly ? "yearly" : "monthly") as Every,
               next_due: todayIso(),
               account_id: String(banks.find((a) => a.role === "bills")?.id ?? ""),
-              how: "auto",
+              how: yearly ? "estimate" : "auto",
               category_id: "",
               match: "",
             }
@@ -419,10 +427,18 @@ function BillForm({
           ? "Add a spotted bill"
           : fromTx
             ? "Make it a recurring bill"
-            : bill === "new"
-              ? "Add a bill"
-              : f.name || "Bill"}
+            : yearly
+              ? "Add a yearly cost"
+              : bill === "new"
+                ? "Add a bill"
+                : f.name || "Bill"}
       </h2>
+      {yearly && (
+        <div className="text-[13px] text-ink-2">
+          Something that comes once a year, like Christmas, the holidays or the car&apos;s service. Give it a rough
+          amount and when it&apos;s next due, and the Bills page works out what to put aside each month.
+        </div>
+      )}
       {fromTx && (
         <div className="text-[13px] text-ink-2">
           This payment, and earlier ones to {fromTx.remember_as || fromTx.merchant} for about the same amount, become
@@ -443,7 +459,7 @@ function BillForm({
             className="font-sans"
             value={f.name}
             onChange={(e) => setF({ ...f, name: e.target.value })}
-            placeholder="Internet"
+            placeholder={yearly ? "Christmas" : "Internet"}
           />
         </div>
         <div>

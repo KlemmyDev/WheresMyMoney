@@ -23,6 +23,7 @@ from app.features.spending import merchants
 HOW = ("auto", "manual", "estimate")
 DISMISSED = "bill_dismissed:"  # kv: a suggestion (or update) the household said no to
 LOOK_BACK_MONTHS = 25
+OCCASIONAL = ("quarterly", "term", "half-yearly", "yearly")  # a few times a year or less: worth setting aside for
 MAX_NAME = 60
 
 
@@ -180,6 +181,43 @@ class BillsService:
             )
         return out
 
+    def set_aside(self) -> dict[str, Any]:
+        """The bills that come a few times a year or less (quarterly, a term, half-yearly, yearly) and setting money
+        aside for them: each one's monthly share, and how much of it should be built up by now (its share of the time
+        since it was last due), so it's all there when it lands. Soonest first."""
+        today = dates.today()
+        items = []
+        for b in self.all():
+            if b.every not in OCCASIONAL:
+                continue
+            nxt = b.next_due(today)
+            last = dates.last_on_or_before(dates.parse(b.anchor), b.every, today - dt.timedelta(days=1))
+            if last is None or last >= nxt:
+                last = dates.step(nxt, b.every, -1)
+            period = max((nxt - last).days, 1)
+            elapsed = min(max((today - last).days, 0), period)
+            items.append(
+                {
+                    "bill_id": b.id,
+                    "name": b.name,
+                    "amount": b.amount,
+                    "every": b.every,
+                    "how": b.how,
+                    "account_id": b.account_id,
+                    "next_due": nxt.isoformat(),
+                    "days": (nxt - today).days,
+                    "per_month": round(b.per_year / 12),
+                    "built": round(b.amount * elapsed / period),
+                }
+            )
+        items.sort(key=lambda x: (x["next_due"], -int(x["amount"])))
+        return {
+            "items": items,
+            "per_year": sum(int(x["amount"]) * dates.PER_YEAR[str(x["every"])] for x in items),
+            "per_month": sum(int(x["per_month"]) for x in items),
+            "built": sum(int(x["built"]) for x in items),
+        }
+
     def overview(self, bills_account: dict[str, Any] | None) -> dict[str, Any]:
         """The Bills page: every bill, what they come to, the buffer against its target, and the months ahead."""
         bills = self.all()
@@ -202,6 +240,7 @@ class BillsService:
             },
             "by_month": self.by_month(),
             "account": bills_account,
+            "set_aside": self.set_aside(),
         }
 
     def link(self, bill_id: int, tx_id: int) -> int:
