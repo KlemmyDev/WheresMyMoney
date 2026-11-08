@@ -3,7 +3,7 @@
  * the months ahead as a heat strip, and every bill with how often, when next, and how it's paid.
  */
 import { Loading } from "~/features/common/brand";
-import { Bar, BigNumber, Card, Eyebrow, Stat } from "~/features/common/ds";
+import { Bar, BigNumber, Card, Details, Eyebrow, Stat } from "~/features/common/ds";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type CSSProperties } from "react";
 import { apiGet, apiSend, errorMessage } from "~/features/common/api";
@@ -37,7 +37,7 @@ export function BillsPage() {
   return (
     <>
       <PageHead
-        over={acct && t ? `BILLS ACCOUNT · TARGET ${t.months} MONTHS` : "BILLS"}
+        over={acct && t ? `Money · keeping ${t.months} months of bills` : "Money"}
         title="Bills"
         actions={
           <Button primary onClick={() => setEditing("new")}>
@@ -52,18 +52,25 @@ export function BillsPage() {
             <BigNumber className="mt-1">
               <Count k="bills:bal" value={acct?.balance ?? 0} format={(v) => money(v)} />
             </BigNumber>
-            {t && (
-              <div className="mt-1 text-[13px] text-ink-3">
-                {held.toFixed(1)} months of bills held · aim {t.months}
-              </div>
-            )}
           </div>
-          {t && <Pill tone={held >= t.months ? "good" : "warn"}>{held >= t.months ? "On aim" : "Below aim"}</Pill>}
+          {t && (
+            <Pill tone={held >= t.months ? "good" : "warn"}>
+              {held >= t.months ? "Enough set aside" : "Running low"}
+            </Pill>
+          )}
         </div>
+        {t && (
+          <p className="m-0 text-[16px] text-ink-2">
+            {(acct?.balance ?? 0) >= t.amount
+              ? `That's enough for ${held.toFixed(1)} months of bills. We keep ${t.months} months, so ${money((acct?.balance ?? 0) - t.amount)} more than that could go to the offset.`
+              : `That's enough for ${held.toFixed(1)} months of bills. We keep ${t.months} months, so it needs ${money(t.amount - (acct?.balance ?? 0))} more.`}{" "}
+            {`${money(b.next30.total)} of bills are due in the next 30 days.`}
+          </p>
+        )}
         {t && (
           <div>
             <Bar
-              label={`${held.toFixed(1)} months held, aim ${t.months}`}
+              label={`Enough for ${held.toFixed(1)} months of bills; we keep ${t.months}`}
               max={Math.max(t.months + 1, held)}
               marker={t.months}
               height={14}
@@ -71,33 +78,35 @@ export function BillsPage() {
             />
             <div className="mt-2 flex justify-between text-[12px] text-ink-3">
               <span>0</span>
-              <span className="text-ink">aim {t.months} months</span>
+              <span className="text-ink">we keep {t.months} months</span>
               <span>{Math.max(t.months + 1, Math.ceil(held))} months</span>
             </div>
           </div>
         )}
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-          <Stat
-            label="Average month"
-            value={money(b.per_month)}
-            note={`${money(b.per_year)} a year · ${b.bills.length} bills`}
-            role="bills"
-          />
-          <Stat
-            label="Next 30 days"
-            value={money(b.next30.total)}
-            note={`${b.next30.count} bills${b.next30.by_hand ? ` · ${b.next30.by_hand} by hand` : ""}`}
-            role="bills"
-          />
-          {t && (
+        <Details label="See the numbers">
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
             <Stat
-              label={(acct?.balance ?? 0) >= t.amount ? "Above aim" : "Below aim"}
-              value={money(Math.abs((acct?.balance ?? 0) - t.amount))}
-              note={`aim ${money(t.amount)}`}
-              role={(acct?.balance ?? 0) >= t.amount ? "savings" : "bills"}
+              label="Bills in a usual month"
+              value={money(b.per_month)}
+              note={`${money(b.per_year)} a year · ${b.bills.length} bills`}
+              role="bills"
             />
-          )}
-        </div>
+            <Stat
+              label="Next 30 days"
+              value={money(b.next30.total)}
+              note={`${b.next30.count} bills${b.next30.by_hand ? ` · ${b.next30.by_hand} by hand` : ""}`}
+              role="bills"
+            />
+            {t && (
+              <Stat
+                label={(acct?.balance ?? 0) >= t.amount ? "Extra" : "Still needed"}
+                value={money(Math.abs((acct?.balance ?? 0) - t.amount))}
+                note={`${t.months} months is ${money(t.amount)}`}
+                role={(acct?.balance ?? 0) >= t.amount ? "savings" : "bills"}
+              />
+            )}
+          </div>
+        </Details>
       </Card>
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,520px),1fr))] gap-4">
         {acct && t && (
@@ -112,12 +121,12 @@ export function BillsPage() {
                   </span>
                   <span className="inline-flex items-center gap-1.5">
                     <i className="w-3.5 border-t-2 border-dashed border-ink-2" />
-                    Target {money(t.amount)}
+                    {t.months} months ({money(t.amount)})
                   </span>
                 </span>
               }
             >
-              Bills account vs {t.months}-month target
+              The bills account over time
             </TileTitle>
             <AreaLine
               values={(history.data?.history ?? []).map(([, v]) => v)}

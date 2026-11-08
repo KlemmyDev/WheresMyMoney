@@ -4,7 +4,7 @@
  * with how it went at the last check-in or import. The app never moves money itself.
  */
 import { Loading } from "~/features/common/brand";
-import { Banner, Card, EmptyState } from "~/features/common/ds";
+import { Banner, Card, EmptyState, Details } from "~/features/common/ds";
 import { Chip as IconChip, I, type Glyph, type Tone } from "~/features/common/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -48,9 +48,44 @@ export function ruleWhat(r: Rule, names: Record<number, string>): string {
   const from = names[r.from_account ?? 0] ?? "?";
   const to = names[r.to_account ?? 0] ?? "?";
   if (r.kind === "pay") return `Pay lands in ${to}`;
-  if (r.kind === "top_up") return `Top ${to} up to ${money(r.amount)} from ${from}`;
-  if (r.kind === "sweep") return `Sweep ${from} over ${r.amount / 100} months to ${to}`;
-  return `${from} → ${to}`;
+  if (r.kind === "top_up") return `Top ${to} back up to ${money(r.amount)} from ${from}`;
+  if (r.kind === "sweep") return `Anything over ${r.amount / 100} months of bills in ${from} goes back to ${to}`;
+  return `${from} to ${to}`;
+}
+
+/** The household's rules as a few plain sentences. */
+function plan(rules: Rule[], names: Record<number, string>, surplus: number): string {
+  const on = rules.filter((r) => r.enabled);
+  const pay = on.find((r) => r.kind === "pay");
+  const moves = on.filter((r) => r.kind === "transfer");
+  const top = on.find((r) => r.kind === "top_up");
+  const sweep = on.find((r) => r.kind === "sweep");
+  const out: string[] = [];
+  if (pay)
+    out.push(
+      `Pay lands in ${names[pay.to_account ?? 0] ?? "an account"} every ${EVERY_LABEL[pay.every].toLowerCase()}.`,
+    );
+  if (moves.length) {
+    const list = moves.map((r) => `${money(r.amount)} goes to ${names[r.to_account ?? 0] ?? "another account"}`);
+    out.push(
+      `${pay ? "Then " : "Each time, "}${list.length > 1 ? `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}` : list[0]}.`,
+    );
+  }
+  if (top)
+    out.push(
+      `${names[top.to_account ?? 0] ?? "Spending"} is topped back up to ${money(top.amount)} each month, on ${shortDate(top.next_run)} next.`,
+    );
+  if (sweep)
+    out.push(
+      `Anything over ${sweep.amount / 100} months of bills goes back to ${names[sweep.to_account ?? 0] ?? "the offset"}.`,
+    );
+  if (surplus)
+    out.push(
+      surplus > 0
+        ? `In a usual month that leaves about ${money(surplus)} more in the offset.`
+        : `In a usual month more goes out than comes in, by about ${money(-surplus)}.`,
+    );
+  return out.join(" ") || "No rules yet. Add the transfers you've set up in uBank, starting with pay.";
 }
 
 export function RulesPage() {
@@ -68,14 +103,13 @@ export function RulesPage() {
   const names = Object.fromEntries(banks.map((a) => [a.id, a.name]));
   const colours = Object.fromEntries(banks.map((a) => [a.id, a.colour]));
   const { rules, payday, month } = q.data;
-  const transfers = rules.filter((r) => r.kind !== "pay").length;
   const monthly = rules.filter((r) => r.enabled && (r.kind === "top_up" || r.kind === "sweep"));
   const differed = rules.find((r) => r.last_status === "differed");
   const problem = rules.find((r) => r.enabled && (r.last_status === "missing" || r.last_status === "differed"));
   return (
     <>
       <PageHead
-        over={`${rules.length} RULES · ${transfers} TRANSFERS`}
+        over={`Manage · ${rules.length} rules`}
         title="Rules"
         actions={
           <Button primary onClick={() => setEditing("new")}>
@@ -98,132 +132,132 @@ export function RulesPage() {
           nothing to do; if the bank transfer changed, change the rule to match.
         </Banner>
       ) : (
-        <Card lit tint="accent" aria-label="How rules work">
-          <div className="flex items-center gap-3.5">
-            <IconChip g={I.shield} tone="savings" size="lg" />
-            <span className="min-w-0 flex-1">
-              <span className="block text-[17px] font-semibold">
-                {rules.some((r) => r.last_status) ? "Every rule added up at the last check-in" : "Rules are your plan"}
-              </span>
-              <span className="block text-[13px] text-ink-3">
-                Set each transfer up once as a scheduled transfer in your banking app. At every check-in the app
-                compares what you typed with what the rules expected, and flags anything that doesn't add up. It never
-                moves money.
-              </span>
-            </span>
+        <Card lit tint="accent" aria-labelledby="r-plan">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 id="r-plan" className="m-0 text-[19px] font-semibold">
+              What happens with our money
+            </h2>
+            {rules.some((r) => r.last_status) && <Pill tone="good">All added up at the last check-in</Pill>}
           </div>
+          <p className="m-0 text-[16px] leading-relaxed text-ink-2">{plan(rules, names, month.surplus)}</p>
+          <p className="m-0 text-[13px] text-ink-3">
+            These are set up as scheduled transfers in uBank. The app never moves money itself: at each check-in it
+            checks they happened, and says if one didn't.
+          </p>
         </Card>
       )}
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,520px),1fr))] gap-4">
-        {payday && (
-          <Tile i={1} aria-labelledby="r-pay">
-            <TileTitle id="r-pay" right={<Pill tone="good">{dayDate(payday.date).toUpperCase()}</Pill>}>
-              Next payday
+      <Details label="See the next payday and a usual month">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,520px),1fr))] gap-4">
+          {payday && (
+            <Tile i={1} aria-labelledby="r-pay">
+              <TileTitle id="r-pay" right={<Pill tone="good">{dayDate(payday.date)}</Pill>}>
+                Next payday
+              </TileTitle>
+              {payday.events.map((e, i) => (
+                <div
+                  key={i}
+                  className="grid grid-cols-[34px_1fr_auto] items-center gap-3 rounded-lg bg-raised px-3 py-2.5 text-[13px]"
+                >
+                  <span className="mono text-center text-xs text-ink-3">{e.kind === "pay" ? "IN" : i}</span>
+                  <span>
+                    {e.kind === "pay" ? (
+                      <>
+                        Pay lands in <Chip id={e.to ?? 0} names={names} colours={colours} />
+                      </>
+                    ) : (
+                      <>
+                        <Chip id={e.from ?? 0} names={names} colours={colours} /> →{" "}
+                        <Chip id={e.to ?? 0} names={names} colours={colours} />
+                      </>
+                    )}
+                  </span>
+                  <span className="mono">
+                    {e.kind === "pay" ? "+" : ""}
+                    {money(e.amount)}
+                  </span>
+                </div>
+              ))}
+              <div className="overflow-x-auto">
+                <table className="mono w-full border-collapse text-[13px]">
+                  <thead>
+                    <tr className="text-left text-xs text-ink-3">
+                      <th className="border-b border-line py-2">Account</th>
+                      <th className="border-b border-line py-2 text-right">Now</th>
+                      <th className="border-b border-line py-2 text-right">After payday</th>
+                      <th className="border-b border-line py-2 text-right">Change</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {banks.map((a) => {
+                      const after = payday.after[String(a.id)] ?? a.balance;
+                      const change = after - a.balance;
+                      return (
+                        <tr key={a.id}>
+                          <td className="border-b border-line py-2">
+                            <span className="flex items-center gap-2 font-sans">
+                              <Dot c={a.colour} />
+                              {a.name}
+                            </span>
+                          </td>
+                          <td className="border-b border-line py-2 text-right">{money(a.balance)}</td>
+                          <td className="border-b border-line py-2 text-right">{money(after)}</td>
+                          <td
+                            className="border-b border-line py-2 text-right"
+                            style={{
+                              color:
+                                change > 0
+                                  ? "var(--color-good)"
+                                  : change < 0
+                                    ? "var(--color-warn)"
+                                    : "var(--color-ink-3)",
+                            }}
+                          >
+                            {change ? amount(change, { sign: true }) : "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Tile>
+          )}
+          <Tile i={2} aria-labelledby="r-month">
+            <TileTitle id="r-month" right={<Pill tone="info">A usual month</Pill>}>
+              What a month looks like
             </TileTitle>
-            {payday.events.map((e, i) => (
+            {[
+              ["Pay in", month.pay, true],
+              ["Moved to other accounts", -month.transfers, false],
+              ["Topping up spending (about)", -month.spending, false],
+              ["Bills", -month.bills, false],
+              ["Loan repayment", -month.repayment, false],
+            ].map(([label, v, plus]) => (
               <div
-                key={i}
-                className="grid grid-cols-[34px_1fr_auto] items-center gap-3 rounded-lg bg-raised px-3 py-2.5 text-[13px]"
+                key={String(label)}
+                className="flex justify-between border-t border-line py-2 text-[13px] first:border-t-0"
               >
-                <span className="mono text-center text-xs text-ink-3">{e.kind === "pay" ? "IN" : i}</span>
-                <span>
-                  {e.kind === "pay" ? (
-                    <>
-                      Pay lands in <Chip id={e.to ?? 0} names={names} colours={colours} />
-                    </>
-                  ) : (
-                    <>
-                      <Chip id={e.from ?? 0} names={names} colours={colours} /> →{" "}
-                      <Chip id={e.to ?? 0} names={names} colours={colours} />
-                    </>
-                  )}
-                </span>
-                <span className="mono">
-                  {e.kind === "pay" ? "+" : ""}
-                  {money(e.amount)}
+                <span>{label}</span>
+                <span className="mono" style={{ color: plus ? "var(--color-good)" : undefined }}>
+                  {amount(v as number, { sign: true })}
                 </span>
               </div>
             ))}
-            <div className="overflow-x-auto">
-              <table className="mono w-full border-collapse text-[13px]">
-                <thead>
-                  <tr className="text-left text-xs text-ink-3">
-                    <th className="border-b border-line py-2">Account</th>
-                    <th className="border-b border-line py-2 text-right">Now</th>
-                    <th className="border-b border-line py-2 text-right">After payday</th>
-                    <th className="border-b border-line py-2 text-right">Change</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {banks.map((a) => {
-                    const after = payday.after[String(a.id)] ?? a.balance;
-                    const change = after - a.balance;
-                    return (
-                      <tr key={a.id}>
-                        <td className="border-b border-line py-2">
-                          <span className="flex items-center gap-2 font-sans">
-                            <Dot c={a.colour} />
-                            {a.name}
-                          </span>
-                        </td>
-                        <td className="border-b border-line py-2 text-right">{money(a.balance)}</td>
-                        <td className="border-b border-line py-2 text-right">{money(after)}</td>
-                        <td
-                          className="border-b border-line py-2 text-right"
-                          style={{
-                            color:
-                              change > 0
-                                ? "var(--color-good)"
-                                : change < 0
-                                  ? "var(--color-warn)"
-                                  : "var(--color-ink-3)",
-                          }}
-                        >
-                          {change ? amount(change, { sign: true }) : "—"}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div className="flex justify-between border-t border-line py-2 font-semibold">
+              <span>Left in the offset</span>
+              <span className="mono text-teal">{money(month.surplus, { sign: true })}</span>
             </div>
+            {monthly.map((r) => (
+              <div key={r.id} className="text-xs text-ink-3">
+                {ruleWhat(r, names)}, next {shortDate(r.next_run)}.{" "}
+                {r.kind === "top_up"
+                  ? "Only the difference moves, so whatever wasn't spent stays in the offset."
+                  : "That keeps the offset as big as it can be."}
+              </div>
+            ))}
           </Tile>
-        )}
-        <Tile i={2} aria-labelledby="r-month">
-          <TileTitle id="r-month" right={<Pill tone="info">A USUAL MONTH</Pill>}>
-            What a month looks like
-          </TileTitle>
-          {[
-            ["Pay in", month.pay, true],
-            ["To other accounts", -month.transfers, false],
-            ["Spending top-up (about)", -month.spending, false],
-            ["Bills", -month.bills, false],
-            ["Loan repayment", -month.repayment, false],
-          ].map(([label, v, plus]) => (
-            <div
-              key={String(label)}
-              className="flex justify-between border-t border-line py-2 text-[13px] first:border-t-0"
-            >
-              <span>{label}</span>
-              <span className="mono" style={{ color: plus ? "var(--color-good)" : undefined }}>
-                {amount(v as number, { sign: true })}
-              </span>
-            </div>
-          ))}
-          <div className="flex justify-between border-t border-line py-2 font-semibold">
-            <span>Stays offsetting the loan</span>
-            <span className="mono text-teal">{money(month.surplus, { sign: true })}</span>
-          </div>
-          {monthly.map((r) => (
-            <div key={r.id} className="text-xs text-ink-3">
-              {ruleWhat(r, names)}, next {shortDate(r.next_run)}.{" "}
-              {r.kind === "top_up"
-                ? "Only the difference moves, so whatever wasn't spent stays offsetting."
-                : "What's over the buffer goes back to the offset."}
-            </div>
-          ))}
-        </Tile>
-      </div>
+        </div>
+      </Details>
       <Tile i={3} aria-labelledby="r-all">
         <TileTitle
           id="r-all"

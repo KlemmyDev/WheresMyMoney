@@ -14,7 +14,7 @@ import { loanQuery } from "~/features/common/queries";
 import { Dot, Empty, ErrorText, PageHead, Segmented, Tile, TileTitle } from "~/features/common/ui";
 import { LoanSimulator } from "~/features/accounts/LoanSimulator";
 import { RateChangeSheet, type Spotted } from "~/features/accounts/RateChange";
-import { Banner } from "~/features/common/ds";
+import { Banner, Card, Details } from "~/features/common/ds";
 import { I } from "~/features/common/icons";
 import { useStoredFlag } from "~/features/common/theme";
 import { Button } from "~/features/common/ui";
@@ -55,20 +55,7 @@ export function LoanPage() {
       <PageHead
         over={`HOME LOAN${lo.rate_bp != null ? ` · ${(lo.rate_bp / 100).toFixed(2)}%` : ""}${goal ? ` · GOAL ${monthYear(goal).toUpperCase()}` : ""}`}
         title="Loan and offset"
-        actions={
-          <span className="flex flex-wrap items-center gap-2">
-            <Button onClick={() => setRateOpen(true)}>Rate changed?</Button>
-            <Segmented
-              label="Pace"
-              options={[
-                { value: "recent", label: "Recent pace" },
-                { value: "planned", label: "Planned saving" },
-              ]}
-              value={mode}
-              onChange={setMode}
-            />
-          </span>
-        }
+        actions={<Button onClick={() => setRateOpen(true)}>Rate changed?</Button>}
       />
       {spotted && (
         <Banner
@@ -101,42 +88,48 @@ export function LoanPage() {
         v={v}
         spotted={spotted}
       />
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fit,minmax(190px,1fr))] sm:gap-4">
-        <Fig
-          i={0}
-          title="Loan balance"
-          value={money(lo.balance)}
-          sub={`−${money(Math.max(v.principal_per_month, 0))} a month in principal`}
-        />
-        <Fig
-          i={1}
-          title="Offsetting"
-          value={money(v.offsetting)}
-          sub={`${pct(v.coverage)} · ${v.by_account.length} accounts`}
-        />
-        <Fig
-          i={2}
-          title="Interest charged on"
-          value={money(Math.max(lo.balance - v.offsetting, 0))}
-          sub={`≈ ${money(v.charged_per_month)} this month`}
-        />
-        <Fig
-          i={3}
-          title="Rate"
-          value={`${((lo.rate_bp ?? 0) / 100).toFixed(2)}%`}
-          sub={`saving ${money(v.interest_per_day, { cents: true })} a day`}
-        />
-        <Fig i={4} title="Repayment" value={money(lo.repayment)} sub="monthly" />
-      </div>
-      {lo.rate_bp != null && lo.repayment ? (
-        <LoanSimulator
-          balance={lo.balance}
-          offsetting={v.offsetting}
-          rateBp={lo.rate_bp}
-          repayment={lo.repayment}
-          recentGrowth={v.monthly_growth}
-        />
-      ) : null}
+      <Card lit className="flex flex-col gap-2">
+        <p className="m-0 text-[17px] leading-relaxed text-ink">
+          We owe <b>{money(lo.balance)}</b> on the {lo.name.toLowerCase()}. Our accounts hold {money(v.offsetting)}{" "}
+          against it, so interest is only charged on the other {money(Math.max(lo.balance - v.offsetting, 0))}. That
+          saves about <b>{money(v.interest_per_day, { cents: true })} a day</b>.
+        </p>
+        <p className="m-0 text-[15px] text-ink-2">
+          {v.recent.date
+            ? `At the rate our accounts have been growing, they'll match the loan by ${monthYear(v.recent.date)}, and then no interest is charged at all.`
+            : "At the rate our accounts have been growing, they won't catch up with the loan yet."}
+        </p>
+        <Details label="See the figures">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fit,minmax(190px,1fr))] sm:gap-4">
+            <Fig
+              i={0}
+              title="Loan balance"
+              value={money(lo.balance)}
+              sub={`−${money(Math.max(v.principal_per_month, 0))} a month in principal`}
+            />
+            <Fig i={1} title="Our accounts" value={money(v.offsetting)} sub={`cover ${pct(v.coverage)} of the loan`} />
+            <Fig
+              i={2}
+              title="Charged interest on"
+              value={money(Math.max(lo.balance - v.offsetting, 0))}
+              sub={`≈ ${money(v.charged_per_month)} this month`}
+            />
+            <Fig i={3} title="Rate" value={`${((lo.rate_bp ?? 0) / 100).toFixed(2)}%`} sub="a year, variable" />
+            <Fig i={4} title="Repayment" value={money(lo.repayment)} sub="monthly" />
+          </div>
+        </Details>
+        {lo.rate_bp != null && lo.repayment ? (
+          <Details label="What if we paid more, or the rate moved?">
+            <LoanSimulator
+              balance={lo.balance}
+              offsetting={v.offsetting}
+              rateBp={lo.rate_bp}
+              repayment={lo.repayment}
+              recentGrowth={v.monthly_growth}
+            />
+          </Details>
+        ) : null}
+      </Card>
       <Tile i={5} aria-labelledby="ln-proj">
         <TileTitle
           id="ln-proj"
@@ -153,26 +146,35 @@ export function LoanPage() {
             </span>
           }
         >
-          Projection · loan vs offset
+          When our accounts match the loan
         </TileTitle>
+        <Segmented
+          label="Growth"
+          options={[
+            { value: "recent", label: "As lately" },
+            { value: "planned", label: "As planned" },
+          ]}
+          value={mode}
+          onChange={setMode}
+        />
         <Projection points={p.points} date={p.date} goal={goal} />
         <div className="text-[13px] text-ink-2">
           {p.date ? (
             <>
-              At {mode === "recent" ? "the recent pace" : "the planned saving"} (
-              {money(mode === "recent" ? v.monthly_growth : v.planned_growth)} a month more offsetting), the loan is
-              fully offset by <b className="text-ink">{monthYear(p.date)}</b>
+              If our accounts keep growing by {money(mode === "recent" ? v.monthly_growth : v.planned_growth)} a month (
+              {mode === "recent" ? "as they have lately" : "as the rules plan"}), they match the loan by{" "}
+              <b className="text-ink">{monthYear(p.date)}</b>
               {goal ? `, ${goalGap(p.date, goal)} your ${monthYear(goal)} goal` : ""}.
             </>
           ) : (
-            "At this pace the offsets don't catch up with the loan. Planned saving uses the rules' monthly surplus instead."
+            'At this rate our accounts don\'t catch up with the loan. "As planned" uses what the rules leave in the offset each month instead.'
           )}
         </div>
       </Tile>
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,440px),1fr))] gap-4">
         <Tile i={6} aria-labelledby="ln-acc">
           <TileTitle id="ln-acc" right={<span className="mono">{pct(v.coverage)}</span>}>
-            Coverage by account
+            How much each account covers
           </TileTitle>
           {v.by_account.map((a, i) => (
             <div key={a.id} className="grid grid-cols-[110px_1fr_150px] items-center gap-3 text-[13px]">

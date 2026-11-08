@@ -8,7 +8,18 @@ import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { apiSend, errorMessage } from "~/features/common/api";
 import { Loading } from "~/features/common/brand";
-import { BigNumber, Card, CardHead, ChoiceChip, EmptyState, Eyebrow, ROLE, Sheet, Stat } from "~/features/common/ds";
+import {
+  BigNumber,
+  Card,
+  CardHead,
+  ChoiceChip,
+  EmptyState,
+  Eyebrow,
+  ROLE,
+  Sheet,
+  Stat,
+  Details,
+} from "~/features/common/ds";
 import { money, monthYear, parseMoney } from "~/features/common/format";
 import { Chip, I, type Glyph, type Tone } from "~/features/common/icons";
 import {
@@ -320,13 +331,13 @@ function Plan({
 
       <div className="grid grid-cols-2 gap-2.5 md:col-span-12 md:grid-cols-4">
         <Stat
-          label={`Earliest that lasts to ${s.plan_to}`}
+          label="Earliest we could stop"
           value={first ? `Age ${first}` : "After 70"}
-          note="at this spending"
+          note={`and still have enough until ${s.plan_to}`}
           role="savings"
         />
         <Stat
-          label="Put away by then"
+          label="Saved by then"
           value={res.atRetire ? k(res.atRetire.super + res.atRetire.etfs) : "—"}
           note={res.atRetire ? `${k(res.atRetire.super)} super, ${k(res.atRetire.etfs)} ETFs` : undefined}
           role="invest"
@@ -411,38 +422,41 @@ function Plan({
             </Link>
           }
         />
-        <p className="m-0 -mt-1 text-[12px] text-ink-3">A year. The right-hand figure is after fees and inflation.</p>
-        {[
-          ...people.map((p) => {
-            const t = fundTerms(p, inputs);
-            return [
-              `${p.person}'s super${p.fund ? `, ${p.fund}` : ""}`,
-              `${pct(t.ret)} before fees · ${pct(t.pct)} + ${money(t.fixed)} a year in fees`,
-              `${pct(t.real, 1)}`,
-            ];
-          }),
-          [
-            "ETFs",
-            `${pct(inputs.etfReturn)} before fees · ${pct(etfFee)} in fees`,
-            pct((1 + inputs.etfReturn - etfFee) / (1 + inputs.inflation) - 1, 1),
-          ],
-          ["Inflation", "Taken out, so it's all in today's dollars", pct(inputs.inflation)],
-          ["Tax on money going in", "Employer and extra contributions", pct(inputs.contribTax)],
-          ["Into ETFs while working", "Your pace over the last year", `${k(etfPerYear)}/yr`],
-          ["Loan repayments until gone", "From Loan and offset", loanEnds ? `${k(loanRepayment)}/yr` : "No loan"],
-          ["Plan to", "How long the money should last", `Age ${s.plan_to}`],
-        ].map(([n, sb, v]) => (
-          <div key={n} className="flex items-center gap-3 border-t border-line py-2.5 first:border-t-0">
-            <span className="min-w-0 flex-1">
-              <span className="block text-[14px]">{n}</span>
-              <span className="block text-[12px] text-ink-3">{sb}</span>
-            </span>
-            <span className="num text-[14px]">{v}</span>
-          </div>
-        ))}
-        <p className="m-0 mt-1 text-[12px] text-ink-3">
-          The age pension isn't counted, so this errs on the careful side.
+        <p className="m-0 text-[14px] text-ink-2">
+          Growth of about {pct(fundTerms(people[0], inputs).real, 1)} a year for {people[0].person}'s super after fees
+          and rising prices, spending of {k(s.spending)} a year, and no age pension, so it errs on the careful side.
         </p>
+        <Details label="See every assumption">
+          <p className="m-0 -mt-1 text-[12px] text-ink-3">A year. The right-hand figure is after fees and inflation.</p>
+          {[
+            ...people.map((p) => {
+              const t = fundTerms(p, inputs);
+              return [
+                `${p.person}'s super${p.fund ? `, ${p.fund}` : ""}`,
+                `${pct(t.ret)} before fees · ${pct(t.pct)} + ${money(t.fixed)} a year in fees`,
+                `${pct(t.real, 1)}`,
+              ];
+            }),
+            [
+              "ETFs",
+              `${pct(inputs.etfReturn)} before fees · ${pct(etfFee)} in fees`,
+              pct((1 + inputs.etfReturn - etfFee) / (1 + inputs.inflation) - 1, 1),
+            ],
+            ["Inflation", "Taken out, so it's all in today's dollars", pct(inputs.inflation)],
+            ["Tax on money going in", "Employer and extra contributions", pct(inputs.contribTax)],
+            ["Into ETFs while working", "Your pace over the last year", `${k(etfPerYear)}/yr`],
+            ["Loan repayments until gone", "From Loan and offset", loanEnds ? `${k(loanRepayment)}/yr` : "No loan"],
+            ["Plan to", "How long the money should last", `Age ${s.plan_to}`],
+          ].map(([n, sb, v]) => (
+            <div key={n} className="flex items-center gap-3 border-t border-line py-2.5 first:border-t-0">
+              <span className="min-w-0 flex-1">
+                <span className="block text-[14px]">{n}</span>
+                <span className="block text-[12px] text-ink-3">{sb}</span>
+              </span>
+              <span className="num text-[14px]">{v}</span>
+            </div>
+          ))}
+        </Details>
       </Card>
 
       <Card aria-labelledby="rt-miles" className="flex flex-col gap-2 md:col-span-12">
