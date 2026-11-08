@@ -11,7 +11,8 @@ import { refresh, settingsQuery } from "~/features/common/queries";
 import { useToast } from "~/features/common/overlay";
 import { Link } from "@tanstack/react-router";
 import { Chip, I } from "~/features/common/icons";
-import { useTheme, type ThemeChoice } from "~/features/common/theme";
+import { useStoredFlag, useTheme, type ThemeChoice } from "~/features/common/theme";
+import { EVERYTHING } from "~/features/common/ds";
 import { useHidden } from "~/features/dashboard/OverviewParts";
 import { RetirementSettingsPanel } from "~/features/retirement/Assumptions";
 import {
@@ -42,7 +43,7 @@ const SECTIONS = [
   ["developers", "Developers", "Read-only API keys", I.rules, "offset"],
   ["updates", "Updates and backups", "Channel, versions, restore", I.shield, "savings"],
   ["retirement", "Retirement", "Returns, fees, inflation", I.retire, "savings"],
-  ["appearance", "Appearance", "Dark, light, privacy", I.settings, "neutral"],
+  ["appearance", "Appearance", "How much to show, dark or light", I.settings, "neutral"],
 ] as const;
 
 export function SettingsPage() {
@@ -778,6 +779,7 @@ function Updates() {
 function Appearance() {
   const [theme, setTheme] = useTheme();
   const [hidden, setHidden] = useHidden();
+  const [everything, setEverything] = useStoredFlag(EVERYTHING);
   const themes: { value: ThemeChoice; label: string; bg: string; card: string }[] = [
     { value: "dark", label: "Dark", bg: "#0a0b12", card: "#171827" },
     { value: "light", label: "Light", bg: "#ebebe7", card: "#ffffff" },
@@ -789,47 +791,84 @@ function Appearance() {
     },
   ];
   return (
-    <Tile aria-labelledby="ap-h">
-      <TileTitle id="ap-h">Appearance</TileTitle>
-      <div role="radiogroup" aria-label="Theme" className="grid gap-3 sm:grid-cols-3">
-        {themes.map((t) => (
-          <button
-            key={t.value}
-            type="button"
-            role="radio"
-            aria-checked={theme === t.value}
-            onClick={() => setTheme(t.value)}
-            className={cn(
-              "press flex cursor-pointer flex-col gap-2.5 rounded-[18px] border bg-tile-2 p-2.5 text-left text-[14px] font-semibold",
-              theme === t.value
-                ? "border-teal text-ink shadow-[0_0_0_1px_var(--color-teal)]"
-                : "border-line text-ink-2",
-            )}
-          >
-            <span aria-hidden className="flex h-20 gap-1.5 rounded-xl p-2.5" style={{ background: t.bg }}>
-              <span className="flex-1 rounded-md" style={{ background: t.card }} />
-              <span className="flex-[2] rounded-md" style={{ background: t.card }} />
-            </span>
-            {t.label}
-          </button>
-        ))}
-      </div>
-      <Row>
-        <span>
-          <span className="block">Hide balances when the app opens</span>
-          <span className="block text-[13px] text-ink-3">Tap the eye on the Overview to show them</span>
-        </span>
-        <Switch checked={hidden} onChange={setHidden} label="Hide balances" />
-      </Row>
-      <Row>
-        <span>
-          <span className="block">Design system</span>
-          <span className="block text-[13px] text-ink-3">Every colour and component, live</span>
-        </span>
-        <Link to="/design" className="text-[14px] font-semibold text-teal no-underline">
-          Open
-        </Link>
-      </Row>
-    </Tile>
+    <>
+      <Tile aria-labelledby="ap-show">
+        <TileTitle id="ap-show">How much to show</TileTitle>
+        <p className="m-0 text-[14px] text-ink-3">
+          Just for you, on this device. Everyone in the house can choose their own.
+        </p>
+        <div role="radiogroup" aria-label="How much to show" className="grid gap-3 sm:grid-cols-2">
+          {(
+            [
+              [
+                false,
+                "The essentials",
+                "Each page says what it means in a sentence. Charts and breakdowns are a tap away.",
+              ],
+              [true, "Everything", "Every chart, breakdown and what-if is open, for whoever likes the detail."],
+            ] as const
+          ).map(([v, title, sub]) => (
+            <button
+              key={title}
+              type="button"
+              role="radio"
+              aria-checked={everything === v}
+              onClick={() => setEverything(v)}
+              className={cn(
+                "press flex cursor-pointer flex-col gap-1 rounded-[18px] border bg-tile-2 p-4 text-left",
+                everything === v
+                  ? "border-teal text-ink shadow-[0_0_0_1px_var(--color-teal)]"
+                  : "border-line text-ink-2",
+              )}
+            >
+              <span className="text-[16px] font-semibold text-ink">{title}</span>
+              <span className="text-[13px] text-ink-3">{sub}</span>
+            </button>
+          ))}
+        </div>
+      </Tile>
+      <Tile aria-labelledby="ap-h">
+        <TileTitle id="ap-h">Appearance</TileTitle>
+        <div role="radiogroup" aria-label="Theme" className="grid gap-3 sm:grid-cols-3">
+          {themes.map((t) => (
+            <button
+              key={t.value}
+              type="button"
+              role="radio"
+              aria-checked={theme === t.value}
+              onClick={() => setTheme(t.value)}
+              className={cn(
+                "press flex cursor-pointer flex-col gap-2.5 rounded-[18px] border bg-tile-2 p-2.5 text-left text-[14px] font-semibold",
+                theme === t.value
+                  ? "border-teal text-ink shadow-[0_0_0_1px_var(--color-teal)]"
+                  : "border-line text-ink-2",
+              )}
+            >
+              <span aria-hidden className="flex h-20 gap-1.5 rounded-xl p-2.5" style={{ background: t.bg }}>
+                <span className="flex-1 rounded-md" style={{ background: t.card }} />
+                <span className="flex-[2] rounded-md" style={{ background: t.card }} />
+              </span>
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <Row>
+          <span>
+            <span className="block">Hide balances when the app opens</span>
+            <span className="block text-[13px] text-ink-3">Tap the eye on the Overview to show them</span>
+          </span>
+          <Switch checked={hidden} onChange={setHidden} label="Hide balances" />
+        </Row>
+        <Row>
+          <span>
+            <span className="block">Design system</span>
+            <span className="block text-[13px] text-ink-3">Every colour and component, live</span>
+          </span>
+          <Link to="/design" className="text-[14px] font-semibold text-teal no-underline">
+            Open
+          </Link>
+        </Row>
+      </Tile>
+    </>
   );
 }
