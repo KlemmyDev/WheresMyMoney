@@ -5,20 +5,18 @@
  * spent each day as bars, pay and bills underneath; hover or arrow through any day to see it on the right), where the
  * money went by category, and what's still to come before the next top-up.
  */
+import { TodayCard } from "~/features/dashboard/Today";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { errorMessage } from "~/features/common/api";
 import { Loading } from "~/features/common/brand";
-import { Banner } from "~/features/common/ds";
 import { money, parseDate } from "~/features/common/format";
-import { I } from "~/features/common/icons";
-import { useActions } from "~/features/common/layout";
 import { dashboardQuery } from "~/features/common/queries";
 import type { Dashboard, SpendingMonth } from "~/features/common/types";
-import { Button, Empty, ErrorText } from "~/features/common/ui";
-import { AccountsCard, BalanceHero, GoalsCard, QuickActions } from "~/features/dashboard/OverviewParts";
-import { ComingUp, MonthCard, RecentActivity, SafeCard, WhereItWent } from "~/features/dashboard/OverviewMonth";
+import { Empty, ErrorText } from "~/features/common/ui";
+import { BalanceHero, GoalsCard, QuickActions } from "~/features/dashboard/OverviewParts";
+import { ComingUp, MonthCard, RecentActivity, WhereItWent } from "~/features/dashboard/OverviewMonth";
 
 type Event = { kind: "pay" | "bill" | "topup"; name: string; amount: number | null; how: string };
 
@@ -120,7 +118,6 @@ function buildMonth(d: Dashboard, s: SpendingMonth): Month {
 
 export function DashboardPage() {
   const q = useQuery(dashboardQuery("30d"));
-  const actions = useActions();
   const [sel, setSel] = useState<number | null>(null);
   if (q.isError) return <ErrorText>{errorMessage(q.error)}</ErrorText>;
   const d = q.data;
@@ -139,51 +136,11 @@ export function DashboardPage() {
       </Empty>
     );
   const s = d.spending;
-  const checkinDue = d.checkin.next <= d.today && d.checkin.last?.date !== d.today;
-  const flag = d.checkin.flags[0];
-  const banner = (checkinDue || flag) && (
-    <Banner
-      g={flag ? I.rules : I.shield}
-      tone={flag ? "bills" : "offset"}
-      title={
-        flag
-          ? `${flag.account} was ${money(Math.abs(flag.difference))} ${flag.difference < 0 ? "short" : "over"}`
-          : "Check-in due"
-      }
-      action={
-        <Button primary onClick={actions.checkin}>
-          Check in
-        </Button>
-      }
-    >
-      {flag
-        ? `At the last check-in${flag.rule ? `: the ${flag.rule.label || "transfer"} didn't add up` : ""}.`
-        : `${d.accounts.length} balances, about 30 seconds.`}
-    </Banner>
-  );
   const m = s ? buildMonth(d, s) : null;
+  // Plain answers first (Today), then the month, what's coming and where it went, then the accounts in detail.
   return (
     <>
-      {banner}
-      <div className="grid gap-4 md:grid-cols-12 [&>*]:min-w-0">
-        <BalanceHero d={d} />
-        {s ? (
-          <SafeCard s={s} />
-        ) : (
-          <div className="md:col-span-4">
-            <Empty
-              title="No spending account yet"
-              action={
-                <Link to="/accounts" className="text-teal">
-                  Give an account the spending role
-                </Link>
-              }
-            >
-              Safe to spend follows your spending month.
-            </Empty>
-          </div>
-        )}
-      </div>
+      <TodayCard d={d} m={m} />
       <QuickActions />
       {s && m && (
         <>
@@ -195,8 +152,10 @@ export function DashboardPage() {
         </>
       )}
       <div className="grid gap-4 md:grid-cols-12 [&>*]:min-w-0">
-        <RecentActivity />
-        <AccountsCard d={d} />
+        <BalanceHero d={d} />
+        <div className="md:col-span-4">
+          <RecentActivity />
+        </div>
       </div>
       <GoalsCard d={d} />
     </>
