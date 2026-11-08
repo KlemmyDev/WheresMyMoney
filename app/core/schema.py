@@ -205,6 +205,14 @@ def _one_offs(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE transactions ADD COLUMN one_off INTEGER NOT NULL DEFAULT 0")
 
 
+def _merchant_book(conn: sqlite3.Connection) -> None:
+    """merchant_aliases: a statement name (transactions.merchant) the household mapped to a merchant other than the
+    one it gets by itself. merchant_names: a merchant's name, where the household chose one. Both by merchant key
+    (app.features.spending.directory)."""
+    conn.execute("CREATE TABLE IF NOT EXISTS merchant_aliases (text TEXT PRIMARY KEY, key TEXT NOT NULL)")
+    conn.execute("CREATE TABLE IF NOT EXISTS merchant_names (key TEXT PRIMARY KEY, name TEXT NOT NULL)")
+
+
 def _investments(conn: sqlite3.Connection) -> None:
     """Investments: the ETFs held, entered by hand as they're bought and sold.
 
@@ -333,4 +341,5 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _budget_categories,
     _push_only,
     _one_offs,
+    _merchant_book,
 ]

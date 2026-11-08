@@ -9,7 +9,9 @@ import type {
   BillUpdate,
   BillsOverview,
   Category,
+  MerchantDetail,
   MerchantGroup,
+  MerchantSummary,
   Dashboard,
   RulesOverview,
   SpendingMonth,
@@ -120,6 +122,18 @@ export const merchantsQuery = (all: boolean) =>
   queryOptions({
     queryKey: ["merchants", all],
     queryFn: ({ signal }) => apiGet<MerchantGroup[]>("merchants", all ? { all: true } : undefined, { signal }),
+  });
+
+export const merchantDirectoryQuery = queryOptions({
+  queryKey: ["merchants", "directory"],
+  queryFn: ({ signal }) => apiGet<MerchantSummary[]>("merchants/directory", undefined, { signal }),
+});
+
+export const merchantQuery = (key: string) =>
+  queryOptions({
+    queryKey: ["merchants", "directory", key],
+    queryFn: ({ signal }) =>
+      apiGet<MerchantDetail>(`merchants/directory/${encodeURIComponent(key)}`, undefined, { signal }),
   });
 
 export const categoriesQuery = queryOptions({

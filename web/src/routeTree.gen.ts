@@ -19,6 +19,7 @@ import { Route as AppDesignRouteImport } from './routes/_app/design'
 import { Route as AppImportRouteImport } from './routes/_app/import'
 import { Route as AppInvestmentsRouteImport } from './routes/_app/investments'
 import { Route as AppLoanRouteImport } from './routes/_app/loan'
+import { Route as AppMerchantsRouteImport } from './routes/_app/merchants'
 import { Route as AppNetWorthRouteImport } from './routes/_app/net-worth'
 import { Route as AppRetirementRouteImport } from './routes/_app/retirement'
 import { Route as AppRulesRouteImport } from './routes/_app/rules'
@@ -27,6 +28,7 @@ import { Route as AppSortRouteImport } from './routes/_app/sort'
 import { Route as AppSpendingRouteImport } from './routes/_app/spending'
 import { Route as AppTransactionsRouteImport } from './routes/_app/transactions'
 import { Route as AppBillsBillIdRouteImport } from './routes/_app/bills_.$billId'
+import { Route as AppMerchantsKeyRouteImport } from './routes/_app/merchants_.$key'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -77,6 +79,11 @@ const AppLoanRoute = AppLoanRouteImport.update({
   path: '/loan',
   getParentRoute: () => AppRoute,
 } as any)
+const AppMerchantsRoute = AppMerchantsRouteImport.update({
+  id: '/merchants',
+  path: '/merchants',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppNetWorthRoute = AppNetWorthRouteImport.update({
   id: '/net-worth',
   path: '/net-worth',
@@ -117,6 +124,11 @@ const AppBillsBillIdRoute = AppBillsBillIdRouteImport.update({
   path: '/bills/$billId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppMerchantsKeyRoute = AppMerchantsKeyRouteImport.update({
+  id: '/merchants_/$key',
+  path: '/merchants/$key',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
@@ -128,6 +140,7 @@ export interface FileRoutesByFullPath {
   '/import': typeof AppImportRoute
   '/investments': typeof AppInvestmentsRoute
   '/loan': typeof AppLoanRoute
+  '/merchants': typeof AppMerchantsRoute
   '/net-worth': typeof AppNetWorthRoute
   '/retirement': typeof AppRetirementRoute
   '/rules': typeof AppRulesRoute
@@ -136,6 +149,7 @@ export interface FileRoutesByFullPath {
   '/spending': typeof AppSpendingRoute
   '/transactions': typeof AppTransactionsRoute
   '/bills/$billId': typeof AppBillsBillIdRoute
+  '/merchants/$key': typeof AppMerchantsKeyRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -146,6 +160,7 @@ export interface FileRoutesByTo {
   '/import': typeof AppImportRoute
   '/investments': typeof AppInvestmentsRoute
   '/loan': typeof AppLoanRoute
+  '/merchants': typeof AppMerchantsRoute
   '/net-worth': typeof AppNetWorthRoute
   '/retirement': typeof AppRetirementRoute
   '/rules': typeof AppRulesRoute
@@ -155,6 +170,7 @@ export interface FileRoutesByTo {
   '/transactions': typeof AppTransactionsRoute
   '/': typeof AppIndexRoute
   '/bills/$billId': typeof AppBillsBillIdRoute
+  '/merchants/$key': typeof AppMerchantsKeyRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -167,6 +183,7 @@ export interface FileRoutesById {
   '/_app/import': typeof AppImportRoute
   '/_app/investments': typeof AppInvestmentsRoute
   '/_app/loan': typeof AppLoanRoute
+  '/_app/merchants': typeof AppMerchantsRoute
   '/_app/net-worth': typeof AppNetWorthRoute
   '/_app/retirement': typeof AppRetirementRoute
   '/_app/rules': typeof AppRulesRoute
@@ -176,6 +193,7 @@ export interface FileRoutesById {
   '/_app/transactions': typeof AppTransactionsRoute
   '/_app/': typeof AppIndexRoute
   '/_app/bills_/$billId': typeof AppBillsBillIdRoute
+  '/_app/merchants_/$key': typeof AppMerchantsKeyRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -189,6 +207,7 @@ export interface FileRouteTypes {
     | '/import'
     | '/investments'
     | '/loan'
+    | '/merchants'
     | '/net-worth'
     | '/retirement'
     | '/rules'
@@ -197,6 +216,7 @@ export interface FileRouteTypes {
     | '/spending'
     | '/transactions'
     | '/bills/$billId'
+    | '/merchants/$key'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -207,6 +227,7 @@ export interface FileRouteTypes {
     | '/import'
     | '/investments'
     | '/loan'
+    | '/merchants'
     | '/net-worth'
     | '/retirement'
     | '/rules'
@@ -216,6 +237,7 @@ export interface FileRouteTypes {
     | '/transactions'
     | '/'
     | '/bills/$billId'
+    | '/merchants/$key'
   id:
     | '__root__'
     | '/_app'
@@ -227,6 +249,7 @@ export interface FileRouteTypes {
     | '/_app/import'
     | '/_app/investments'
     | '/_app/loan'
+    | '/_app/merchants'
     | '/_app/net-worth'
     | '/_app/retirement'
     | '/_app/rules'
@@ -236,6 +259,7 @@ export interface FileRouteTypes {
     | '/_app/transactions'
     | '/_app/'
     | '/_app/bills_/$billId'
+    | '/_app/merchants_/$key'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -316,6 +340,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppLoanRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/merchants': {
+      id: '/_app/merchants'
+      path: '/merchants'
+      fullPath: '/merchants'
+      preLoaderRoute: typeof AppMerchantsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/net-worth': {
       id: '/_app/net-worth'
       path: '/net-worth'
@@ -372,6 +403,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppBillsBillIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/merchants_/$key': {
+      id: '/_app/merchants_/$key'
+      path: '/merchants/$key'
+      fullPath: '/merchants/$key'
+      preLoaderRoute: typeof AppMerchantsKeyRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
@@ -382,6 +420,7 @@ interface AppRouteChildren {
   AppImportRoute: typeof AppImportRoute
   AppInvestmentsRoute: typeof AppInvestmentsRoute
   AppLoanRoute: typeof AppLoanRoute
+  AppMerchantsRoute: typeof AppMerchantsRoute
   AppNetWorthRoute: typeof AppNetWorthRoute
   AppRetirementRoute: typeof AppRetirementRoute
   AppRulesRoute: typeof AppRulesRoute
@@ -391,6 +430,7 @@ interface AppRouteChildren {
   AppTransactionsRoute: typeof AppTransactionsRoute
   AppIndexRoute: typeof AppIndexRoute
   AppBillsBillIdRoute: typeof AppBillsBillIdRoute
+  AppMerchantsKeyRoute: typeof AppMerchantsKeyRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -400,6 +440,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppImportRoute: AppImportRoute,
   AppInvestmentsRoute: AppInvestmentsRoute,
   AppLoanRoute: AppLoanRoute,
+  AppMerchantsRoute: AppMerchantsRoute,
   AppNetWorthRoute: AppNetWorthRoute,
   AppRetirementRoute: AppRetirementRoute,
   AppRulesRoute: AppRulesRoute,
@@ -409,6 +450,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppTransactionsRoute: AppTransactionsRoute,
   AppIndexRoute: AppIndexRoute,
   AppBillsBillIdRoute: AppBillsBillIdRoute,
+  AppMerchantsKeyRoute: AppMerchantsKeyRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

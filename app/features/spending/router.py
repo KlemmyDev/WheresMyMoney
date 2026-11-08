@@ -92,6 +92,36 @@ async def merchants(svc: ServicesDep, all: bool = False, limit: int = 200):
     return await run(svc.spending.merchant_groups, not all, min(max(limit, 1), 1000))
 
 
+@router.get("/merchants/directory")
+async def merchant_directory(svc: ServicesDep):
+    """Every merchant with money out: the last year by month, the most spent at first."""
+    return await run(svc.spending.merchant_directory)
+
+
+@router.post("/merchants/assign")
+async def assign_merchant(svc: ServicesDep, body: JsonBody):
+    """Map a statement name to a merchant: {"text": "DOMINOS KEPERRA", "key": "DOMINOS"} or {"text", "name": "New"}."""
+    return await run(svc.spending.assign_merchant, body)
+
+
+@router.post("/merchants/forget")
+async def forget_merchant(svc: ServicesDep, body: JsonBody):
+    """Undo a mapping: {"text": "DOMINOS KEPERRA"} goes back to the merchant it gets by itself."""
+    return await run(svc.spending.forget_merchant, str(body.get("text") or ""))
+
+
+@router.get("/merchants/directory/{key:path}")
+async def merchant_detail(svc: ServicesDep, key: str):
+    """One merchant: its months, the statement names mapped to it, and its transactions."""
+    return await run(svc.spending.merchant_detail, key)
+
+
+@router.put("/merchants/directory/{key:path}")
+async def rename_merchant(svc: ServicesDep, key: str, body: JsonBody):
+    """Give a merchant a name: {"name": "Domino's"} (empty goes back to the one it gets by itself)."""
+    return await run(svc.spending.rename_merchant, key, str(body.get("name") or ""))
+
+
 @router.post("/merchants/sort")
 async def sort_merchant(svc: ServicesDep, body: JsonBody):
     """Remember a merchant's category and sort its transactions: {"transaction_id": 12, "category_id": 3}."""

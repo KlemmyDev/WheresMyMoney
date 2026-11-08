@@ -81,6 +81,9 @@ export type Transaction = {
   excluded: boolean;
   /** Won't happen again (a birthday party): still counted, but the spending forecast doesn't learn from it. */
   one_off: boolean;
+  /** The merchant it belongs to: by itself, or the one its statement name was mapped to (see the Merchants page). */
+  merchant_key: string;
+  merchant_name: string;
   splits: { category_id: number; category: string | null; amount: number }[];
 };
 
@@ -143,6 +146,40 @@ export type BillUpdate = {
 };
 
 /** Transactions grouped by the merchant they'd be remembered by. */
+/** A merchant on the Merchants page: money out there, and the last 12 months, oldest first. */
+export type MerchantSummary = {
+  key: string;
+  name: string;
+  count: number;
+  spent: number;
+  spent_year: number;
+  months: number[];
+  first: string;
+  last: string;
+  category: string | null;
+  /** How many statement names belong to it. */
+  names: number;
+};
+
+export type MerchantDetail = {
+  key: string;
+  name: string;
+  /** The household chose its name. */
+  named: boolean;
+  count: number;
+  spent: number;
+  spent_year: number;
+  per_month: number;
+  per_visit: number;
+  first: string;
+  last: string;
+  category: string | null;
+  months: { month: string; spent: number }[];
+  /** Statement names that belong to it; `mapped` when the household put it here. */
+  names: { text: string; count: number; last: string; transaction_id: number; mapped: boolean }[];
+  transactions: Transaction[];
+};
+
 export type MerchantGroup = {
   pattern: string;
   example: string;
