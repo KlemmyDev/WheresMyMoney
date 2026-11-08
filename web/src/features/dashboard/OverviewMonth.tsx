@@ -270,17 +270,31 @@ export function MonthCard({ m, sel, setSel }: { m: Month; sel: number | null; se
   );
 }
 
-/** Pay and bills still to come this month, and how well the Bills account covers the ones before pay. */
-export function ComingUp({ d, m }: { d: Dashboard; m: Month }) {
+/**
+ * Pay and bills still to come this month, and how well the Bills account covers the ones before pay. `compact` (the
+ * tablet spot beside the balance) tightens the rows, lays them out two across and shows the next six.
+ */
+export function ComingUp({
+  d,
+  m,
+  compact = false,
+  className = "md:col-span-6",
+}: {
+  d: Dashboard;
+  m: Month;
+  compact?: boolean;
+  className?: string;
+}) {
   const navigate = useNavigate();
-  const rows = m.events.flatMap((evs, i) => (i > m.today ? evs.map((e) => ({ ...e, i })) : []));
+  const all = m.events.flatMap((evs, i) => (i > m.today ? evs.map((e) => ({ ...e, i })) : []));
+  const rows = compact ? all.slice(0, 6) : all;
   const b = m.beforePay;
   const held = d.bills?.balance ?? null;
   const by = m.nextPay != null ? dayDate(m.dates[m.nextPay]) : "the next fortnight";
   return (
-    <Card aria-labelledby="up-h" className="md:col-span-6">
+    <Card aria-labelledby={compact ? "up-h-compact" : "up-h"} className={className}>
       <CardHead
-        id="up-h"
+        id={compact ? "up-h-compact" : "up-h"}
         title="Coming up"
         right={
           <Link to="/bills" className="text-[14px] font-semibold text-teal no-underline">
@@ -288,7 +302,7 @@ export function ComingUp({ d, m }: { d: Dashboard; m: Month }) {
           </Link>
         }
       />
-      <div className="rounded-2xl border border-line bg-tile-2 p-3.5">
+      <div className={cn("rounded-2xl border border-line bg-tile-2", compact ? "p-3" : "p-3.5")}>
         <div className="flex items-baseline justify-between gap-2">
           <span className="font-semibold">Before pay, {by}</span>
           {held != null && (
@@ -310,7 +324,7 @@ export function ComingUp({ d, m }: { d: Dashboard; m: Month }) {
           {b.byHand ? ` · ${b.byHand} by hand` : ""}
         </div>
       </div>
-      <div className="-mx-1 flex flex-col">
+      <div className={cn("-mx-1", compact ? "grid grid-cols-2 gap-x-2" : "flex flex-col")}>
         {rows.map((r, k) => {
           const e = EVENT_GLYPH[r.kind];
           return (
@@ -322,9 +336,12 @@ export function ComingUp({ d, m }: { d: Dashboard; m: Month }) {
                   ? navigate({ to: "/bills/$billId", params: { billId: String(r.bill_id) } })
                   : navigate({ to: r.kind === "bill" ? "/bills" : "/rules" })
               }
-              className="chip-host press flex min-h-16 cursor-pointer items-center gap-3 rounded-2xl border-0 bg-transparent px-1.5 text-left text-ink hover:bg-tile-2"
+              className={cn(
+                "chip-host press flex cursor-pointer items-center rounded-2xl border-0 bg-transparent px-1.5 text-left text-ink hover:bg-tile-2",
+                compact ? "min-h-13 gap-2.5" : "min-h-16 gap-3",
+              )}
             >
-              <Chip g={e.g} tone={e.tone} size="lg" />
+              <Chip g={e.g} tone={e.tone} size={compact ? "md" : "lg"} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate">{r.name}</span>
                 <span className={cn("block text-[13px]", r.how === "Pay by hand" ? "text-warn" : "text-ink-3")}>
@@ -345,6 +362,11 @@ export function ComingUp({ d, m }: { d: Dashboard; m: Month }) {
           <span className="px-1.5 py-2 text-[13px] text-ink-3">Nothing else before the month ends.</span>
         )}
       </div>
+      {all.length > rows.length && (
+        <Link to="/bills" className="-mt-1 text-[13px] font-semibold text-teal no-underline">
+          {all.length - rows.length} more before the month ends
+        </Link>
+      )}
     </Card>
   );
 }
