@@ -29,8 +29,37 @@ def key_of(name: str) -> str:
     return " ".join(_KEY_CHARS.sub(" ", name.upper().replace("'", "")).split())[:60]
 
 
+# Brands written the way they write themselves.
+BRAND_NAMES = {
+    "CHEESECAKE SHOP": "The Cheesecake Shop",
+    "MCDONALDS": "McDonald's",
+    "DOMINOS": "Domino's",
+    "HUNGRY JACKS": "Hungry Jack's",
+    "NANDOS": "Nando's",
+    "GRILL D": "Grill'd",
+    "7-ELEVEN": "7-Eleven",
+    "7 ELEVEN": "7-Eleven",
+    "JB HI": "JB Hi-Fi",
+    "DAN MURPHYS": "Dan Murphy's",
+    "GUZMAN Y GOMEZ": "Guzman y Gomez",
+    "IKEA": "IKEA",
+    "EBAY": "eBay",
+    "PAYPAL": "PayPal",
+    "STEAMGAMES": "Steam",
+    "ALDI": "ALDI",
+    "TPG": "TPG",
+    "AGL": "AGL",
+    "HCF": "HCF",
+    "RACQ": "RACQ",
+    "NRMA": "NRMA",
+    "AAMI": "AAMI",
+}
+
+
 def pretty(key: str) -> str:
     """A key as a name: title case, short brand names kept in capitals (BP, KFC, IGA)."""
+    if key in BRAND_NAMES:
+        return BRAND_NAMES[key]
     words = []
     for w in key.split():
         if len(w) <= 3 and (w in merchants.SUGGESTIONS or not re.search(r"[AEIOU]", w)):
@@ -42,9 +71,11 @@ def pretty(key: str) -> str:
 
 def auto_key(merchant_text: str, description: str = "") -> str:
     """The merchant a statement name belongs to by itself."""
-    known = merchants.brand(merchant_text)
+    # "THE CHEESECAKE SHOP" and "CHEESECAKE SHOP" are one brand.
+    bare = merchant_text[4:] if merchant_text.startswith("THE ") else merchant_text
+    known = merchants.brand(bare) or merchants.brand(merchant_text)
     if known:
-        return known
+        return known[4:] if known.startswith("THE ") and merchants.brand(known[4:]) else known
     remembered = merchants.learn_pattern(merchant_text, None, None, description)
     # A person's name is kept whole; anything else by its first two words at most.
     if len(remembered.split()) > merchants.WORDS:

@@ -72,6 +72,39 @@ export const MARKS: Record<string, Mark> = {
   },
   FOODWORKS: { bg: "#d6001c", art: [word("FW", W, 9)] },
   SPAR: { bg: "#00843d", art: [{ d: "M7 10h18v12H7z", fill: "#e30613" }, word("SPAR", W, 6.5, 18.3)] },
+  // -- Cakes and parties (The Cheesecake Shop: dark green on mint, after its 2023 look)
+  "CHEESECAKE SHOP": {
+    bg: "#d3f0df",
+    ring: "#0f4d32",
+    art: [
+      { d: "M7.5 15.5L19.5 10l5 3.6-12 5.9z", fill: "#fff6e3", stroke: "#0f4d32", w: 1.2 },
+      { d: "M7.5 15.5v5.2l5 3.7v-4.9z", fill: "#f1cf8f", stroke: "#0f4d32", w: 1.2 },
+      { d: "M12.5 19.5v4.9l12-5.9v-4.9z", fill: "#f6dcaa", stroke: "#0f4d32", w: 1.2 },
+      { d: "M7.5 20.7l5 3.7 12-5.9", stroke: "#0f4d32", w: 2 },
+      { d: o(18.6, 12.4, 1.7), fill: "#e0405e" },
+    ],
+  },
+  "THE CHEESECAKE SHOP": {
+    bg: "#d3f0df",
+    ring: "#0f4d32",
+    art: [
+      { d: "M7.5 15.5L19.5 10l5 3.6-12 5.9z", fill: "#fff6e3", stroke: "#0f4d32", w: 1.2 },
+      { d: "M7.5 15.5v5.2l5 3.7v-4.9z", fill: "#f1cf8f", stroke: "#0f4d32", w: 1.2 },
+      { d: "M12.5 19.5v4.9l12-5.9v-4.9z", fill: "#f6dcaa", stroke: "#0f4d32", w: 1.2 },
+      { d: "M7.5 20.7l5 3.7 12-5.9", stroke: "#0f4d32", w: 2 },
+      { d: o(18.6, 12.4, 1.7), fill: "#e0405e" },
+    ],
+  },
+  "PARTY CITY": {
+    bg: "#5b2c86",
+    art: [
+      {
+        d: "M16 7a5 5 0 0 1 5 5c0 3.4-2.8 5.8-5 5.8S11 15.4 11 12a5 5 0 0 1 5-5zM16 17.8l-1 1.8h2zM16 19.6c0 2-2 2.6-1 4.4",
+        stroke: "#ffd23f",
+        w: 1.6,
+      },
+    ],
+  },
   // -- Takeaway, cafes and eating out
   MCDONALDS: {
     bg: "#da291c",
@@ -657,6 +690,16 @@ export const PLACES: { re: RegExp; d: string; colour: string }[] = [
     re: /\b(HAIR|BARBER|SALON|BEAUTY|NAILS)\b/,
     d: "M6 6a2.5 2.5 0 1 0 0 .01M6 18a2.5 2.5 0 1 0 0 .01M8 7.5L20 18M8 16.5L20 6",
     colour: "#b4507a",
+  },
+  {
+    re: /\b(CAKE|CAKES|CHEESECAKE|CUPCAKE|CUPCAKES)\b/,
+    d: "M4 20h16v-6H4zM4 14c0-2 3.6-3 8-3s8 1 8 3M12 11V8.5M12 5.5c.8.8.8 1.6 0 2.4-.8-.8-.8-1.6 0-2.4z",
+    colour: "#e5508a",
+  },
+  {
+    re: /\b(PARTY|PARTYLAND|BALLOONS|BALLOON)\b/,
+    d: "M12 3a5 5 0 0 1 5 5c0 3.5-3 6-5 6s-5-2.5-5-6a5 5 0 0 1 5-5zM12 14l-1 2h2zM12 16c0 2-2 3-1 5",
+    colour: "#8d5bd6",
   },
   {
     re: /\b(BAKERY|BAKEHOUSE|BAKER|PATISSERIE|DONUT|DONUTS)\b/,

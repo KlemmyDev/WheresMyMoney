@@ -326,6 +326,12 @@ SUGGESTIONS: dict[str, str] = {
     "RAIZ": "Investments",
     "SPACESHIP": "Investments",
     "ATO": "Tax",
+    # Cakes for an occasion; a slice on the way home is Takeaway, set per merchant.
+    "THE CHEESECAKE SHOP": "Celebrations",
+    "CHEESECAKE SHOP": "Celebrations",
+    "PARTY CITY": "Celebrations",
+    "PARTYLAND": "Celebrations",
+    "PARTY MANIA": "Celebrations",
     "PARENTALLEAVEPAY": "Government benefits",
     "CENTRELINK": "Government benefits",
     "SERVICES AUSTRALIA": "Government benefits",
@@ -334,6 +340,9 @@ SUGGESTIONS: dict[str, str] = {
 
 # Words that suggest a category wherever they are in the merchant ("MITCHELTON MARKETS", "KIDS SWIM SCHOOL").
 ANYWHERE = {
+    "CAKES": "Celebrations",
+    "PARTY": "Celebrations",
+    "BALLOONS": "Celebrations",
     "MARKETS": "Groceries",
     "BUTCHER": "Groceries",
     "BAKERY": "Groceries",
