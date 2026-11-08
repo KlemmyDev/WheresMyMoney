@@ -24,9 +24,13 @@ async def overview(svc: ServicesDep):
 @router.post("")
 async def add(svc: ServicesDep, body: JsonBody):
     """{"name": "Internet", "amount": 8900, "every": "monthly", "next_due": "2026-11-12", "account_id": 2,
-    "how": "auto"}"""
-    await run(svc.bills.add, body)
-    return await _overview(svc)
+    "how": "auto"}. With "transaction_id", that payment (and the same merchant's others like it) become part of the
+    new bill. The overview comes back with the new bill as "added" and how many payments were "linked"."""
+    bill = await run(svc.bills.add, body)
+    linked = 0
+    if body.get("transaction_id") not in (None, ""):
+        linked = await run(svc.bills.link, bill.id, int(body["transaction_id"]))
+    return {**(await _overview(svc)), "added": bill.view(), "linked": linked}
 
 
 @router.get("/spotted")

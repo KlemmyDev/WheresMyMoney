@@ -18,6 +18,7 @@ from typing import Any
 from app.core import dates
 from app.core.database import Database
 from app.features.bills import detect
+from app.features.spending import merchants
 
 HOW = ("auto", "manual", "estimate")
 DISMISSED = "bill_dismissed:"  # kv: a suggestion (or update) the household said no to
@@ -202,6 +203,45 @@ class BillsService:
             "by_month": self.by_month(),
             "account": bills_account,
         }
+
+    def link(self, bill_id: int, tx_id: int) -> int:
+        """Make a payment part of a bill, with the same merchant's other payments for about the same amount (any
+        amount for an estimate) that aren't part of a bill yet, sorting those with no category into the bill's.
+        Returns how many were linked."""
+        bill = self.get(bill_id)
+        if bill is None:
+            raise LookupError("That bill has gone.")
+        with self.db.writing() as conn:
+            row = conn.execute(
+                "SELECT merchant, -amount FROM transactions WHERE id = ? AND amount < 0", (tx_id,)
+            ).fetchone()
+            if not row:
+                raise LookupError("That payment has gone.")
+            merchant, amount = str(row[0] or ""), int(row[1])
+            ids = [tx_id]
+            if merchant:
+                rows = conn.execute(
+                    "SELECT t.id, t.merchant, -t.amount FROM transactions t JOIN accounts a ON a.id = t.account_id"
+                    " WHERE a.kind = 'bank' AND t.amount < 0 AND t.bill_id IS NULL AND t.id != ?"
+                    " AND t.kind IN ('statement', 'manual')",
+                    (tx_id,),
+                ).fetchall()
+                near = max(amount // 4, 500)
+                ids += [
+                    r[0]
+                    for r in rows
+                    if merchants.matches(str(r[1] or ""), merchant)
+                    and (bill.how == "estimate" or abs(int(r[2]) - amount) <= near)
+                ]
+            marks = ",".join("?" * len(ids))
+            conn.execute(f"UPDATE transactions SET bill_id = ? WHERE id IN ({marks})", (bill.id, *ids))
+            if bill.category_id is not None:
+                conn.execute(
+                    f"UPDATE transactions SET category_id = ?, category_by = 'bill' WHERE id IN ({marks})"
+                    " AND (category_id IS NULL OR category_by IS NULL OR category_by IN ('rule', 'suggest'))",
+                    (bill.category_id, *ids),
+                )
+        return len(ids)
 
     # -- one bill and what it's cost ------------------------------------------------
 

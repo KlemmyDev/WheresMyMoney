@@ -9,10 +9,19 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useState, type CSSProperties } from "react";
 import { apiGet, apiSend, errorMessage } from "~/features/common/api";
 import { AreaLine, Count } from "~/features/common/charts";
-import { EVERY_LABEL, editable, money, monthCaps, parseMoney, shortDate, todayIso } from "~/features/common/format";
+import {
+  EVERY_LABEL,
+  editable,
+  money,
+  monthCaps,
+  parseDate,
+  parseMoney,
+  shortDate,
+  todayIso,
+} from "~/features/common/format";
 import { Dialog, useToast } from "~/features/common/overlay";
 import { accountsQuery, billsQuery, categoriesQuery, refresh } from "~/features/common/queries";
-import type { Account, Bill, Every, SpottedBill } from "~/features/common/types";
+import type { Account, Bill, Every, SpottedBill, Transaction } from "~/features/common/types";
 import { SpottedBills } from "~/features/bills/Spotted";
 import { CategoryPicker } from "~/features/common/CategoryPicker";
 import { Button, ErrorText, Input, Label, PageHead, Pill, Select, Tile, TileTitle, cn } from "~/features/common/ui";
@@ -263,27 +272,64 @@ const EVERY: Every[] = ["weekly", "fortnightly", "monthly", "quarterly", "term",
 export function BillDialog({
   bill,
   spotted,
+  fromTx,
   onClose,
 }: {
   bill: Bill | "new" | null;
   /** A bill spotted in the statements, to add with any changes made here. */
   spotted?: SpottedBill | null;
+  /** A payment to make a bill from: it (and the merchant's others like it) become part of the bill. */
+  fromTx?: Transaction | null;
   onClose: () => void;
 }) {
   return (
     <Dialog open={bill != null} onClose={onClose} labelledBy="bill-h">
-      {bill != null && <BillForm key={spotted?.key ?? "x"} bill={bill} spotted={spotted} onClose={onClose} />}
+      {bill != null && (
+        <BillForm
+          key={spotted?.key ?? fromTx?.id ?? "x"}
+          bill={bill}
+          spotted={spotted}
+          fromTx={fromTx}
+          onClose={onClose}
+        />
+      )}
     </Dialog>
   );
+}
+
+/** "TELSTRA 1234" → "Telstra 1234". */
+const titleCase = (text: string) => text.toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase());
+
+/** The first date on the schedule from `from` that's today or later. */
+function nextFrom(from: string, every: Every): string {
+  const days: Partial<Record<Every, number>> = { weekly: 7, fortnightly: 14 };
+  const months: Partial<Record<Every, number>> = {
+    monthly: 1,
+    quarterly: 3,
+    term: 3,
+    "half-yearly": 6,
+    yearly: 12,
+  };
+  const d = parseDate(from);
+  const today = todayIso();
+  for (let i = 0; i < 400; i++) {
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    if (iso >= today) return iso;
+    if (days[every]) d.setDate(d.getDate() + days[every]!);
+    else d.setMonth(d.getMonth() + (months[every] ?? 1));
+  }
+  return today;
 }
 
 function BillForm({
   bill,
   spotted,
+  fromTx,
   onClose,
 }: {
   bill: Bill | "new";
   spotted?: SpottedBill | null;
+  fromTx?: Transaction | null;
   onClose: () => void;
 }) {
   const qc = useQueryClient();
@@ -292,38 +338,49 @@ function BillForm({
   const cats = useQuery(categoriesQuery);
   const banks: Account[] = accounts.data?.accounts ?? [];
   const [f, setF] = useState(() =>
-    spotted
+    fromTx
       ? {
-          name: spotted.name,
-          amount: editable(spotted.amount),
-          every: spotted.every,
-          next_due: spotted.next_due,
-          account_id: String(spotted.account_id ?? ""),
-          how: spotted.how as string,
-          category_id: String(spotted.category_id ?? ""),
-          match: spotted.match,
+          name: titleCase(fromTx.remember_as || fromTx.merchant || fromTx.description),
+          amount: editable(-fromTx.amount),
+          every: "monthly" as Every,
+          next_due: nextFrom(fromTx.date, "monthly"),
+          account_id: String(fromTx.account_id),
+          how: "auto",
+          category_id: fromTx.category_kind === "bills" && fromTx.category_id != null ? String(fromTx.category_id) : "",
+          match: fromTx.remember_as || fromTx.merchant,
         }
-      : bill === "new"
+      : spotted
         ? {
-            name: "",
-            amount: "",
-            every: "monthly" as Every,
-            next_due: todayIso(),
-            account_id: String(banks.find((a) => a.role === "bills")?.id ?? ""),
-            how: "auto",
-            category_id: "",
-            match: "",
+            name: spotted.name,
+            amount: editable(spotted.amount),
+            every: spotted.every,
+            next_due: spotted.next_due,
+            account_id: String(spotted.account_id ?? ""),
+            how: spotted.how as string,
+            category_id: String(spotted.category_id ?? ""),
+            match: spotted.match,
           }
-        : {
-            name: bill.name,
-            amount: editable(bill.amount),
-            every: bill.every,
-            next_due: bill.next_due,
-            account_id: String(bill.account_id ?? ""),
-            how: bill.how as string,
-            category_id: String(bill.category_id ?? ""),
-            match: bill.match,
-          },
+        : bill === "new"
+          ? {
+              name: "",
+              amount: "",
+              every: "monthly" as Every,
+              next_due: todayIso(),
+              account_id: String(banks.find((a) => a.role === "bills")?.id ?? ""),
+              how: "auto",
+              category_id: "",
+              match: "",
+            }
+          : {
+              name: bill.name,
+              amount: editable(bill.amount),
+              every: bill.every,
+              next_due: bill.next_due,
+              account_id: String(bill.account_id ?? ""),
+              how: bill.how as string,
+              category_id: String(bill.category_id ?? ""),
+              match: bill.match,
+            },
   );
   const body = () => ({
     ...f,
@@ -336,9 +393,20 @@ function BillForm({
       spotted
         ? apiSend("POST", "bills/spotted/accept", { key: spotted.key, changes: body() })
         : bill === "new"
-          ? apiSend("POST", "bills", body())
+          ? apiSend("POST", "bills", { ...body(), transaction_id: fromTx?.id })
           : apiSend("PUT", `bills/${(bill as Bill).id}`, body()),
-    onSuccess: () => (refresh(qc), onClose(), toast(bill === "new" ? `${f.name} added` : `${f.name} saved`)),
+    onSuccess: (r) => {
+      refresh(qc);
+      onClose();
+      const linked = (r as { linked?: number } | undefined)?.linked ?? 0;
+      toast(
+        bill !== "new"
+          ? `${f.name} saved`
+          : linked > 1
+            ? `${f.name} added, with ${linked} payments`
+            : `${f.name} added`,
+      );
+    },
   });
   const remove = useMutation({
     mutationFn: () => apiSend("DELETE", `bills/${(bill as Bill).id}`),
@@ -347,8 +415,20 @@ function BillForm({
   return (
     <div className="flex flex-col gap-3 overflow-y-auto p-6">
       <h2 id="bill-h" className="m-0 text-xl font-semibold">
-        {spotted ? "Add a spotted bill" : bill === "new" ? "Add a bill" : f.name || "Bill"}
+        {spotted
+          ? "Add a spotted bill"
+          : fromTx
+            ? "Make it a recurring bill"
+            : bill === "new"
+              ? "Add a bill"
+              : f.name || "Bill"}
       </h2>
+      {fromTx && (
+        <div className="text-[13px] text-ink-2">
+          This payment, and earlier ones to {fromTx.remember_as || fromTx.merchant} for about the same amount, become
+          part of the bill. Check how often it comes and when it&apos;s next due.
+        </div>
+      )}
       {spotted && (
         <div className="text-[13px] text-ink-2">
           Seen {spotted.seen} times, as <span className="mono">{spotted.example}</span>. Its payments are linked to the

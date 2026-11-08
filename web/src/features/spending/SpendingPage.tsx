@@ -152,7 +152,13 @@ export function SpendingPage() {
               const over = c.budget != null && ratio > m.pace * 1.25 && ratio > 0.5;
               return (
                 <div key={c.id} className="grid grid-cols-[110px_1fr_120px] items-center gap-3 text-[13px]">
-                  <span>{c.name}</span>
+                  <Link
+                    to="/transactions"
+                    search={{ account: m.account_id, category: c.id }}
+                    className="truncate text-ink underline decoration-line-2 underline-offset-4"
+                  >
+                    {c.name}
+                  </Link>
                   <span className="relative h-2.5 rounded-full bg-raised">
                     <i
                       className="striped grow-x absolute inset-y-0 left-0 rounded-full"
@@ -180,7 +186,13 @@ export function SpendingPage() {
             })}
             {m.unsorted > 0 && (
               <div className="grid grid-cols-[110px_1fr_120px] items-center gap-3 text-[13px] text-ink-2">
-                <span>Not sorted yet</span>
+                <Link
+                  to="/transactions"
+                  search={{ account: m.account_id, category: "unsorted" }}
+                  className="text-ink-2 underline decoration-line-2 underline-offset-4"
+                >
+                  Not sorted yet
+                </Link>
                 <span />
                 <span className="mono text-right">{money(m.unsorted)}</span>
               </div>

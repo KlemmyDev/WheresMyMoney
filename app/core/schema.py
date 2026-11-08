@@ -293,6 +293,14 @@ def _fund_platforms(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE funds ADD COLUMN kind TEXT NOT NULL DEFAULT 'etf'")
 
 
+def _budget_categories(conn: sqlite3.Connection) -> None:
+    """More starting categories for budgeting (Parking & tolls, Home maintenance, Furniture, Loans, School fees) for
+    a household that has its own already."""
+    from app.features.spending.service import add_missing_categories
+
+    add_missing_categories(conn)
+
+
 MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _baseline,
     _money,
@@ -308,4 +316,5 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _goal_moves,
     _super_values,
     _fund_platforms,
+    _budget_categories,
 ]

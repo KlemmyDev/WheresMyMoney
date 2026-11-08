@@ -85,3 +85,44 @@ def test_a_rule_needs_two_accounts(client: TestClient, household: dict) -> None:
         },
     )
     assert r.status_code == 422
+
+
+def test_a_payment_can_become_a_bill_with_the_ones_like_it(client: TestClient, household: dict) -> None:
+    def pay(day: str, cents: int, text: str) -> int:
+        tx = {"amount": -cents, "description": text, "account_id": household["Bills"], "date": day}
+        return int(ok(client.post("/api/transactions", json=tx))["id"])
+
+    pay("2026-08-03", 8900, "TELSTRA 1234 SYDNEY")
+    pay("2026-09-03", 8900, "TELSTRA 1234 SYDNEY")
+    far = pay("2026-09-20", 45000, "TELSTRA 1234 SYDNEY")  # a new phone: same shop, not the bill
+    other = pay("2026-10-01", 8900, "OPTUS MOBILE")
+    latest = pay("2026-10-03", 9200, "TELSTRA 1234 SYDNEY")
+    cats = {c["name"]: c for c in ok(client.get("/api/categories"))["categories"]}
+    body = {
+        "name": "Phone",
+        "amount": 9200,
+        "every": "monthly",
+        "next_due": "2026-11-03",
+        "account_id": household["Bills"],
+        "category_id": cats["Phone & internet"]["id"],
+        "transaction_id": latest,
+    }
+    r = ok(client.post("/api/bills", json=body))
+    assert r["added"]["name"] == "Phone" and r["linked"] == 3
+    d = ok(client.get(f"/api/bills/{r['added']['id']}"))
+    assert d["count"] == 3 and {t["category"] for t in d["transactions"]} == {"Phone & internet"}
+    ids = {t["id"] for t in d["transactions"]}
+    assert latest in ids and far not in ids and other not in ids
+
+    # Not part of the bill after all, then part of it again.
+    ok(client.put(f"/api/transactions/{latest}", json={"bill_id": None}))
+    assert ok(client.get(f"/api/bills/{r['added']['id']}"))["count"] == 2
+    assert (
+        ok(client.put(f"/api/transactions/{other}", json={"bill_id": r["added"]["id"]}))["bill_id"] == r["added"]["id"]
+    )
+    assert client.put(f"/api/transactions/{other}", json={"bill_id": 9999}).status_code == 404
+
+
+def test_there_are_categories_for_budgeting(client: TestClient, household: dict) -> None:
+    names = {c["name"] for c in ok(client.get("/api/categories"))["categories"]}
+    assert {"Groceries", "Parking & tolls", "Home maintenance", "Furniture", "Loans", "School fees"} <= names
