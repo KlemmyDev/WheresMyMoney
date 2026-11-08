@@ -232,7 +232,7 @@ function MixCard({ p, onEdit }: { p: Portfolio; onEdit: (f: Fund) => void }) {
           <span className="flex items-baseline justify-between gap-2 text-[14px]">
             <span className="font-semibold">{f.group_name}</span>
             <span className="num text-[13px] text-ink-2">
-              {(f.share * 100).toFixed(1)}%{f.target != null ? ` / aim ${Math.round(f.target * 100)}%` : ""}
+              {(f.share * 100).toFixed(1)}%{f.target != null ? ` / target ${Math.round(f.target * 100)}%` : ""}
             </span>
           </span>
           <Bar
@@ -513,7 +513,9 @@ function Distributions({ p }: { p: Portfolio }) {
               </span>
             ))}
           </div>
-          <p className="m-0 text-[12px] text-ink-3">Hatched is the quarter to come, at what it paid last year.</p>
+          <p className="m-0 text-[12px] text-ink-3">
+            The shaded bar is the quarter to come, guessed from what it paid last year.
+          </p>
         </>
       )}
     </Card>

@@ -19,7 +19,7 @@ const HOW: Record<Transaction["kind"], [string, "teal" | "info" | "warn"]> = {
   manual: ["Entered", "teal"],
   cash: ["Cash", "teal"],
   statement: ["Imported", "info"],
-  adjustment: ["Balance adjustment", "warn"],
+  adjustment: ["Balance correction", "warn"],
 };
 
 export function TransactionSheet({ tx, onClose }: { tx: Transaction | null; onClose: () => void }) {
@@ -168,7 +168,7 @@ function Body({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
           <span className="block text-[12px] text-ink-3">
             {excluded
               ? tx.amount < 0
-                ? "Not counted as spending. Safe to spend counts it as coming back; mark their payment the same way when it lands."
+                ? "Not counted as spending. What you can spend each day counts it as coming back; mark their payment the same way when it lands."
                 : "Not counted as income: it squares up what was spent for them."
               : tx.amount < 0
                 ? "Counted in this month's spending."
@@ -208,7 +208,7 @@ function Body({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
             Delete {money(tx.amount, { cents: true, sign: true })} at {tx.merchant || tx.description}?
           </span>
           <span className="text-[13px] text-ink-3">
-            Safe to spend and the balance update straight away. This can't be undone.
+            What you can spend and the balance update straight away. This can't be undone.
           </span>
           <div className="flex gap-2">
             <Button className="flex-1" onClick={() => setConfirm(false)}>
@@ -374,7 +374,7 @@ function SplitEditor({
 const ROW_HOW: Partial<Record<Transaction["kind"], [string, "teal" | "info" | "mute"]>> = {
   manual: ["By hand", "info"],
   cash: ["Cash", "mute"],
-  adjustment: ["Adjustment", "teal"],
+  adjustment: ["Correction", "teal"],
 };
 
 /** One transaction in a list, to tap for its sheet: what, when, its category (or split), and how it got here. */

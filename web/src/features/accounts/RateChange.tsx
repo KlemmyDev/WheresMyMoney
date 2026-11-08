@@ -250,7 +250,7 @@ function RateChange({ v, spotted, onClose }: { v: LoanView; spotted: Spotted; on
               note={
                 bills!.target_months && monthsHeld < bills!.target_months
                   ? `Dips below ${bills!.target_months} months`
-                  : "Still on aim"
+                  : "Still enough"
               }
               role="bills"
             />
@@ -273,7 +273,7 @@ function RateChange({ v, spotted, onClose }: { v: LoanView; spotted: Spotted; on
         </label>
       )}
       <p className="m-0 text-[13px] text-ink-3">
-        Safe to spend doesn't change: the loan is paid from {bills?.name ?? "Bills"}.
+        What you can spend each day doesn't change: the loan is paid from {bills?.name ?? "Bills"}.
       </p>
 
       {save.isError && <ErrorText>{errorMessage(save.error)}</ErrorText>}

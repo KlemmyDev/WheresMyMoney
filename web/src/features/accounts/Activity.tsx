@@ -493,7 +493,7 @@ export function AccountTransactions({
               </span>
               <span>
                 {t.kind === "adjustment" ? (
-                  <Pill tone="teal">ADJUSTMENT</Pill>
+                  <Pill tone="teal">CORRECTION</Pill>
                 ) : t.rule_id != null ? (
                   <Pill tone="info">PAYDAY RULE</Pill>
                 ) : t.kind === "manual" ? (

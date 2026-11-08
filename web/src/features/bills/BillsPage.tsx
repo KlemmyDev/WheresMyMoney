@@ -3,7 +3,7 @@
  * the months ahead as a heat strip, and every bill with how often, when next, and how it's paid.
  */
 import { Loading } from "~/features/common/brand";
-import { Bar, BigNumber, Card, Details, Eyebrow, Stat } from "~/features/common/ds";
+import { Bar, BigNumber, Card, Details, Eyebrow, Stat, Term } from "~/features/common/ds";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type CSSProperties } from "react";
 import { apiGet, apiSend, errorMessage } from "~/features/common/api";
@@ -61,9 +61,14 @@ export function BillsPage() {
         </div>
         {t && (
           <p className="m-0 text-[16px] text-ink-2">
-            {(acct?.balance ?? 0) >= t.amount
-              ? `That's enough for ${held.toFixed(1)} months of bills. We keep ${t.months} months, so ${money((acct?.balance ?? 0) - t.amount)} more than that could go to the offset.`
-              : `That's enough for ${held.toFixed(1)} months of bills. We keep ${t.months} months, so it needs ${money(t.amount - (acct?.balance ?? 0))} more.`}{" "}
+            That's enough for {held.toFixed(1)} months of bills. We keep {t.months} months, so{" "}
+            {(acct?.balance ?? 0) >= t.amount ? (
+              <>
+                {money((acct?.balance ?? 0) - t.amount)} more than that could go to <Term k="offset">the offset</Term>.
+              </>
+            ) : (
+              <>it needs {money(t.amount - (acct?.balance ?? 0))} more.</>
+            )}{" "}
             {`${money(b.next30.total)} of bills are due in the next 30 days.`}
           </p>
         )}
@@ -175,7 +180,7 @@ export function BillsPage() {
               );
             })}
           </div>
-          <div className="text-xs text-ink-3">The heaviest months are what the buffer is there for.</div>
+          <div className="text-xs text-ink-3">The bills account is there to cover the heaviest months.</div>
         </Tile>
       </div>
       <SpottedBills i={6} onEdit={setSpotted} />

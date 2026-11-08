@@ -14,7 +14,7 @@ import { loanQuery } from "~/features/common/queries";
 import { Dot, Empty, ErrorText, PageHead, Segmented, Tile, TileTitle } from "~/features/common/ui";
 import { LoanSimulator } from "~/features/accounts/LoanSimulator";
 import { RateChangeSheet, type Spotted } from "~/features/accounts/RateChange";
-import { Banner, Card, Details } from "~/features/common/ds";
+import { Banner, Card, Details, Term } from "~/features/common/ds";
 import { I } from "~/features/common/icons";
 import { useStoredFlag } from "~/features/common/theme";
 import { Button } from "~/features/common/ui";
@@ -53,7 +53,7 @@ export function LoanPage() {
   return (
     <>
       <PageHead
-        over={`HOME LOAN${lo.rate_bp != null ? ` · ${(lo.rate_bp / 100).toFixed(2)}%` : ""}${goal ? ` · GOAL ${monthYear(goal).toUpperCase()}` : ""}`}
+        over={`Money · ${lo.rate_bp != null ? `${(lo.rate_bp / 100).toFixed(2)}% a year` : "Home loan"}${goal ? ` · aiming to cover it by ${monthYear(goal)}` : ""}`}
         title="Loan and offset"
         actions={<Button onClick={() => setRateOpen(true)}>Rate changed?</Button>}
       />
@@ -91,8 +91,9 @@ export function LoanPage() {
       <Card lit className="flex flex-col gap-2">
         <p className="m-0 text-[17px] leading-relaxed text-ink">
           We owe <b>{money(lo.balance)}</b> on the {lo.name.toLowerCase()}. Our accounts hold {money(v.offsetting)}{" "}
-          against it, so interest is only charged on the other {money(Math.max(lo.balance - v.offsetting, 0))}. That
-          saves about <b>{money(v.interest_per_day, { cents: true })} a day</b>.
+          <Term k="offset">against it</Term>, so interest is only charged on the other{" "}
+          {money(Math.max(lo.balance - v.offsetting, 0))}. That saves about{" "}
+          <b>{money(v.interest_per_day, { cents: true })} a day</b>.
         </p>
         <p className="m-0 text-[15px] text-ink-2">
           {v.recent.date

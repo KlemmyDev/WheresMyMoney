@@ -1062,7 +1062,7 @@ function Review({
                   ? `NEW · SUGGEST ${r.suggest?.toUpperCase()}`
                   : r.why === "transfer"
                     ? r.rule_kind
-                      ? `MATCHED BY AMOUNT · ${r.rule_kind === "top_up" ? "MONTHLY TOP-UP" : r.rule_kind === "sweep" ? "SWEEP" : "PAYDAY"} RULE${r.differed ? ` · RULE SAID ${money(r.called_for)}` : ""}`
+                      ? `MATCHED BY AMOUNT · ${r.rule_kind === "top_up" ? "MONTHLY TOP BACK UP" : r.rule_kind === "sweep" ? "EXTRA BACK TO THE OFFSET" : "PAYDAY"} RULE${r.differed ? ` · RULE SAID ${money(r.called_for)}` : ""}`
                       : "BETWEEN YOUR ACCOUNTS"
                     : r.why === "bill"
                       ? `MATCHED BILL · ${r.bill?.toUpperCase()}`
@@ -1368,7 +1368,7 @@ function DoneView({
                 {gap > 0 ? "less" : "more"} than its closing balance.{" "}
                 {first.analysis.earliest
                   ? "An opening balance, dated the day before the history starts, makes them match."
-                  : "Set the exact balance in Accounts to add an adjustment."}
+                  : "Set the balance to the cent in Accounts to correct it."}
                 {first.analysis.earliest && (
                   <div className="mt-2">
                     <Button primary small onClick={() => onOpening(id, gap)}>

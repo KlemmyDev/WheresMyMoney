@@ -488,8 +488,8 @@ function StepBills({ accounts, next, back, busy }: StepProps) {
       <div>
         <h1 className="m-0 text-[26px] font-semibold">What bills come out?</h1>
         <p className="mt-1 mb-0 text-ink-2">
-          Tap the ones you have, then fill in the amount and how often. This works out how big the bills buffer should
-          be.
+          Tap the ones you have, then fill in the amount and how often. This works out how much to keep in the bills
+          account.
         </p>
       </div>
       <div className="flex flex-wrap gap-1.5">
@@ -732,7 +732,7 @@ function StepPay({ accounts, loan, next, back, busy }: StepProps) {
                 </Select>
               </div>
               <div className="text-xs text-ink-3 sm:col-span-2">
-                Topped up to this amount, so whatever's left stays offsetting.
+                Topped back up to this amount, so whatever's left over stays in the offset.
               </div>
             </>
           )}
@@ -743,7 +743,7 @@ function StepPay({ accounts, loan, next, back, busy }: StepProps) {
             ["Pay in", pay],
             [`To ${bills?.name ?? "Bills"}`, -toBills],
             [`To ${savings?.name ?? "Savings"}`, -toSavings],
-            ["Spending top-up (about)", -allowance],
+            ["Topping up spending (about)", -allowance],
             ["Loan repayment", -repayment],
           ].map(([l, v]) => (
             <div key={String(l)} className="flex justify-between border-t border-line py-1.5 first:border-t-0">
@@ -812,7 +812,7 @@ function StepPay({ accounts, loan, next, back, busy }: StepProps) {
                 amount: allowance,
                 every: "monthly",
                 anchor: iso,
-                label: "Monthly top-up",
+                label: "Topped back up each month",
               });
             }
           })
@@ -855,7 +855,7 @@ function StepCurrent({ accounts, next, back, busy }: StepProps) {
             If your banking app exports one, we sort it into categories.
           </Option>
           <Option on={detail === "balances"} onClick={() => setDetail("balances")} title="Balances only">
-            Skip categories. Still shows pace and safe-to-spend.
+            Skip categories. You still see what you can spend each day.
           </Option>
         </div>
         <div className="flex flex-[0_1_320px] flex-col gap-2 rounded-xl bg-page p-4 text-[13px]">

@@ -41,7 +41,7 @@ export function SpendingPage() {
   return (
     <>
       <PageHead
-        over={`SPENDING ACCOUNT · ${shortDate(m.start).toUpperCase()} – ${shortDate(m.end).toUpperCase()} · DAY ${m.day} OF ${m.days}`}
+        over={`Money · ${shortDate(m.start)} to ${shortDate(m.end)}, day ${m.day} of ${m.days}`}
         title="Spending"
         actions={
           <>
@@ -99,7 +99,7 @@ export function SpendingPage() {
           </Details>
         </Card>
         <Card lit aria-labelledby="sp-safe" className="justify-center md:col-span-4" tint="accent">
-          <Eyebrow id="sp-safe">Safe to spend</Eyebrow>
+          <Eyebrow id="sp-safe">You can spend</Eyebrow>
           <div className="flex items-baseline gap-2">
             <BigNumber>
               <Count k="sp:safe" value={m.safe_per_day} format={(v) => money(v, { cents: true })} />
@@ -142,7 +142,7 @@ export function SpendingPage() {
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,440px),1fr))] gap-4">
         <Tile i={5} aria-labelledby="s-cat">
           <TileTitle id="s-cat" right={<span className="mono">{money(spentTotal)}</span>}>
-            By category · tick is pace to date
+            By category · the line is where you'd be on plan
           </TileTitle>
           <div className="flex flex-col gap-3">
             {m.categories.map((c, i) => {
@@ -186,7 +186,7 @@ export function SpendingPage() {
           </div>
           {m.unbudgeted > 0 && (
             <div className="text-xs text-ink-3">
-              {money(m.unbudgeted)} of the {money(m.allowance)} isn't budgeted. It's the buffer.
+              {money(m.unbudgeted)} of the {money(m.allowance)} isn't given to a category, so it's a cushion.
             </div>
           )}
         </Tile>
