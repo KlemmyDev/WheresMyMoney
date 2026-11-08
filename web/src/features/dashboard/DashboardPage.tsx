@@ -1,6 +1,6 @@
 /**
  * The Overview (Nightfall, from the uplift canvas): the balances with an account filter and what's coming up beside
- * them, then this spending month against what the forecast expected, recent activity and savings goals.
+ * them, then this spending month against what the forecast expected, savings goals and recent activity.
  */
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -144,14 +144,8 @@ export function DashboardPage() {
           <MonthCard m={m} />
         </>
       )}
-      <div className="grid gap-4 md:grid-cols-12 [&>*]:min-w-0">
-        <div className="md:col-span-7">
-          <RecentActivity />
-        </div>
-        <div className="md:col-span-5">
-          <GoalsCard d={d} />
-        </div>
-      </div>
+      <GoalsCard d={d} />
+      <RecentActivity />
     </>
   );
 }
