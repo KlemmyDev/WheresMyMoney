@@ -1,4 +1,4 @@
-"""Outbound HTTP: update checks on GitHub, notifications (ntfy, webhooks, web push) and, later, market prices."""
+"""Outbound HTTP: update checks on GitHub, web push notifications and, later, market prices."""
 
 from __future__ import annotations
 

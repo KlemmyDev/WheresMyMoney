@@ -56,8 +56,9 @@ copy that survives losing the machine, copy `data/` and `.env` somewhere else no
 - **Spending:** the month from top-up to top-up: what's left, safe to spend a day, the pace, where it'll be at the next
   top-up, each day's spending and each category against its budget. Add spending on your phone in seconds (cash too).
 - **Household:** everyone signs in as themselves; who added what is noted.
-- **Notifications:** check-in reminders, a transfer that didn't add up, the bills buffer under target, safe to spend
-  running low, and bills you pay by hand, to each phone (web push), an ntfy topic or a webhook.
+- **Notifications:** check-in reminders, a transfer that didn't add up, bills you pay by hand coming up, budgets
+  nearly used up, spending ahead of the plan, statements to import and the bills buffer under target, as web push to
+  each phone or computer turned on.
 - **API keys** for other apps on your network, like a family dashboard: see [docs/developers.md](docs/developers.md).
 
 ## What you need

@@ -1,9 +1,8 @@
-"""Notification channels, each rule's settings and progress, the options that apply to all, and what was sent."""
+"""Each rule's settings and progress, the options that apply to all, and what was sent."""
 
 from __future__ import annotations
 
 import json
-import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -15,19 +14,9 @@ OPTIONS = "notify_options"  # kv
 
 
 @dataclass
-class Channel:
-    kind: str
-    enabled: bool
-    config: dict[str, str]
-    updated_at: int
-
-
-@dataclass
 class RuleSettings:
     enabled: bool
     values: dict[str, Any] = field(default_factory=dict)
-    # Which channels this rule uses ("push", "ntfy", "webhook"); None: all of them.
-    channels: list[str] | None = None
 
 
 DEFAULT_OPTIONS: dict[str, Any] = {
@@ -40,23 +29,6 @@ class NotificationsRepository:
     def __init__(self, db: Database):
         self.db = db
 
-    # -- channels -------------------------------------------------------------
-    def channels(self) -> dict[str, Channel]:
-        with self.db.reading() as conn:
-            rows = conn.execute("SELECT kind, enabled, config, updated_at FROM notify_channels").fetchall()
-        return {k: Channel(k, bool(on), json.loads(cfg), at) for k, on, cfg, at in rows}
-
-    def save_channel(self, kind: str, enabled: bool, config: dict[str, str]) -> None:
-        with self.db.writing() as conn:
-            conn.execute(
-                "INSERT OR REPLACE INTO notify_channels (kind, enabled, config, updated_at) VALUES (?, ?, ?, ?)",
-                (kind, int(enabled), json.dumps(config), int(time.time())),
-            )
-
-    def delete_channel(self, kind: str) -> bool:
-        with self.db.writing() as conn:
-            return conn.execute("DELETE FROM notify_channels WHERE kind = ?", (kind,)).rowcount > 0
-
     # -- rules ----------------------------------------------------------------
     def rules(self) -> dict[str, RuleSettings]:
         with self.db.reading() as conn:
@@ -64,11 +36,11 @@ class NotificationsRepository:
         out = {}
         for rule, on, text in rows:
             saved = json.loads(text)
-            out[rule] = RuleSettings(bool(on), saved.get("values") or {}, saved.get("channels"))
+            out[rule] = RuleSettings(bool(on), saved.get("values") or {})
         return out
 
     def save_rule(self, rule: str, settings: RuleSettings) -> None:
-        text = json.dumps({"values": settings.values, "channels": settings.channels})
+        text = json.dumps({"values": settings.values})
         with self.db.writing() as conn:
             conn.execute(
                 "INSERT OR REPLACE INTO notify_rules (rule, enabled, settings) VALUES (?, ?, ?)",
@@ -104,7 +76,7 @@ class NotificationsRepository:
 
     # -- history ---------------------------------------------------------------
     def add_history(self, ts: int, rule: str | None, event: str, title: str, body: str, results: dict[str, str]) -> int:
-        """Record a notification and how each channel took it ("ok", or why not); old rows are dropped."""
+        """Record a notification and how it went out ("ok", or why not); old rows are dropped."""
         with self.db.writing() as conn:
             cur = conn.execute(
                 "INSERT INTO notify_history (ts, rule, event, title, body, results) VALUES (?, ?, ?, ?, ?, ?)",
@@ -128,7 +100,7 @@ class NotificationsRepository:
         ]
 
     def sent_since(self, ts: int) -> int:
-        """How many notifications (not tests, not ones held back) got through to at least one channel since `ts`."""
+        """How many notifications (not tests, not ones held back) got through since `ts`."""
         with self.db.reading() as conn:
             rows = conn.execute(
                 "SELECT results FROM notify_history WHERE ts >= ? AND event IN ('alert', 'resolved')", (ts,)
