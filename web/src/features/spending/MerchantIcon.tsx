@@ -3,10 +3,9 @@
  * Woolworths at a glance without copying anyone's logo), with the category as a small badge in the corner. A merchant
  * that isn't known gets its first letter on a tile; money in, transfers and adjustments keep their plain glyph.
  */
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type { Transaction } from "~/features/common/types";
 import { Chip, I } from "~/features/common/icons";
-import { cn } from "~/features/common/ui";
 
 type Mark = { bg: string; fg: string; text: string; bar?: string; ring?: string };
 
@@ -150,22 +149,18 @@ function badge(tx: Transaction): { d: string; colour: string; label: string } | 
 /** Tile colours for a merchant nobody's described: a calm one picked by its name, so it's the same every time. */
 const PLAIN = ["#5b6ee1", "#2f9e8f", "#c2683b", "#8d5bd6", "#3a8fd1", "#b4507a", "#6f8f2f", "#a7802a"];
 
-const SIZES = { md: 32, lg: 40 } as const;
+const SIZES = { md: 32, lg: 40, xl: 56 } as const;
 
-export function MerchantIcon({ tx, size = "lg" }: { tx: Transaction; size?: keyof typeof SIZES }) {
-  const name = (tx.merchant || tx.description || "").trim();
-  const moneyIn = tx.amount > 0;
-  // Money in, transfers between accounts and balance fixes aren't a merchant: their plain glyph says it best.
-  if (moneyIn || tx.kind === "adjustment" || tx.category_kind === "transfer" || tx.category_kind === "income") {
-    return (
-      <Chip
-        g={tx.category_kind === "transfer" ? I.transfer : moneyIn ? I.pay : I.spending}
-        tone={moneyIn ? "savings" : tx.category_kind === "transfer" ? "offset" : "neutral"}
-        size={size}
-        round
-      />
-    );
-  }
+/** A merchant's mark on its own (the Merchants pages): its stylised brand tile, or its first letter. */
+export function MerchantMark({
+  name,
+  size = "lg",
+  children,
+}: {
+  name: string;
+  size?: keyof typeof SIZES;
+  children?: ReactNode;
+}) {
   const px = SIZES[size];
   const mark = markFor(name);
   const letter = (name.match(/[A-Za-z0-9]/)?.[0] ?? "?").toUpperCase();
@@ -181,7 +176,6 @@ export function MerchantIcon({ tx, size = "lg" }: { tx: Transaction; size?: keyo
         background: `color-mix(in srgb, ${plain} 22%, var(--color-tile-2))`,
         color: `color-mix(in srgb, ${plain} 70%, white)`,
       };
-  const b = badge(tx);
   const fontPx = Math.round(px * (text.length >= 3 ? 0.3 : text.length === 2 ? 0.38 : 0.48));
   return (
     <span aria-hidden className="relative inline-flex flex-none" style={{ width: px, height: px }}>
@@ -194,6 +188,29 @@ export function MerchantIcon({ tx, size = "lg" }: { tx: Transaction; size?: keyo
           <i className="absolute inset-x-0 bottom-0 block h-[18%] rounded-b-full" style={{ background: mark.bar }} />
         )}
       </span>
+      {children}
+    </span>
+  );
+}
+
+export function MerchantIcon({ tx, size = "lg" }: { tx: Transaction; size?: "md" | "lg" }) {
+  const name = (tx.merchant_name || tx.merchant || tx.description || "").trim();
+  const moneyIn = tx.amount > 0;
+  // Money in, transfers between accounts and balance fixes aren't a merchant: their plain glyph says it best.
+  if (moneyIn || tx.kind === "adjustment" || tx.category_kind === "transfer" || tx.category_kind === "income") {
+    return (
+      <Chip
+        g={tx.category_kind === "transfer" ? I.transfer : moneyIn ? I.pay : I.spending}
+        tone={moneyIn ? "savings" : tx.category_kind === "transfer" ? "offset" : "neutral"}
+        size={size}
+        round
+      />
+    );
+  }
+  const px = SIZES[size];
+  const b = badge(tx);
+  return (
+    <MerchantMark name={markFor(tx.merchant_key ?? "") ? (tx.merchant_key ?? name) : name} size={size}>
       {b && (
         <span
           className="absolute -right-1 -bottom-1 flex items-center justify-center rounded-full text-white ring-2 ring-tile"
@@ -207,12 +224,12 @@ export function MerchantIcon({ tx, size = "lg" }: { tx: Transaction; size?: keyo
             strokeWidth={2.4}
             strokeLinecap="round"
             strokeLinejoin="round"
-            className={cn("size-[64%]")}
+            className="size-[64%]"
           >
             <path d={b.d} />
           </svg>
         </span>
       )}
-    </span>
+    </MerchantMark>
   );
 }

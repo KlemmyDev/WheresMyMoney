@@ -52,6 +52,7 @@ export const SECTIONS: readonly Section[] = [
         g: I.list,
         tone: "neutral",
       },
+      { to: "/merchants", label: "Merchants", sub: "Where it goes, shop by shop", g: I.shop, tone: "spending" },
       { to: "/bills", label: "Bills", sub: "What's due, and what's set aside", g: I.bills, tone: "bills" },
       { to: "/accounts", label: "Accounts", sub: "Each account and its job", g: I.accounts, tone: "" },
       { to: "/loan", label: "Home loan", sub: "What our accounts save on it", g: I.loan, tone: "loan" },

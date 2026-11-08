@@ -17,7 +17,7 @@ from typing import Any
 
 from app.core import dates
 from app.core.database import Database
-from app.features.spending import forecast, merchants
+from app.features.spending import directory, forecast, merchants
 
 CATEGORY_KINDS = ("spending", "bills", "income", "transfer")
 # A new household's categories, with the designs' starting budgets (cents a month).
@@ -369,6 +369,7 @@ class SpendingService:
         with self.db.reading() as conn:
             rows = conn.execute(sql, args).fetchall()
             parts = _splits(conn, [r[0] for r in rows if r[17] == "split"])
+            book = directory.Book(conn)
         return [
             {
                 "id": r[0],
@@ -390,6 +391,9 @@ class SpendingService:
                 # What choosing "always" would remember it by.
                 "remember_as": merchants.learn_pattern(r[16], None, None, r[4]) if r[16] else "",
                 "category_by": r[17],
+                # The merchant it belongs to (its own, or the one the household mapped its statement name to).
+                "merchant_key": (key := book.key(r[16], r[4])) if r[16] else "",
+                "merchant_name": book.name(key) if r[16] else "",
                 "excluded": bool(r[18]),
                 "one_off": bool(r[19]),
                 "splits": parts.get(r[0], []),
@@ -446,6 +450,30 @@ class SpendingService:
     def learn(self, description: str, category_id: int) -> int:
         with self.db.writing() as conn:
             return learn(conn, merchants.merchant(description), category_id, description)[0]
+
+    # -- the merchants ---------------------------------------------------------------
+
+    def merchant_directory(self) -> list[dict[str, Any]]:
+        with self.db.reading() as conn:
+            return directory.directory(conn, dates.today())
+
+    def merchant_detail(self, key: str) -> dict[str, Any]:
+        with self.db.reading() as conn:
+            out = directory.detail(conn, key, dates.today())
+        out["transactions"] = self.transactions(ids=out.pop("transaction_ids"), limit=200) if out["count"] else []
+        return out
+
+    def assign_merchant(self, body: dict[str, Any]) -> dict[str, Any]:
+        with self.db.writing() as conn:
+            return directory.assign(conn, str(body.get("text") or ""), body.get("key"), body.get("name"))
+
+    def forget_merchant(self, text: str) -> dict[str, Any]:
+        with self.db.writing() as conn:
+            return directory.forget(conn, text)
+
+    def rename_merchant(self, key: str, name: str) -> dict[str, Any]:
+        with self.db.writing() as conn:
+            return directory.rename(conn, key, name)
 
     # -- sorting by merchant ----------------------------------------------------------
 

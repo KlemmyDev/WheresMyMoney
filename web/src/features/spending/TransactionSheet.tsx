@@ -3,7 +3,8 @@
  * optionally remember it for the merchant), a note, and delete. Only what was typed in can be deleted; a statement's
  * rows are the bank's, so the sheet says so instead. Deleting asks first.
  */
-import { MerchantIcon } from "~/features/spending/MerchantIcon";
+import { MerchantIcon, MerchantMark } from "~/features/spending/MerchantIcon";
+import { MerchantPicker } from "~/features/merchants/MerchantPicker";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
@@ -45,6 +46,7 @@ function Body({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
   const [splits, setSplits] = useState(tx.splits ?? []);
   const [excluded, setExcluded] = useState(!!tx.excluded);
   const [oneOff, setOneOff] = useState(!!tx.one_off);
+  const [picking, setPicking] = useState(false);
   const [making, setMaking] = useState(false);
   const bills = useQuery(billsQuery);
   // Unlinking shows straight away, before the list comes back.
@@ -85,13 +87,17 @@ function Body({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col items-center gap-1.5 text-center">
-        <Chip
-          g={tx.amount > 0 ? I.pay : I.spending}
-          tone={tx.amount > 0 ? "savings" : "spending"}
-          size="xl"
-          round
-          solid
-        />
+        {tx.amount < 0 && tx.merchant_key && tx.category_kind !== "transfer" ? (
+          <MerchantMark name={tx.merchant_key} size="xl" />
+        ) : (
+          <Chip
+            g={tx.amount > 0 ? I.pay : I.spending}
+            tone={tx.amount > 0 ? "savings" : "spending"}
+            size="xl"
+            round
+            solid
+          />
+        )}
         <span className="num mt-1 text-[34px] leading-10 text-ink">
           {money(tx.amount, { cents: true, sign: true })}
         </span>
@@ -239,6 +245,28 @@ function Body({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
           label="Someone's paying us back"
         />
       </label>
+      {tx.merchant && tx.merchant_key && tx.amount < 0 && tx.category_kind !== "transfer" && (
+        <div className="flex flex-col gap-2 rounded-2xl border border-line bg-tile-2 px-3.5 py-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <MerchantMark name={tx.merchant_key} size="md" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-[12px] text-ink-3">Merchant</span>
+              <Link
+                to="/merchants/$key"
+                params={{ key: tx.merchant_key }}
+                onClick={onClose}
+                className="block truncate text-[14px] font-semibold text-ink no-underline hover:text-teal"
+              >
+                {tx.merchant_name} →
+              </Link>
+            </span>
+            <Button small onClick={() => setPicking((p) => !p)}>
+              {picking ? "Close" : "Change"}
+            </Button>
+          </div>
+          {picking && <MerchantPicker text={tx.merchant} current={tx.merchant_key} onDone={() => setPicking(false)} />}
+        </div>
+      )}
       {tx.amount < 0 && !excluded && (
         <label className="flex items-center gap-3 rounded-2xl border border-line bg-tile-2 px-3.5 py-3">
           <span className="min-w-0 flex-1">
