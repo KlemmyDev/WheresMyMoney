@@ -8,8 +8,9 @@
  * - Striped fill means it happened; hatched means it's likely (a forecast).
  * - Icon chips carry the role colour: offset blue, bills amber, spending pink, savings green, invest cyan.
  */
-import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { aboveKeyboard, useKeyboard } from "~/features/common/keyboard";
+import { useStoredFlag } from "~/features/common/theme";
 import { createPortal } from "react-dom";
 import { Chip, type Glyph, type Tone } from "~/features/common/icons";
 import { usePresence } from "~/features/common/motion";
@@ -587,5 +588,52 @@ export function Sheet({
       </div>
     </div>,
     document.body,
+  );
+}
+
+/** Shows everything instead of the essentials: the household member's own choice, on this device (Settings). */
+export const EVERYTHING = "wmm:everything";
+
+/**
+ * The detail behind a card's plain sentence: charts, breakdowns, what-ifs. Closed for someone who chose the
+ * essentials and open for someone who chose everything; either can open or close it here.
+ */
+export function Details({
+  label = "Details",
+  children,
+  className,
+}: {
+  label?: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  const [everything] = useStoredFlag(EVERYTHING);
+  const [open, setOpen] = useState<boolean | null>(null);
+  const id = useId();
+  const shown = open ?? everything;
+  return (
+    <div className={cn("flex flex-col", className)}>
+      <button
+        type="button"
+        aria-expanded={shown}
+        aria-controls={id}
+        onClick={() => setOpen(!shown)}
+        className="press inline-flex min-h-11 cursor-pointer items-center gap-1.5 self-start rounded-xl border-0 bg-transparent px-0 text-[14px] font-semibold text-teal"
+      >
+        {shown ? "Hide the detail" : label}
+        <svg
+          aria-hidden
+          viewBox="0 0 10 6"
+          className={cn("h-1.5 w-2.5 transition-transform duration-200", shown && "rotate-180")}
+        >
+          <path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.6" />
+        </svg>
+      </button>
+      {shown && (
+        <div id={id} className="mt-2 flex flex-col gap-4">
+          {children}
+        </div>
+      )}
+    </div>
   );
 }

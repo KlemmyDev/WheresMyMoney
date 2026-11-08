@@ -16,6 +16,7 @@ import { useState, type CSSProperties } from "react";
 import { AccountTransactions, ActivityChart, type Bucket, type Range } from "~/features/accounts/Activity";
 import { apiSend, errorMessage } from "~/features/common/api";
 import { Count } from "~/features/common/charts";
+import { Card, Details } from "~/features/common/ds";
 import {
   amount,
   capsDate,
@@ -52,15 +53,15 @@ import {
 
 /** An account's job in a word or two, for its card. */
 export function roleBadge(a: Account, goals: Goal[]): string {
-  if (a.kind === "loan") return `LOAN · ${((a.rate_bp ?? 0) / 100).toFixed(2)}%`;
-  if (a.role === "offset") return "OFFSET";
-  if (a.role === "bills") return `${a.target_months ?? 3} MONTHS`;
-  if (a.role === "spending") return "ALLOWANCE";
+  if (a.kind === "loan") return `Loan · ${((a.rate_bp ?? 0) / 100).toFixed(2)}%`;
+  if (a.role === "offset") return "Cuts interest";
+  if (a.role === "bills") return "For bills";
+  if (a.role === "spending") return "Spending money";
   if (a.role === "savings") {
     const n = goals.filter((g) => g.account_id === a.id).length;
-    return `${n} ${n === 1 ? "GOAL" : "GOALS"}`;
+    return n ? `${n} ${n === 1 ? "goal" : "goals"}` : "Savings";
   }
-  return "TRACKED";
+  return "Just tracked";
 }
 
 export function AccountsPage({ selected }: { selected?: number }) {
@@ -95,7 +96,7 @@ export function AccountsPage({ selected }: { selected?: number }) {
           </>
         }
       />
-      <Readouts data={data} />
+      <Summary data={data} />
       <section aria-label="Accounts" className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,220px),1fr))] gap-3">
         {all.map((a, i) => (
           <AccountCard
@@ -151,6 +152,38 @@ export function AccountsPage({ selected }: { selected?: number }) {
  * The three figures across the top: what's offsetting the loan (and how much of it that covers), how the accounts
  * moved in 30 days and who moved them, and the interest the offsets save a day.
  */
+/** The page in a sentence, with the totals behind Details. */
+function Summary({ data }: { data: AccountsOverview }) {
+  const loan = data.loan;
+  const moved = data.accounts.reduce((t, a) => t + a.change_30d, 0);
+  const perDay = loan
+    ? (Math.min(Math.max(data.offsetting, 0), Math.max(loan.balance, 0)) * (loan.rate_bp ?? 0)) / 10000 / 365
+    : 0;
+  return (
+    <Card lit className="flex flex-col gap-2">
+      <p className="m-0 text-[17px] leading-relaxed text-ink">
+        {loan ? (
+          <>
+            Our accounts hold <b>{money(data.offsetting)}</b>. Because they sit against the home loan, they save about{" "}
+            <b>{money(perDay, { cents: true })} a day</b> in interest, about {money(perDay * 365)} a year.
+          </>
+        ) : (
+          <>
+            Our accounts hold <b>{money(data.total)}</b>.
+          </>
+        )}{" "}
+        {moved >= 0
+          ? `In the last 30 days they went up by ${money(moved)}.`
+          : `In the last 30 days they went down by ${money(-moved)}.`}
+      </p>
+      <p className="m-0 text-[14px] text-ink-3">Each account below has a job. Tap one to see what's moved in it.</p>
+      <Details label="See the totals">
+        <Readouts data={data} />
+      </Details>
+    </Card>
+  );
+}
+
 function Readouts({ data }: { data: AccountsOverview }) {
   const loan = data.loan;
   const banks = data.accounts;
@@ -172,22 +205,19 @@ function Readouts({ data }: { data: AccountsOverview }) {
       >
         <div className="flex items-center gap-2 text-[13px] text-ink-2">
           <span aria-hidden className="pulse-ring size-2 rounded-full bg-teal" />
-          <span id="ac-off">{loan ? "Offsetting the loan" : "In your accounts"}</span>
+          <span id="ac-off">{loan ? "Against the loan" : "In your accounts"}</span>
         </div>
         <div className="mono text-[40px] leading-[46px] font-semibold tracking-[-0.045em] sm:text-[48px] sm:leading-[54px]">
           <Count k="acct:off" value={loan ? data.offsetting : data.total} format={(v) => money(v)} />
         </div>
         <div className="text-[12.5px] text-ink-3">
           {loan
-            ? `Covers ${pct(loan.balance ? data.offsetting / loan.balance : 0)} of the ${money(loan.balance)} ${loan.name.toLowerCase()}`
+            ? `${pct(loan.balance ? data.offsetting / loan.balance : 0)} of the ${money(loan.balance)} ${loan.name.toLowerCase()} isn't charged interest`
             : `${banks.length} ${banks.length === 1 ? "account" : "accounts"}`}
         </div>
       </Tile>
       <Tile i={1} aria-labelledby="ac-30">
-        <TileTitle
-          id="ac-30"
-          right={<Pill tone={moved >= 0 ? "good" : "warn"}>{moved >= 0 ? "GROWING" : "DOWN"}</Pill>}
-        >
+        <TileTitle id="ac-30" right={<Pill tone={moved >= 0 ? "good" : "warn"}>{moved >= 0 ? "Up" : "Down"}</Pill>}>
           Last 30 days
         </TileTitle>
         <div className="mono text-[34px] leading-10 font-semibold tracking-[-0.04em]">
@@ -212,10 +242,10 @@ function Readouts({ data }: { data: AccountsOverview }) {
             />
           ))}
         </div>
-        <div className="mono flex flex-wrap gap-x-3.5 gap-y-1 text-[11px] text-ink-3">
+        <div className="flex flex-wrap gap-x-3.5 gap-y-1 text-[13px] text-ink-3">
           {share.map((a) => (
             <span key={a.id}>
-              {a.name.toUpperCase()} {money(a.change_30d, { sign: true })}
+              {a.name} <span className="num text-ink-2">{money(a.change_30d, { sign: true })}</span>
             </span>
           ))}
         </div>
@@ -226,7 +256,7 @@ function Readouts({ data }: { data: AccountsOverview }) {
             id="ac-int"
             right={<span className="mono text-teal">{((loan.rate_bp ?? 0) / 100).toFixed(2)}%</span>}
           >
-            Interest it saves
+            Interest saved
           </TileTitle>
           <div className="flex items-baseline gap-2">
             <span className="mono text-[34px] leading-10 font-semibold tracking-[-0.04em]">
@@ -235,7 +265,8 @@ function Readouts({ data }: { data: AccountsOverview }) {
             <span className="text-[13px] text-ink-3">a day</span>
           </div>
           <div className="text-[12.5px] text-ink-3">
-            About <span className="mono text-ink">{money(perDay * 365)}</span> a year, while staying yours to spend
+            About <span className="mono text-ink">{money(perDay * 365)}</span> a year, and the money is still ours to
+            use
           </div>
         </Tile>
       )}
@@ -247,19 +278,22 @@ function Readouts({ data }: { data: AccountsOverview }) {
 function job(a: Account, offsetting: number): { text: string; share: number } {
   if (a.kind === "loan")
     return {
-      text: `Offsets cover ${pct(a.balance ? offsetting / a.balance : 0)}`,
+      text: `Our accounts cover ${pct(a.balance ? offsetting / a.balance : 0)} of it`,
       share: a.balance ? offsetting / a.balance : 0,
     };
   const t = a.target;
-  if (!t) return { text: "Just tracking it", share: 0 };
+  if (!t) return { text: "Shown, not counted toward anything", share: 0 };
   if (t.kind === "loan") return { text: `Covers ${pct(t.progress)} of the loan`, share: t.progress };
   if (t.kind === "months") {
     const held = t.held ?? 0;
-    return { text: `${held.toFixed(1)} months held · target ${t.months}`, share: t.months ? held / t.months : 0 };
+    return {
+      text: `Enough for ${held.toFixed(1)} months of bills (we keep ${t.months})`,
+      share: t.months ? held / t.months : 0,
+    };
   }
   if (t.kind === "allowance") return { text: `${money(a.balance)} of ${money(t.amount)} left`, share: t.progress };
   return t.amount
-    ? { text: `${pct(t.progress, 0)} of ${money(t.amount)} in goals`, share: t.progress }
+    ? { text: `${pct(t.progress, 0)} of the way to its goals (${money(t.amount)})`, share: t.progress }
     : { text: "No goals yet", share: 0 };
 }
 
@@ -339,7 +373,7 @@ function AccountCard({
             art ? "text-white/85" : better ? "text-good" : "text-ink-3",
           )}
         >
-          {money(a.change_30d, { sign: true })} 30d
+          {money(a.change_30d, { sign: true })} in 30 days
         </span>
       </span>
       <span className={cn("block h-1.5 w-full overflow-hidden rounded-full", art ? "bg-white/25" : "bg-raised")}>

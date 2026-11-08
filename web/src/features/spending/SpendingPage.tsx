@@ -4,7 +4,7 @@
  * spending, each category against its budget (the tick is the pace to date), who spent it, and the latest spending.
  */
 import { Loading } from "~/features/common/brand";
-import { Bar, BigNumber, Card, Eyebrow, Stat } from "~/features/common/ds";
+import { Bar, BigNumber, Card, Eyebrow, Stat, Details } from "~/features/common/ds";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState, type CSSProperties } from "react";
@@ -56,16 +56,22 @@ export function SpendingPage() {
         <Card lit tint="spending" aria-labelledby="sp-hero" className="md:col-span-8">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <Eyebrow id="sp-hero">Spent so far</Eyebrow>
+              <Eyebrow id="sp-hero">Spent this month</Eyebrow>
               <div className="mt-1 flex items-baseline gap-2.5">
                 <BigNumber>{money(m.spent, { cents: true })}</BigNumber>
                 <span className="text-[15px] text-ink-3">of {money(m.allowance)}</span>
               </div>
             </div>
-            <Pill tone={under ? "good" : "warn"}>
-              {money(Math.abs(m.vs_pace))} {under ? "under" : "over"} pace
-            </Pill>
+            <Pill tone={under ? "good" : "warn"}>{under ? "On track" : "Over plan"}</Pill>
           </div>
+          <p className="m-0 text-[16px] text-ink-2">
+            {under
+              ? `That's ${money(-m.vs_pace)} less than planned by now, day ${m.day} of ${m.days}.`
+              : `That's ${money(m.vs_pace)} more than planned by now, day ${m.day} of ${m.days}.`}{" "}
+            {m.projected >= 0
+              ? `At this rate about ${money(m.projected)} will be left when it's topped up on ${shortDate(nextDay(m.end))}, and goes back to the offset.`
+              : `At this rate it'll run ${money(-m.projected)} short before it's topped up on ${shortDate(nextDay(m.end))}.`}
+          </p>
           <Bar
             label={`Spent ${money(m.spent)}, likely ${money(Math.max(0, m.left - m.projected))} more, of ${money(m.allowance)}`}
             max={Math.max(m.allowance, m.spent + Math.max(0, m.left - m.projected), 1)}
@@ -76,26 +82,21 @@ export function SpendingPage() {
             ]}
           />
           <div className="flex flex-wrap justify-between gap-2 text-[13px] text-ink-3">
-            <span>
-              Spent {money(m.spent)} in {m.day} days
-            </span>
-            <span>▨ likely another {money(Math.max(0, m.left - m.projected))}</span>
-            <span className={m.projected >= 0 ? "text-good" : "text-warn"}>
-              {m.projected >= 0
-                ? `~${money(m.projected)} back to Offset on ${shortDate(nextDay(m.end))}`
-                : `~${money(-m.projected)} short before ${shortDate(nextDay(m.end))}`}
-            </span>
+            <span>Spent so far</span>
+            <span>Shaded: likely another {money(Math.max(0, m.left - m.projected))}</span>
           </div>
-          <div className="grid grid-cols-3 gap-2.5">
-            <Stat label="Left" value={money(m.left)} note={`of ${money(m.allowance)}`} role="spending" />
-            <Stat
-              label="Average a day"
-              value={money(m.day ? Math.round(m.spent / m.day) : 0)}
-              note={`even pace ${money(m.even_per_day)}`}
-              role="spending"
-            />
-            <Stat label="Days left" value={String(m.remaining)} note={`of ${m.days}`} role="spending" />
-          </div>
+          <Details label="See the numbers">
+            <div className="grid grid-cols-3 gap-2.5">
+              <Stat label="Left" value={money(m.left)} note={`of ${money(m.allowance)}`} role="spending" />
+              <Stat
+                label="Average a day"
+                value={money(m.day ? Math.round(m.spent / m.day) : 0)}
+                note={`the plan is ${money(m.even_per_day)}`}
+                role="spending"
+              />
+              <Stat label="Days left" value={String(m.remaining)} note={`of ${m.days}`} role="spending" />
+            </div>
+          </Details>
         </Card>
         <Card lit aria-labelledby="sp-safe" className="justify-center md:col-span-4" tint="accent">
           <Eyebrow id="sp-safe">Safe to spend</Eyebrow>
