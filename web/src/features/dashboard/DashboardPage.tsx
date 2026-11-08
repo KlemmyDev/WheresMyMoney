@@ -5,7 +5,6 @@
  * spent each day as bars, pay and bills underneath; hover or arrow through any day to see it on the right), where the
  * money went by category, and what's still to come before the next top-up.
  */
-import { TodayCard } from "~/features/dashboard/Today";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
@@ -138,34 +137,32 @@ export function DashboardPage() {
     );
   const s = d.spending;
   const m = s ? buildMonth(d, s) : null;
-  // The account total leads, with today's plain answers beside it; then the month, what's coming and where it went.
+  // The account total leads, with what's coming up beside it; then the month and where it went.
   return (
     <>
       <div className="grid gap-4 md:grid-cols-12 [&>*]:min-w-0">
-        <BalanceHero d={d} />
-        {/* On a tablet (sm to md) the cards stack, so Coming up takes Today's spot under the balance, a bit tighter. */}
-        <div className="contents sm:max-md:hidden">
-          <TodayCard d={d} m={m} />
-        </div>
-        {m && <ComingUp d={d} m={m} compact className="hidden sm:max-md:flex" />}
+        {m ? (
+          <>
+            <BalanceHero d={d} />
+            <ComingUp d={d} m={m} compact className="md:col-span-4" />
+          </>
+        ) : (
+          <div className="md:col-span-12">
+            <BalanceHero d={d} />
+          </div>
+        )}
       </div>
       {s && m && (
         <>
           <MonthCard m={m} sel={sel} setSel={setSel} />
           <div className="grid gap-4 md:grid-cols-12 [&>*]:min-w-0">
-            <ComingUp d={d} m={m} className="sm:max-md:hidden md:col-span-6" />
             <WhereItWent s={s} />
+            <RecentActivity />
           </div>
         </>
       )}
-      <div className="grid gap-4 md:grid-cols-12 [&>*]:min-w-0">
-        <div className="md:col-span-7">
-          <RecentActivity />
-        </div>
-        <div className="md:col-span-5">
-          <GoalsCard d={d} />
-        </div>
-      </div>
+      {!(s && m) && <RecentActivity />}
+      <GoalsCard d={d} />
     </>
   );
 }

@@ -272,7 +272,7 @@ export function MonthCard({ m, sel, setSel }: { m: Month; sel: number | null; se
 
 /**
  * Pay and bills still to come this month, and how well the Bills account covers the ones before pay. `compact` (the
- * tablet spot beside the balance) tightens the rows, lays them out two across and shows the next six.
+ * spot beside the balance) tightens the rows, lays them out two across on a tablet and shows the next six.
  */
 export function ComingUp({
   d,
@@ -324,7 +324,7 @@ export function ComingUp({
           {b.byHand ? ` · ${b.byHand} by hand` : ""}
         </div>
       </div>
-      <div className={cn("-mx-1", compact ? "grid grid-cols-2 gap-x-2" : "flex flex-col")}>
+      <div className={cn("-mx-1", compact ? "grid gap-x-2 sm:max-md:grid-cols-2" : "flex flex-col")}>
         {rows.map((r, k) => {
           const e = EVENT_GLYPH[r.kind];
           return (
