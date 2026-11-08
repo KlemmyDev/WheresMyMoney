@@ -26,9 +26,15 @@ const HOW: Record<Transaction["kind"], [string, "teal" | "info" | "warn"]> = {
   adjustment: ["Balance correction", "warn"],
 };
 
+/** What a transaction is called: its merchant's name (Superloop, Woolworths), else what the statement says. */
+export function shownName(tx: Transaction): string {
+  const named = tx.merchant_key && tx.kind !== "adjustment" && tx.category_kind !== "transfer" && tx.merchant_name;
+  return named || tx.merchant || tx.description;
+}
+
 export function TransactionSheet({ tx, onClose }: { tx: Transaction | null; onClose: () => void }) {
   return (
-    <Sheet open={!!tx} onClose={onClose} title={tx ? tx.merchant || tx.description : ""}>
+    <Sheet open={!!tx} onClose={onClose} title={tx ? shownName(tx) : ""}>
       {tx && <Body key={tx.id} tx={tx} onClose={onClose} />}
     </Sheet>
   );
@@ -113,6 +119,38 @@ function Body({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
       {tx.description !== tx.merchant && (
         <div className="mono rounded-xl border border-line bg-tile-2 px-3.5 py-2.5 text-[12px] text-ink-3">
           {tx.description}
+        </div>
+      )}
+      {tx.merchant && tx.merchant_key && tx.kind !== "adjustment" && tx.category_kind !== "transfer" && (
+        <div className="flex flex-col gap-2 rounded-2xl border border-line bg-tile-2 px-3.5 py-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <MerchantMark name={tx.merchant_key} size="md" />
+            <span className="min-w-0 flex-1">
+              <span className={cn("block text-[12px]", tx.merchant_key === "BPAY" ? "text-warn" : "text-ink-3")}>
+                {tx.merchant_key === "BPAY" ? "Who was this BPAY to?" : "Merchant"}
+              </span>
+              <Link
+                to="/merchants/$key"
+                params={{ key: tx.merchant_key }}
+                onClick={onClose}
+                className="block truncate text-[14px] font-semibold text-ink no-underline hover:text-teal"
+              >
+                {tx.merchant_name} →
+              </Link>
+              {tx.merchant_note && <span className="block truncate text-[12px] text-ink-3">{tx.merchant_note}</span>}
+            </span>
+            <Button small onClick={() => setPicking((p) => !p)}>
+              {picking ? "Close" : tx.merchant_key === "BPAY" ? "Say who" : "Change"}
+            </Button>
+          </div>
+          {picking && (
+            <MerchantPicker
+              text={tx.merchant}
+              current={tx.merchant_key}
+              payment={tx.merchant_unnamed ? { id: tx.id, amount: tx.amount } : undefined}
+              onDone={() => setPicking(false)}
+            />
+          )}
         </div>
       )}
       {tx.amount < 0 && (
@@ -245,38 +283,6 @@ function Body({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
           label="Someone's paying us back"
         />
       </label>
-      {tx.merchant && tx.merchant_key && tx.kind !== "adjustment" && tx.category_kind !== "transfer" && (
-        <div className="flex flex-col gap-2 rounded-2xl border border-line bg-tile-2 px-3.5 py-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <MerchantMark name={tx.merchant_key} size="md" />
-            <span className="min-w-0 flex-1">
-              <span className={cn("block text-[12px]", tx.merchant_key === "BPAY" ? "text-warn" : "text-ink-3")}>
-                {tx.merchant_key === "BPAY" ? "Who was this BPAY to?" : "Merchant"}
-              </span>
-              <Link
-                to="/merchants/$key"
-                params={{ key: tx.merchant_key }}
-                onClick={onClose}
-                className="block truncate text-[14px] font-semibold text-ink no-underline hover:text-teal"
-              >
-                {tx.merchant_name} →
-              </Link>
-              {tx.merchant_note && <span className="block truncate text-[12px] text-ink-3">{tx.merchant_note}</span>}
-            </span>
-            <Button small onClick={() => setPicking((p) => !p)}>
-              {picking ? "Close" : tx.merchant_key === "BPAY" ? "Say who" : "Change"}
-            </Button>
-          </div>
-          {picking && (
-            <MerchantPicker
-              text={tx.merchant}
-              current={tx.merchant_key}
-              payment={tx.merchant_unnamed ? { id: tx.id, amount: tx.amount } : undefined}
-              onDone={() => setPicking(false)}
-            />
-          )}
-        </div>
-      )}
       {tx.amount < 0 && !excluded && (
         <label className="flex items-center gap-3 rounded-2xl border border-line bg-tile-2 px-3.5 py-3">
           <span className="min-w-0 flex-1">
@@ -513,7 +519,7 @@ export function TxRow({
     >
       <MerchantIcon tx={tx} />
       <span className="min-w-0 flex-1">
-        <span className="block truncate">{tx.merchant || tx.description}</span>
+        <span className="block truncate">{shownName(tx)}</span>
         <span className="block truncate text-[13px] text-ink-3">
           {[sub, category].filter(Boolean).join(" · ")}
           {tx.note ? ` · ${tx.note}` : ""}

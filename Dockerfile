@@ -13,6 +13,8 @@ WORKDIR /web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY web/ ./
+# The business catalogue lives with the app (it reads the names and categories); the web app draws its marks.
+COPY app/features/spending/businesses.json /app/features/spending/businesses.json
 RUN npm run build
 
 # ---- the app

@@ -3,7 +3,7 @@
  * in dark and light before it goes on a page, and as the reference for which piece to reach for.
  */
 import { MerchantMark } from "~/features/spending/MerchantIcon";
-import { ALL_MARKS, PLACES } from "~/features/spending/merchantMarks";
+import { CATALOGUE, PLACES } from "~/features/spending/merchantMarks";
 import { useState, type ReactNode } from "react";
 import {
   Banner,
@@ -271,13 +271,15 @@ export function DesignPage() {
 
       <Section
         title="Merchant marks"
-        note="Drawn impressions in each merchant's colours, then kinds of place for merchants without one (merchantMarks.ts)"
+        note={`${CATALOGUE.length} businesses (businesses.json), then kinds of place for merchants without one`}
       >
         <div className="grid grid-cols-[repeat(auto-fill,minmax(88px,1fr))] gap-x-2 gap-y-4">
-          {Object.keys(ALL_MARKS).map((k) => (
-            <div key={k} className="flex min-w-0 flex-col items-center gap-1.5 text-center">
-              <MerchantMark name={k.trim()} size="xl" />
-              <span className="w-full truncate text-[11px] text-ink-3">{k.trim()}</span>
+          {CATALOGUE.map((b) => (
+            <div key={b.key} className="flex min-w-0 flex-col items-center gap-1.5 text-center">
+              <MerchantMark name={b.key} size="xl" />
+              <span className="w-full truncate text-[11px] text-ink-3" title={`${b.name} · ${b.category}`}>
+                {b.name}
+              </span>
             </div>
           ))}
         </div>
