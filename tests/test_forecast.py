@@ -70,3 +70,31 @@ def test_the_spending_month_carries_what_was_expected(client: TestClient, househ
     e = ok(client.get("/api/spending"))["month"]["expected"]
     # A new household: nothing to learn from yet, so no expected line and no likely finish.
     assert e["ready"] is False and e["daily"] == [] and e["rest"] is None and e["needs_days"] == 14
+
+
+def test_a_one_off_isnt_learned_from() -> None:
+    history = [Spend(d, 3000, "Eating out", "CAFE") for d in days_back(60)]
+    party = TODAY - dt.timedelta(days=3)
+    marked = [*history, Spend(party, 12000, "Eating out", "DOMINOS", one_off=True)]
+    unmarked = [*history, Spend(party, 12000, "Eating out", "DOMINOS")]
+    week = TODAY + dt.timedelta(days=6)
+    plain = forecast(history, TODAY, week, 0)["rest"]
+    # The birthday party doesn't lift what's expected from here, unless it's left unmarked.
+    assert forecast(marked, TODAY, week, 0)["rest"] == plain
+    assert forecast(unmarked, TODAY, week, 0)["rest"] > plain
+
+
+def test_a_transaction_can_be_marked_a_one_off(client: TestClient, household: dict) -> None:
+    tx = ok(
+        client.post(
+            "/api/transactions",
+            json={"account_id": household["Spending"], "amount": -12000, "description": "Dominos birthday party"},
+        )
+    )
+    assert tx.get("one_off", False) is False
+    ok(client.put(f"/api/transactions/{tx['id']}", json={"one_off": True}))
+    listed = ok(client.get("/api/transactions", params={"ids": tx["id"]}))
+    rows = listed if isinstance(listed, list) else listed.get("transactions", listed.get("items", []))
+    assert next(t for t in rows if t["id"] == tx["id"])["one_off"] is True
+    # Still real spending this month.
+    assert ok(client.get("/api/spending"))["month"]["spent"] >= 12000

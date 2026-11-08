@@ -197,6 +197,14 @@ def _splits_and_paid_back(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS splits_by_transaction ON splits (transaction_id)")
 
 
+def _one_offs(conn: sqlite3.Connection) -> None:
+    """transactions.`one_off`: spending that won't happen again (a birthday party, a one-time repair). It still counts
+    in the month, but the spending forecast doesn't learn from it."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(transactions)")}
+    if "one_off" not in cols:
+        conn.execute("ALTER TABLE transactions ADD COLUMN one_off INTEGER NOT NULL DEFAULT 0")
+
+
 def _investments(conn: sqlite3.Connection) -> None:
     """Investments: the ETFs held, entered by hand as they're bought and sold.
 
@@ -324,4 +332,5 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _fund_platforms,
     _budget_categories,
     _push_only,
+    _one_offs,
 ]

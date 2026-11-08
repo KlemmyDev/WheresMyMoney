@@ -11,6 +11,9 @@ Two parts, so a habit isn't counted twice:
 - Everyday spending: everything else, by category, as a recent daily average (recent weeks count most) shaped by the
   weekday (more on Saturdays, less on Tuesdays). A weekday's shape is trusted only as the weeks behind it build up.
 
+Spending marked a one-off (a birthday party, a one-time repair) is left out of both: it won't happen again, so
+there's nothing to learn from it.
+
 How far to trust it is measured, not guessed: the same model, given only the history up to four weeks ago, forecasts
 those four weeks, and the forecast is checked against what was really spent.
 
@@ -39,6 +42,7 @@ class Spend:
     amount: int  # cents spent (a refund is negative)
     category: str  # the category's name, or "Not sorted yet"
     merchant: str
+    one_off: bool = False  # won't happen again: not learned from
 
 
 @dataclass
@@ -113,7 +117,7 @@ class Model:
     """Learned from the spending before `before`; forecasts any day from then on."""
 
     def __init__(self, history: list[Spend], before: dt.date):
-        past = [s for s in history if s.date < before and (before - s.date).days <= LOOKBACK]
+        past = [s for s in history if s.date < before and (before - s.date).days <= LOOKBACK and not s.one_off]
         self.before = before
         self.first = min((s.date for s in past), default=None)
         self.days = (before - self.first).days if self.first else 0
@@ -194,7 +198,7 @@ def accuracy(history: list[Spend], today: dt.date) -> float | None:
     predicted = model.days_ahead(cutoff, today - dt.timedelta(days=1))
     actual: dict[dt.date, int] = defaultdict(int)
     for s in history:
-        if cutoff <= s.date < today:
+        if cutoff <= s.date < today and not s.one_off:
             actual[s.date] += s.amount
     # Week by week: a forecast isn't wrong for putting Saturday's shop on Sunday.
     err = total = 0

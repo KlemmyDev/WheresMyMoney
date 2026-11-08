@@ -43,6 +43,7 @@ function Body({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
   const [mode, setMode] = useState<"view" | "split">("view");
   const [splits, setSplits] = useState(tx.splits ?? []);
   const [excluded, setExcluded] = useState(!!tx.excluded);
+  const [oneOff, setOneOff] = useState(!!tx.one_off);
   const [making, setMaking] = useState(false);
   const bills = useQuery(billsQuery);
   // Unlinking shows straight away, before the list comes back.
@@ -237,6 +238,26 @@ function Body({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
           label="Someone's paying us back"
         />
       </label>
+      {tx.amount < 0 && !excluded && (
+        <label className="flex items-center gap-3 rounded-2xl border border-line bg-tile-2 px-3.5 py-3">
+          <span className="min-w-0 flex-1">
+            <span className="block text-[14px] font-semibold">A one-off</span>
+            <span className="block text-[12px] text-ink-3">
+              {oneOff
+                ? "Still counted this month, but the forecast won't expect it again."
+                : "Something that won't happen again, like a birthday party? Mark it so the forecast doesn't learn from it."}
+            </span>
+          </span>
+          <Switch
+            checked={oneOff}
+            onChange={(v) => {
+              setOneOff(v);
+              save.mutate({ one_off: v });
+            }}
+            label="A one-off"
+          />
+        </label>
+      )}
       <div className="flex flex-col gap-1.5">
         <label htmlFor="tx-note" className="text-[12px] font-semibold text-ink-2">
           Note
@@ -472,6 +493,7 @@ export function TxRow({
         </span>
         <span className="flex gap-1">
           {tx.excluded && <Pill tone="teal">Paid back</Pill>}
+          {tx.one_off && !tx.excluded && <Pill tone="mute">One-off</Pill>}
           {tx.splits?.length > 0 && <Pill tone="mute">Split</Pill>}
           {how && <Pill tone={how[1]}>{how[0]}</Pill>}
         </span>
