@@ -219,3 +219,15 @@ def test_money_in_shows_up_too(client: TestClient, household: dict) -> None:
         "received": 184300,
     }
     assert [t["id"] for t in d["transactions"]] == [refund["id"]]
+
+
+def test_celebrations_and_the_cheesecake_shop(client: TestClient, household: dict) -> None:
+    cats = {c["name"]: c for c in ok(client.get("/api/categories"))["categories"]}
+    assert cats["Celebrations"]["kind"] == "spending"
+    a = spend(client, household["Spending"], 4995, "THE CHEESECAKE SHOP MITCHELTON", "2026-10-11")
+    b = spend(client, household["Spending"], 3995, "CHEESECAKE SHOP KEPERRA 4054", "2026-10-18")
+    assert a["merchant_key"] == b["merchant_key"] == "CHEESECAKE SHOP"
+    assert a["merchant_name"] == "The Cheesecake Shop"
+    from app.features.spending import merchants
+
+    assert merchants.suggest("THE CHEESECAKE SHOP MITCHELTON") == "Celebrations"

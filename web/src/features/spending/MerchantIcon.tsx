@@ -27,6 +27,10 @@ const BADGES: [RegExp, string][] = [
   [/pet/i, "M12 20c-3 0-5-1.5-5-3.5S9 12 12 12s5 2.5 5 4.5-2 3.5-5 3.5zM6 10h.01M10 6h.01M14 6h.01M18 10h.01"],
   [/home|garden|furniture|maint/i, "M4 11l8-7 8 7v9H4zM10 20v-5h4v5"],
   [/health|pharm|medical|doctor|dental/i, "M12 6v12M6 12h12"],
+  [
+    /celebrat|party|birthday/i,
+    "M4 20h16v-6H4zM4 14c0-2 3.6-3 8-3s8 1 8 3M12 11V8.5M12 5.5c.8.8.8 1.6 0 2.4-.8-.8-.8-1.6 0-2.4z",
+  ],
   [/gift/i, "M4 10h16v10H4zM4 10V7h16v3M12 7v13M12 7c-2-4-6-2-4 0M12 7c2-4 6-2 4 0"],
   [
     /fun|hobb|holiday|entertain|stream|subscri/i,

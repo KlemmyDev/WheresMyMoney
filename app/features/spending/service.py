@@ -49,6 +49,7 @@ DEFAULT_CATEGORIES: list[tuple[str, str, int | None]] = [
     ("Pharmacy", "spending", None),
     ("Personal care", "spending", None),
     ("Education", "spending", None),
+    ("Celebrations", "spending", None),
     ("Gifts & donations", "spending", None),
     ("Work expenses", "spending", None),
     ("Buy now pay later", "spending", None),

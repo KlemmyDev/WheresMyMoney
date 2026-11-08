@@ -245,6 +245,13 @@ def _merge_dismissed(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE TABLE IF NOT EXISTS merchant_merge_dismissed (keys TEXT PRIMARY KEY)")
 
 
+def _celebrations(conn: sqlite3.Connection) -> None:
+    """A Celebrations category (birthday cakes, parties) for a household that has its own categories already."""
+    from app.features.spending.service import add_missing_categories
+
+    add_missing_categories(conn)
+
+
 def _investments(conn: sqlite3.Connection) -> None:
     """Investments: the ETFs held, entered by hand as they're bought and sold.
 
@@ -377,4 +384,5 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _merchant_sorting,
     _unnamed_payments,
     _merge_dismissed,
+    _celebrations,
 ]
