@@ -39,7 +39,7 @@ from Cryptodome.PublicKey import ECC
 from Cryptodome.Signature import DSS
 
 from app.core.database import Database
-from app.features.notifications.channels import DeliveryError, Message, Send
+from app.features.notifications.message import DeliveryError, Message, Send
 
 log = logging.getLogger(__name__)
 

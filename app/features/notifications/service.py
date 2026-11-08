@@ -1,7 +1,7 @@
 """
 Telling the household what needs them: every few minutes the rules (rules.py) look at the facts, and what they find
-goes out through the channels set up: the browsers that turned notifications on (webpush.py), an ntfy topic and a
-webhook (channels.py). Each occasion is said once. Quiet hours hold notifications back until they end, and a daily
+goes to the browsers and phones that turned notifications on, as web push through the service worker (webpush.py).
+Each occasion is said once. Quiet hours hold notifications back until they end, and a daily
 limit stops a flood. Everything sent, and how each channel took it, is kept (the history).
 """
 
@@ -19,15 +19,13 @@ from typing import Any
 from app.core import dates
 from app.core.database import Database
 from app.core.http import post
-from app.features.notifications import channels as channel_mod
-from app.features.notifications.channels import KINDS, DeliveryError, Message, Send
+from app.features.notifications.message import DeliveryError, Message, Send
 from app.features.notifications.repository import NotificationsRepository, RuleSettings
 from app.features.notifications.rules import BY_ID, RULES, Facts, RuleState, Say
 from app.features.notifications.webpush import PushService
 
 log = logging.getLogger(__name__)
 
-CHANNELS = ("push", "ntfy", "webhook")
 EVERY = 300  # seconds between looks
 MAX_CAP = 100
 
@@ -112,30 +110,22 @@ class Notifier:
                     continue
                 if self.repo.sent_since(day_start) >= int(options.get("daily_cap") or 20):
                     break
-                self._say(rule.id, say, cfg.channels if cfg else None, int(now))
+                self._say(rule.id, say, int(now))
                 state.data["said"] = ([*state.data.get("said", []), say.key])[-20:]
                 state.last_fired = now
                 self.repo.save_state(state)
                 said.append(say.key)
         return said
 
-    def _say(self, rule: str | None, say: Say, only: list[str] | None, ts: int, event: str = "alert") -> dict[str, str]:
+    def _say(self, rule: str | None, say: Say, ts: int, event: str = "alert") -> dict[str, str]:
         msg = Message(event, rule, say.title, say.body, ts)
         results: dict[str, str] = {}
-        if (only is None or "push" in only) and self.push.any():
+        if self.push.any():
             try:
                 self.push.send_all(msg, say.url)
                 results["push"] = "ok"
             except DeliveryError as e:
                 results["push"] = str(e)
-        for kind, channel in self.repo.channels().items():
-            if not channel.enabled or (only is not None and kind not in only):
-                continue
-            try:
-                channel_mod.deliver(kind, channel.config, msg, self.send)
-                results[kind] = "ok"
-            except DeliveryError as e:
-                results[kind] = str(e)
         self.repo.add_history(ts, rule, event, say.title, say.body, results)
         return results
 
@@ -143,7 +133,6 @@ class Notifier:
 
     def view(self) -> dict[str, Any]:
         settings = self.repo.rules()
-        channels = self.repo.channels()
         return {
             "rules": [
                 {
@@ -152,19 +141,10 @@ class Notifier:
                     "about": r.about,
                     "enabled": settings[r.id].enabled if r.id in settings else r.enabled,
                     "values": r.values(settings[r.id].values if r.id in settings else None),
-                    "channels": settings[r.id].channels if r.id in settings else None,
+                    "units": r.units,
                 }
                 for r in RULES
             ],
-            "channels": {
-                kind: {
-                    "enabled": channels[kind].enabled if kind in channels else False,
-                    "config": channel_mod.masked(kind, channels[kind].config) if kind in channels else {},
-                    "set": kind in channels,
-                    "fields": [f.__dict__ for f in KINDS[kind].fields],
-                }
-                for kind in KINDS
-            },
             "devices": [s.view() for s in self.push.subscriptions()],
             "options": self.repo.options(),
             "history": self.repo.history(30),
@@ -175,12 +155,9 @@ class Notifier:
         if r is None:
             raise ValueError("There's no such notification.")
         current = self.repo.rules().get(rule)
-        channels = body.get("channels", current.channels if current else None)
-        if channels is not None and (not isinstance(channels, list) or any(c not in CHANNELS for c in channels)):
-            raise ValueError("Choose from push, ntfy and webhook.")
         values = r.values({**(current.values if current else {}), **(body.get("values") or {})})
         enabled = bool(body.get("enabled", current.enabled if current else r.enabled))
-        self.repo.save_rule(rule, RuleSettings(enabled, values, channels))
+        self.repo.save_rule(rule, RuleSettings(enabled, values))
 
     def save_options(self, body: dict[str, Any]) -> None:
         options = self.repo.options()
@@ -198,22 +175,12 @@ class Notifier:
             options["daily_cap"] = max(1, min(cap, MAX_CAP))
         self.repo.save_options(options)
 
-    def save_channel(self, kind: str, body: dict[str, Any]) -> None:
-        stored = self.repo.channels().get(kind)
-        config = channel_mod.clean(kind, body, stored.config if stored else None)
-        self.repo.save_channel(kind, bool(body.get("enabled", True)), config)
-
     def test(self, target: str) -> dict[str, Any]:
+        """Send a test to every device ("push") or one (its id)."""
         say = Say("test", "WheresMyMoney test", "Notifications are working.", "/")
         msg = Message("test", None, say.title, say.body, int(self.clock()))
-        if target == "push" or target not in CHANNELS:
-            if not self.push.any():
-                raise ValueError("No browser has turned notifications on yet.")
-            self.push.send_all(msg, "/", None if target == "push" else target)
-        else:
-            channel = self.repo.channels().get(target)
-            if channel is None:
-                raise ValueError("Set that up first.")
-            channel_mod.deliver(target, channel.config, msg, self.send)
-        self.repo.add_history(msg.ts, None, "test", say.title, say.body, {target: "ok"})
+        if not self.push.any():
+            raise ValueError("No device has turned notifications on yet.")
+        self.push.send_all(msg, "/", None if target == "push" else target)
+        self.repo.add_history(msg.ts, None, "test", say.title, say.body, {"push": "ok"})
         return {"ok": True}

@@ -1,5 +1,5 @@
-"""Settings → Notifications: what's reported and how, where it goes (with a test send), the browsers turned on, and
-what was sent."""
+"""Settings → Notifications: what's reported, the devices turned on (with a test send), and what was sent. Everything
+goes out as web push through the service worker."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 
 from app.dependencies import JsonBody, ServicesDep
-from app.features.notifications.channels import KINDS, DeliveryError
+from app.features.notifications.message import DeliveryError
 
 router = APIRouter(prefix="/api/notifications")
 
@@ -25,13 +25,13 @@ async def _run(fn: Any, *args: Any) -> Any:
 
 @router.get("")
 async def overview(svc: ServicesDep):
-    """The rules and their numbers, channels (secrets masked), browsers turned on, options and recent history."""
+    """The rules and their numbers, the devices turned on, options and recent history."""
     return await _run(svc.notifications.view)
 
 
 @router.put("/rules/{rule}")
 async def save_rule(svc: ServicesDep, rule: str, body: JsonBody):
-    """Turn one on or off, set its numbers and channels: {"enabled": true, "values": {"dollars": 60}}."""
+    """Turn one on or off, or set its numbers: {"enabled": true, "values": {"days": 2}}."""
     await _run(svc.notifications.save_rule, rule, body)
     return await _run(svc.notifications.view)
 
@@ -43,27 +43,9 @@ async def save_options(svc: ServicesDep, body: JsonBody):
     return await _run(svc.notifications.view)
 
 
-@router.put("/channels/{kind}")
-async def save_channel(svc: ServicesDep, kind: str, body: JsonBody):
-    """Set up or change ntfy or a webhook, e.g. {"url": "https://ntfy.sh/our-money", "enabled": true}. A masked secret
-    sent back as it was shown keeps the saved one."""
-    if kind not in KINDS:
-        raise HTTPException(status_code=404, detail="There's no such channel.")
-    await _run(svc.notifications.save_channel, kind, body)
-    return await _run(svc.notifications.view)
-
-
-@router.delete("/channels/{kind}")
-async def remove_channel(svc: ServicesDep, kind: str):
-    if kind not in KINDS:
-        raise HTTPException(status_code=404, detail="There's no such channel.")
-    await _run(svc.notifications.repo.delete_channel, kind)
-    return await _run(svc.notifications.view)
-
-
 @router.post("/test")
 async def test(svc: ServicesDep, body: JsonBody):
-    """Send a test to one place: {"target": "push"} (every browser), a browser's id, "ntfy" or "webhook"."""
+    """Send a test: {"target": "push"} (every device) or a device's id."""
     target = str(body.get("target") or "push")
     result = await _run(svc.notifications.test, target)
     return {**result, **(await _run(svc.notifications.view))}

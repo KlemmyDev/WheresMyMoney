@@ -301,6 +301,12 @@ def _budget_categories(conn: sqlite3.Connection) -> None:
     add_missing_categories(conn)
 
 
+def _push_only(conn: sqlite3.Connection) -> None:
+    """Notifications go only to the browsers and phones that turned them on (web push): the ntfy and webhook
+    settings, with the tokens and addresses they held, are gone."""
+    conn.execute("DROP TABLE IF EXISTS notify_channels")
+
+
 MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _baseline,
     _money,
@@ -317,4 +323,5 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _super_values,
     _fund_platforms,
     _budget_categories,
+    _push_only,
 ]

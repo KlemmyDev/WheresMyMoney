@@ -67,6 +67,11 @@ def build_services(config: Config) -> Services:
     investments = InvestmentsService(db)
     retirement = RetirementService(db)
 
+    def last_statement() -> str | None:
+        with db.reading() as conn:
+            row = conn.execute("SELECT MAX(date) FROM transactions WHERE kind = 'statement'").fetchone()
+        return row[0] if row else None
+
     def facts() -> Facts:
         now = dt.datetime.now(dates.zone())
         board = dashboard.build("30d")
@@ -74,7 +79,7 @@ def build_services(config: Config) -> Services:
         if bills_acct:
             acct = accounts.get(bills_acct["account_id"])
             bills_acct = {**bills_acct, "alert": bool(acct and acct["alert_below"])}
-        tomorrow = dates.today() + dt.timedelta(days=1)
+        today = dates.today()
         return Facts(
             today=dates.today().isoformat(),
             hour=now.hour,
@@ -83,7 +88,8 @@ def build_services(config: Config) -> Services:
             flags=board["checkin"]["flags"],
             bills=bills_acct,
             spending=board["spending"],
-            by_hand_tomorrow=[b for b in bills.due(tomorrow, tomorrow) if b["how"] == "manual"],
+            bills_ahead=bills.due(today, today + dt.timedelta(days=14)),
+            last_statement=last_statement(),
         )
 
     return Services(

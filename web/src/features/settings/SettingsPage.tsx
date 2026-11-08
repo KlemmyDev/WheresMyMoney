@@ -1,6 +1,6 @@
 /**
- * Settings (design: CkHousehold): the household and who's in it, check-ins, notifications (this device, ntfy, a
- * webhook, and what to be told), developers' API keys, updates and backups, the retirement estimate's assumptions
+ * Settings (design: CkHousehold): the household and who's in it, check-ins, notifications (the devices turned on,
+ * and what to be told), developers' API keys, updates and backups, the retirement estimate's assumptions
  * and each super fund's fees and options, and appearance.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -39,7 +39,7 @@ import {
 
 const SECTIONS = [
   ["household", "Household", "People, accounts, pay", I.accounts, "spending"],
-  ["notifications", "Notifications", "Push, ntfy, webhook", I.bills, "bills"],
+  ["notifications", "Notifications", "Reminders on your phone", I.bills, "bills"],
   ["developers", "Developers", "Read-only API keys", I.rules, "offset"],
   ["updates", "Updates and backups", "Channel, versions, restore", I.shield, "savings"],
   ["retirement", "Retirement", "Returns, fees, inflation", I.retire, "savings"],
@@ -254,16 +254,14 @@ function Household() {
 }
 
 type NotifyView = {
-  rules: { id: string; name: string; about: string; enabled: boolean; values: Record<string, number> }[];
-  channels: Record<
-    string,
-    {
-      enabled: boolean;
-      config: Record<string, string>;
-      set: boolean;
-      fields: { key: string; label: string; required: boolean; secret: boolean }[];
-    }
-  >;
+  rules: {
+    id: string;
+    name: string;
+    about: string;
+    enabled: boolean;
+    values: Record<string, number>;
+    units: Record<string, string>;
+  }[];
   devices: { id: string; name: string; service: string; last_sent: number | null; last_error: string | null }[];
   options: { quiet: { enabled: boolean; start: string; end: string }; daily_cap: number };
   history: { id: number; ts: number; title: string; body: string; results: Record<string, string> }[];
@@ -307,8 +305,6 @@ function Notifications() {
       toast("Notifications are on for this device")
     ),
   });
-  const [ntfy, setNtfy] = useState<Record<string, string>>({});
-  const [hook, setHook] = useState<Record<string, string>>({});
   const v = q.data;
   if (!v) return null;
   const why = {
@@ -325,7 +321,8 @@ function Notifications() {
       <Tile i={0}>
         <TileTitle>Notifications</TileTitle>
         <div className="text-[13px] text-ink-2">
-          Push to each device, even with the app closed. On an iPhone, add WheresMyMoney to the Home Screen first.
+          Reminders pop up on each phone or computer turned on here, even with the app closed. On an iPhone, add
+          WheresMyMoney to the Home Screen first.
         </div>
         {why ? (
           <div className="text-[13px] text-warn">{why}</div>
@@ -370,53 +367,6 @@ function Notifications() {
           </Row>
         ))}
         {!v.devices.length && <div className="text-ink-3">No devices yet.</div>}
-        {(
-          [
-            ["ntfy", "ntfy · a topic on your own ntfy server", ntfy, setNtfy],
-            ["webhook", "Webhook · POST JSON to any URL", hook, setHook],
-          ] as const
-        ).map(([kind, label, form, setForm]) => {
-          const c = v.channels[kind];
-          return (
-            <div key={kind} className="border-t border-line py-3">
-              <div className="flex items-center justify-between gap-3">
-                <span>{label}</span>
-                <Pill tone={c.set && c.enabled ? "good" : "mute"}>{c.set && c.enabled ? "ON" : "OFF"}</Pill>
-              </div>
-              <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto_auto]">
-                {c.fields.map((f) => (
-                  <Input
-                    key={f.key}
-                    aria-label={f.label}
-                    placeholder={f.label + (f.required ? "" : " (optional)")}
-                    value={form[f.key] ?? c.config[f.key] ?? ""}
-                    onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
-                  />
-                ))}
-                <Button
-                  small
-                  onClick={() =>
-                    run.mutate({
-                      method: "PUT",
-                      path: `notifications/channels/${kind}`,
-                      body: { ...c.config, ...form, enabled: true },
-                    })
-                  }
-                >
-                  Save
-                </Button>
-                {c.set && (
-                  <Button
-                    small
-                    onClick={() => run.mutate({ method: "POST", path: "notifications/test", body: { target: kind } })}
-                  >
-                    Test
-                  </Button>
-                )}
-              </div>
-            </div>
-          );
-        })}
         {run.isError && <ErrorText>{errorMessage(run.error)}</ErrorText>}
       </Tile>
       <Tile i={1}>
@@ -429,20 +379,23 @@ function Notifications() {
             </span>
             <span className="flex items-center gap-2">
               {Object.entries(r.values).map(([k, val]) => (
-                <Input
-                  key={k}
-                  aria-label={`${r.name}: ${k}`}
-                  className="w-20 text-center"
-                  defaultValue={val}
-                  onBlur={(e) =>
-                    Number(e.target.value) !== val &&
-                    run.mutate({
-                      method: "PUT",
-                      path: `notifications/rules/${r.id}`,
-                      body: { values: { [k]: Number(e.target.value) } },
-                    })
-                  }
-                />
+                <label key={k} className="flex items-center gap-1.5 text-[12px] whitespace-nowrap text-ink-3">
+                  <Input
+                    aria-label={`${r.name}: ${r.units[k] ?? k}`}
+                    inputMode="numeric"
+                    className="w-16 text-center"
+                    defaultValue={val}
+                    onBlur={(e) =>
+                      Number(e.target.value) !== val &&
+                      run.mutate({
+                        method: "PUT",
+                        path: `notifications/rules/${r.id}`,
+                        body: { values: { [k]: Number(e.target.value) } },
+                      })
+                    }
+                  />
+                  {r.units[k]}
+                </label>
               ))}
               <Switch
                 label={r.name}
