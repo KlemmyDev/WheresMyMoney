@@ -278,12 +278,14 @@ export function RulesPage() {
                 <button
                   type="button"
                   onClick={() => setEditing(r)}
-                  className="chip-host press flex min-h-[72px] min-w-0 flex-1 cursor-pointer items-center gap-3.5 rounded-[20px] border border-line bg-tile-2 px-4 py-3 text-left text-ink hover:border-line-2"
+                  className="chip-host press flex min-h-[72px] min-w-0 flex-1 cursor-pointer items-center gap-3.5 rounded-[20px] border border-line bg-tile-2 px-3.5 py-3 text-left text-ink hover:border-line-2 sm:px-4"
                 >
-                  <IconChip g={k.g} tone={k.tone} size="lg" />
+                  <span className="hidden sm:inline-flex">
+                    <IconChip g={k.g} tone={k.tone} size="lg" />
+                  </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate font-semibold">{r.label || ruleWhat(r, names)}</span>
-                    <span className="block truncate text-[13px] text-ink-3">
+                    <span className="line-clamp-2 block font-semibold">{r.label || ruleWhat(r, names)}</span>
+                    <span className="line-clamp-2 block text-[13px] text-ink-3">
                       {r.label ? `${ruleWhat(r, names)} · ` : ""}every {EVERY_LABEL[r.every].toLowerCase()} · next{" "}
                       {shortDate(r.next_run)}
                     </span>
@@ -296,7 +298,7 @@ export function RulesPage() {
                           ? `to ${money(r.amount)}`
                           : money(r.amount)}
                     </span>
-                    {st ? <Pill tone={st[1]}>{st[0]}</Pill> : <Pill>Not checked yet</Pill>}
+                    {st ? <Pill tone={st[1]}>{st[0]}</Pill> : <Pill>Not checked</Pill>}
                   </span>
                 </button>
                 <Switch

@@ -1,27 +1,46 @@
 /**
- * Every transaction, newest first and grouped by day (the canvas's "All transactions"): filter by account, show only
- * what's not sorted, or search. Tap one for its sheet: its category (or a split), a note, someone's paying it back,
+ * Every transaction, newest first and grouped by day (the canvas's "All transactions"), a month at a time with the
+ * one before a tap away: filter by account, show only what's not sorted, or search (searching looks back over
+ * everything). Tap one for its sheet: its category (or a split), a note, someone's paying it back,
  * and deleting one typed in by hand.
  */
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { errorMessage } from "~/features/common/api";
 import { Card, ChoiceChip, EmptyState } from "~/features/common/ds";
-import { dayDate, money } from "~/features/common/format";
+import { dayDate, longDate, money } from "~/features/common/format";
 import { I } from "~/features/common/icons";
 import { accountsQuery, transactionsQuery } from "~/features/common/queries";
 import type { Transaction } from "~/features/common/types";
-import { ErrorText, Input, PageHead } from "~/features/common/ui";
+import { Button, ErrorText, Input, PageHead } from "~/features/common/ui";
 import { TransactionSheet, TxRow } from "~/features/spending/TransactionSheet";
+
+/** The month before the ones shown: "October", or "October 2025" in an earlier year. */
+function monthName(shown: number): string {
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() - shown);
+  const name = d.toLocaleString("en-AU", { month: "long" });
+  return d.getFullYear() === new Date().getFullYear() ? name : `${name} ${d.getFullYear()}`;
+}
 
 export function TransactionsPage({ account }: { account?: number }) {
   const navigate = useNavigate();
   const [q, setQ] = useState("");
   const [unsorted, setUnsorted] = useState(false);
   const [open, setOpen] = useState<number | null>(null);
+  // How many months back to show: this month to start with, one more each time "Show earlier" is tapped.
+  const [months, setMonths] = useState(1);
+  const from = new Date();
+  from.setDate(1);
+  from.setMonth(from.getMonth() - (months - 1));
+  const start = `${from.getFullYear()}-${String(from.getMonth() + 1).padStart(2, "0")}-01`;
   const accounts = useQuery(accountsQuery);
-  const txs = useQuery(transactionsQuery({ account_id: account, q: q || undefined, limit: 500 }));
+  const txs = useQuery({
+    ...transactionsQuery(q ? { account_id: account, q, limit: 500 } : { account_id: account, start, limit: 3000 }),
+    placeholderData: keepPreviousData,
+  });
   const banks = (accounts.data?.accounts ?? []).filter((a) => a.kind === "bank");
   const byId = Object.fromEntries(banks.map((a) => [a.id, a]));
   const shown = (txs.data ?? []).filter(
@@ -38,7 +57,10 @@ export function TransactionsPage({ account }: { account?: number }) {
     navigate({ to: "/transactions", search: id != null ? { account: id } : {}, replace: true });
   return (
     <>
-      <PageHead over={`Money · ${shown.length} shown`} title="Transactions" />
+      <PageHead
+        over={q ? `Money · ${shown.length} found` : `Money · ${shown.length} since ${longDate(start)}`}
+        title="Transactions"
+      />
       <div className="flex flex-col gap-3">
         <div role="group" aria-label="Account" className="no-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1">
           <ChoiceChip pressed={account == null} onClick={() => go(null)}>
@@ -85,6 +107,13 @@ export function TransactionsPage({ account }: { account?: number }) {
             );
           })}
         </Card>
+      )}
+      {!q && txs.data && (
+        <div className="flex justify-center">
+          <Button onClick={() => setMonths((n) => n + 1)} disabled={txs.isFetching}>
+            {txs.isFetching ? "Loading…" : `Show ${monthName(months)} too`}
+          </Button>
+        </div>
       )}
       <TransactionSheet tx={openTx} onClose={() => setOpen(null)} />
     </>

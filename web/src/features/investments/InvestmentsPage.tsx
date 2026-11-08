@@ -20,6 +20,7 @@ import {
   Sheet,
   Stat,
   type Role,
+  Details,
 } from "~/features/common/ds";
 import { longDate, money, monthYear, parseMoney, todayIso } from "~/features/common/format";
 import { Chip, I, type Tone } from "~/features/common/icons";
@@ -124,8 +125,12 @@ export function InvestmentsPage() {
             <Distributions p={p} />
             <OffsetOrShares p={p} />
           </div>
-          <CapitalGainsCard />
-          <Trades p={p} />
+          <div className="md:col-span-12">
+            <Details label="Tax and trade history">
+              <CapitalGainsCard />
+              <Trades p={p} />
+            </Details>
+          </div>
         </div>
       )}
       <FundSheet fund={fundSheet} groups={p.groups} onClose={() => setFundSheet(null)} />
@@ -802,26 +807,31 @@ function CapitalGainsCard() {
           </div>
         }
       />
-      <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4">
-        <Stat label="Held over a year" value={money(t.long)} note="gains, before the discount" role="savings" />
-        <Stat label="Held under a year" value={money(t.short)} note="gains" role="bills" />
-        <Stat
-          label="Losses"
-          value={money(t.losses)}
-          note={t.carried ? `${money(t.carried)} carried forward` : "taken off the gains"}
-          role="bad"
-        />
-        <Stat
-          label="Net capital gain"
-          value={money(t.net)}
-          note={t.discount ? `after the ${money(t.discount)} discount` : "to declare"}
-          role="invest"
-        />
-      </div>
+      {t.sales.length === 0 ? (
+        <p className="m-0 text-[15px] text-ink-2">
+          Nothing was sold in {fy(t.year)}, so there's no capital gain to declare for it.
+        </p>
+      ) : (
+        <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4">
+          <Stat label="Held over a year" value={money(t.long)} note="gains, before the discount" role="savings" />
+          <Stat label="Held under a year" value={money(t.short)} note="gains" role="bills" />
+          <Stat
+            label="Losses"
+            value={money(t.losses)}
+            note={t.carried ? `${money(t.carried)} carried forward` : "taken off the gains"}
+            role="bad"
+          />
+          <Stat
+            label="Net capital gain"
+            value={money(t.net)}
+            note={t.discount ? `after the ${money(t.discount)} discount` : "to declare"}
+            role="invest"
+          />
+        </div>
+      )}
       <div className="grid gap-6 md:grid-cols-2">
         <div className="flex flex-col">
-          <div className="eyebrow mb-1">Sales in {fy(t.year)}</div>
-          {t.sales.length === 0 && <p className="m-0 text-[13px] text-ink-3">Nothing sold this financial year.</p>}
+          {t.sales.length > 0 && <div className="eyebrow mb-1">Sales in {fy(t.year)}</div>}
           {t.sales.map((s, i) => (
             <div key={i} className="flex items-center gap-3 border-t border-line py-2.5 first:border-t-0">
               <span className="mono w-11 text-[13px] font-semibold">{s.ticker}</span>

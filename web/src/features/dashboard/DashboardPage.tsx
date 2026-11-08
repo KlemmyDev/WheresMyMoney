@@ -15,7 +15,7 @@ import { money, parseDate } from "~/features/common/format";
 import { dashboardQuery } from "~/features/common/queries";
 import type { Dashboard, SpendingMonth } from "~/features/common/types";
 import { Empty, ErrorText } from "~/features/common/ui";
-import { BalanceHero, GoalsCard, QuickActions } from "~/features/dashboard/OverviewParts";
+import { BalanceHero, GoalsCard } from "~/features/dashboard/OverviewParts";
 import { ComingUp, MonthCard, RecentActivity, WhereItWent } from "~/features/dashboard/OverviewMonth";
 
 type Event = { kind: "pay" | "bill" | "topup"; name: string; amount: number | null; how: string };
@@ -144,7 +144,6 @@ export function DashboardPage() {
         <BalanceHero d={d} />
         <TodayCard d={d} m={m} />
       </div>
-      <QuickActions />
       {s && m && (
         <>
           <MonthCard m={m} sel={sel} setSel={setSel} />

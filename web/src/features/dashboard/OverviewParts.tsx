@@ -3,7 +3,6 @@
  * with trend lines, and savings goals as rings. Built only from the design system (ds.tsx, icons.tsx).
  */
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
 import { useState, type KeyboardEvent, type PointerEvent } from "react";
 import {
   BigNumber,
@@ -300,33 +299,6 @@ export function BalanceHero({ d }: { d: Dashboard }) {
         </div>
       )}
     </Card>
-  );
-}
-
-/** Four square actions: the things you do most, in thumb reach on a phone. */
-export function QuickActions() {
-  const actions = useActions();
-  const tile =
-    "chip-host press flex min-h-[88px] cursor-pointer flex-col items-center justify-center gap-2 rounded-[20px] border border-line bg-tile text-[12px] font-semibold text-ink-2 no-underline sm:flex-row sm:min-h-16 sm:justify-start sm:px-4 sm:text-[14px]";
-  return (
-    <nav aria-label="Quick actions" className="grid grid-cols-4 gap-2.5">
-      <button type="button" onClick={actions.addSpending} className={tile}>
-        <Chip g={I.plus} tone="spending" size="lg" />
-        Add
-      </button>
-      <button type="button" onClick={actions.checkin} className={tile}>
-        <Chip g={I.shield} tone="offset" size="lg" />
-        Check in
-      </button>
-      <Link to="/bills" className={tile}>
-        <Chip g={I.bills} tone="bills" size="lg" />
-        Pay a bill
-      </Link>
-      <Link to="/import" className={tile}>
-        <Chip g={I.import} tone="neutral" size="lg" />
-        Import
-      </Link>
-    </nav>
   );
 }
 
