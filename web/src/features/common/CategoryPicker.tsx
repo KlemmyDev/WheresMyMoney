@@ -8,13 +8,15 @@
  * between uses).
  *
  * The list floats over the page (so a table's scrolling edge can't clip it), under the chip or above it when
- * there's more room there; on a phone it's a sheet from the bottom.
+ * there's more room there. On a phone it's a sheet from the bottom with big rows, and the search box only takes the
+ * keyboard when it's tapped (so the list shows first); while the keyboard is up the sheet sits above it.
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { apiSend, errorMessage } from "~/features/common/api";
 import type { Category } from "~/features/common/types";
+import { aboveKeyboard, useKeyboard } from "~/features/common/keyboard";
 import { cn } from "~/features/common/ui";
 
 export const KINDS = [
@@ -171,9 +173,13 @@ export function CategoryPicker({
     if (refocus) trigger.current?.focus();
   };
 
+  // On a desktop the search box takes focus straight away. On a phone that would raise the keyboard over the list,
+  // so it waits to be tapped, unless a letter was typed to open it.
   useLayoutEffect(() => {
-    if (open) input.current?.focus();
+    if (open && (!pos?.phone || query)) input.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+  const kb = useKeyboard(open && !!pos?.phone);
 
   useEffect(() => {
     if (!open) return;
@@ -295,12 +301,32 @@ export function CategoryPicker({
               className={cn(
                 "fixed z-50 flex flex-col overflow-hidden border border-line bg-tile shadow-[0_18px_50px_rgba(0,0,0,.55)]",
                 pos.phone
-                  ? "sheet-in inset-x-0 bottom-0 max-h-[75vh] rounded-t-2xl"
+                  ? "sheet-in inset-x-0 bottom-0 max-h-[85vh] rounded-t-[30px] border-x-0 border-b-0 border-line-2 pb-[max(env(safe-area-inset-bottom),12px)]"
                   : "reveal max-h-[min(420px,70vh)] rounded-xl",
               )}
-              style={pos.phone ? undefined : { left: pos.left, top: pos.top, bottom: pos.bottom, width: pos.width }}
+              style={
+                pos.phone ? aboveKeyboard(kb) : { left: pos.left, top: pos.top, bottom: pos.bottom, width: pos.width }
+              }
             >
-              <div className="border-b border-line p-2">
+              {pos.phone && (
+                <div className="flex flex-none items-center justify-between gap-3 pt-3 pr-3 pb-1 pl-5">
+                  <span className="text-[19px] font-semibold text-ink">Choose a category</span>
+                  <button
+                    type="button"
+                    aria-label="Close"
+                    onClick={() => close()}
+                    className="flex size-11 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-ink-2"
+                  >
+                    <span
+                      aria-hidden
+                      className="flex size-8 items-center justify-center rounded-full bg-raised text-[13px]"
+                    >
+                      ✕
+                    </span>
+                  </button>
+                </div>
+              )}
+              <div className={cn("flex-none border-b border-line", pos.phone ? "px-4 pb-3" : "p-2")}>
                 <input
                   ref={input}
                   role="combobox"
@@ -316,7 +342,11 @@ export function CategoryPicker({
                     setActive(0);
                   }}
                   onKeyDown={onKey}
-                  className="min-h-9 w-full rounded-md border border-line bg-raised px-2.5 text-[13px] text-ink placeholder:text-ink-3 focus:border-teal focus:outline-none"
+                  className={cn(
+                    "w-full border border-line bg-raised text-ink placeholder:text-ink-3 focus:border-teal focus:outline-none",
+                    // 16px on a phone, or Safari zooms the page in when it's tapped.
+                    pos.phone ? "min-h-12 rounded-xl px-3.5 text-[16px]" : "min-h-9 rounded-md px-2.5 text-[13px]",
+                  )}
                 />
               </div>
               <div
@@ -332,7 +362,13 @@ export function CategoryPicker({
                   return (
                     <div key={o.type === "category" ? `${o.section}-${o.c.id}` : o.type}>
                       {header && (
-                        <div className="tt px-3 pt-2.5 pb-1" aria-hidden>
+                        <div
+                          className={cn(
+                            "tt px-3 pb-1",
+                            pos.phone ? "px-5 pt-4 text-[12px] font-semibold tracking-[0.08em]" : "pt-2.5",
+                          )}
+                          aria-hidden
+                        >
                           {header}
                         </div>
                       )}
@@ -345,13 +381,17 @@ export function CategoryPicker({
                         onMouseMove={() => setActive(i)}
                         onClick={() => choose(o)}
                         className={cn(
-                          "mx-1 flex min-h-9 cursor-pointer items-center gap-2.5 rounded-md px-2 text-[13px]",
-                          on ? "bg-raised text-ink" : "text-ink-2",
+                          "flex cursor-pointer items-center",
+                          pos.phone
+                            ? "mx-2 min-h-12 gap-3 rounded-xl px-3 text-[16px] text-ink"
+                            : "mx-1 min-h-9 gap-2.5 rounded-md px-2 text-[13px]",
+                          on && "bg-raised text-ink",
+                          !on && !pos.phone && "text-ink-2",
                         )}
                       >
                         {o.type === "category" ? (
                           <>
-                            <KindDot kind={o.c.kind} />
+                            <KindDot kind={o.c.kind} className={pos.phone ? "size-2.5" : undefined} />
                             <span className="min-w-0 flex-1 truncate">{o.c.name}</span>
                             {o.c.id === value && (
                               <svg aria-hidden viewBox="0 0 12 10" className="h-2.5 w-3 text-teal">
@@ -394,7 +434,12 @@ export function CategoryPicker({
                 {add.isError && <div className="px-3 py-2 text-xs text-bad">{errorMessage(add.error)}</div>}
               </div>
               {merchant && (
-                <label className="flex cursor-pointer items-center gap-2.5 border-t border-line px-3 py-2.5 text-xs text-ink-2">
+                <label
+                  className={cn(
+                    "flex flex-none cursor-pointer items-center gap-2.5 border-t border-line text-ink-2",
+                    pos.phone ? "px-5 py-3.5 text-[14px]" : "px-3 py-2.5 text-xs",
+                  )}
+                >
                   <input
                     type="checkbox"
                     checked={remember}

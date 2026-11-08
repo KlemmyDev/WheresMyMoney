@@ -9,6 +9,7 @@
  * - Icon chips carry the role colour: offset blue, bills amber, spending pink, savings green, invest cyan.
  */
 import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
+import { aboveKeyboard, useKeyboard } from "~/features/common/keyboard";
 import { createPortal } from "react-dom";
 import { Chip, type Glyph, type Tone } from "~/features/common/icons";
 import { usePresence } from "~/features/common/motion";
@@ -514,6 +515,18 @@ export function Sheet({
   phoneOnly?: boolean;
 }) {
   const { mounted, leaving } = usePresence(open);
+  // On a phone the keyboard covers the bottom of the page: the sheet sits above it and fits in what's left.
+  const kb = useKeyboard(open);
+  const phoneKb = kb.inset && typeof window !== "undefined" && window.innerWidth < 640 ? aboveKeyboard(kb) : undefined;
+  useEffect(() => {
+    if (!kb.inset) return;
+    // Keep the field being typed in on screen once the sheet has moved.
+    const t = setTimeout(() => {
+      const el = document.activeElement as HTMLElement | null;
+      if (el && el.closest("[role=dialog]")) el.scrollIntoView({ block: "center", behavior: "smooth" });
+    }, 60);
+    return () => clearTimeout(t);
+  }, [kb.inset]);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -542,6 +555,7 @@ export function Sheet({
           "sm:inset-x-auto sm:top-1/2 sm:bottom-auto sm:left-1/2 sm:w-[min(92vw,560px)] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-[26px] sm:border",
           leaving ? "leaving" : "entering",
         )}
+        style={phoneKb}
       >
         <button
           type="button"
