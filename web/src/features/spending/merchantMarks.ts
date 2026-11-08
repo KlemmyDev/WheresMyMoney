@@ -335,6 +335,37 @@ export const MARKS: Record<string, Mark> = {
   "DAN MURPHYS": { bg: "#0f4c2e", art: [word("DM", "#f2e6c9", 10, 19.6, 700)] },
   BWS: { bg: "#e4002b", art: [word("BWS", W, 9)] },
   LIQUORLAND: { bg: "#c8102e", art: [{ d: "M14 8h4v4l2 3v9h-8v-9l2-3z", fill: W }] },
+  // -- Who pays us: tax refunds, rebates and benefits
+  ATO: {
+    bg: "#0b2c5f",
+    art: [
+      {
+        d: "M8 20.5h16M9.5 20.5v-6.5M13 20.5v-6.5M16 20.5v-6.5M19 20.5v-6.5M22.5 20.5v-6.5M7.5 13L16 8l8.5 5z",
+        stroke: "#e7c46b",
+        w: 1.6,
+      },
+    ],
+  },
+  "AUSTRALIAN TAXATION": {
+    bg: "#0b2c5f",
+    art: [
+      {
+        d: "M8 20.5h16M9.5 20.5v-6.5M13 20.5v-6.5M16 20.5v-6.5M19 20.5v-6.5M22.5 20.5v-6.5M7.5 13L16 8l8.5 5z",
+        stroke: "#e7c46b",
+        w: 1.6,
+      },
+    ],
+  },
+  MEDICARE: {
+    bg: "#00843d",
+    art: [{ d: "M8 21c3-8 5-9 8-3s5 4 8-5", stroke: "#ffd100", w: 2.6 }, word("M", W, 7, 13.5)],
+  },
+  CENTRELINK: { bg: "#e4002b", art: [{ d: o(16, 16, 7.5), stroke: W, w: 2 }, word("C", W, 9, 19.2)] },
+  "SERVICES AUSTRALIA": {
+    bg: "#1b365d",
+    art: [{ d: "M9 22c2-6 12-6 14 0M16 9.5a3.2 3.2 0 1 1 0 6.4 3.2 3.2 0 0 1 0-6.4z", stroke: W, w: 1.8 }],
+  },
+  MYGOV: { bg: "#1b365d", art: [word("my", W, 8, 15), word("Gov", "#9fd3ff", 7.5, 22)] },
   // -- Payments that don't say who to
   BPAY: { bg: "#1d2f6f", art: [{ d: "M7 10h18v12H7z", fill: "#5a3bd6" }, word("BPAY", W, 6.4, 18.3)] },
   "INTERNET BPAY": { bg: "#1d2f6f", art: [{ d: "M7 10h18v12H7z", fill: "#5a3bd6" }, word("BPAY", W, 6.4, 18.3)] },

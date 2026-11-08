@@ -466,7 +466,11 @@ class SpendingService:
     def merchant_detail(self, key: str) -> dict[str, Any]:
         with self.db.reading() as conn:
             out = directory.detail(conn, key, dates.today())
-        out["transactions"] = self.transactions(ids=out.pop("transaction_ids"), limit=200) if out["count"] else []
+        out["transactions"] = (
+            self.transactions(ids=out.pop("transaction_ids"), limit=200)
+            if out["count"] or out["received_count"]
+            else []
+        )
         return out
 
     def assign_merchant(self, body: dict[str, Any]) -> dict[str, Any]:

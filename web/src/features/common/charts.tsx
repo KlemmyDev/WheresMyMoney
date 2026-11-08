@@ -363,6 +363,7 @@ export function PaymentBars({
   label,
   describe,
   spending = false,
+  income = false,
 }: {
   payments: { date: string; amount: number }[];
   now: number;
@@ -370,6 +371,8 @@ export function PaymentBars({
   describe: (p: { date: string; amount: number }) => ReactNode;
   /** In the spending colour (a merchant's months) rather than the bills one. */
   spending?: boolean;
+  /** In the money-in colour (what someone has paid us). */
+  income?: boolean;
 }) {
   const [picked, setPicked] = useState<number | null>(null);
   const at = picked ?? payments.length - 1;
@@ -415,7 +418,7 @@ export function PaymentBars({
                 <span
                   className={cn(
                     "striped block w-full grow rounded-t-[4px] transition-opacity",
-                    spending ? "bg-spending-fill" : "bg-bills-fill",
+                    income ? "bg-savings-fill" : spending ? "bg-spending-fill" : "bg-bills-fill",
                     i !== at && "opacity-60",
                   )}
                   style={

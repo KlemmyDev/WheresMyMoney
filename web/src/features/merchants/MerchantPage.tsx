@@ -48,7 +48,12 @@ export function MerchantPage({ merchantKey }: { merchantKey: string }) {
   const when = (iso: string) => (iso.startsWith(thisYear) ? dayDate(iso) : longDate(iso));
   const txs = all ? d.transactions : d.transactions.slice(0, FIRST);
   const openTx = d.transactions.find((t) => t.id === open) ?? null;
-  const busiest = d.months.reduce((a, m) => (m.spent > a.spent ? m : a), d.months[0]);
+  // Someone who mostly pays us (the ATO, Medicare) is told as money in; anywhere else as money out.
+  const inbound = d.direction === "in";
+  const amountOf = (m: { spent: number; received: number }) => (inbound ? m.received : m.spent);
+  const busiest = d.months.reduce((a, m) => (amountOf(m) > amountOf(a) ? m : a), d.months[0]);
+  // The reference line: a month's spending, or for someone who pays us now and then (a tax refund), a usual payment.
+  const perMonth = inbound ? d.per_payment : d.per_month;
   return (
     <>
       <div className="flex flex-col gap-2">
@@ -71,36 +76,87 @@ export function MerchantPage({ merchantKey }: { merchantKey: string }) {
         </Card>
       )}
 
-      <Card lit tint="spending" className="flex flex-col gap-2" aria-label={`${d.name} in a sentence`}>
-        <p className="m-0 text-[17px] leading-relaxed text-ink">
-          We've spent <b>{money(d.spent_year)}</b> at {d.name} over the last 12 months, about{" "}
-          <b>{money(d.per_month)} a month</b>.
-        </p>
-        <p className="m-0 text-[15px] text-ink-2">
-          {d.count} {d.count === 1 ? "visit" : "visits"} since {longDate(d.first)},{" "}
-          {money(d.per_visit, { cents: true })} each on average, last on {when(d.last)}.
-          {busiest &&
-            busiest.spent > 0 &&
-            d.months.length > 2 &&
-            ` The most in a month was ${money(busiest.spent)}, in ${monthYear(busiest.month)}.`}
-        </p>
+      <Card
+        lit
+        tint={inbound ? "savings" : "spending"}
+        className="flex flex-col gap-2"
+        aria-label={`${d.name} in a sentence`}
+      >
+        {inbound ? (
+          <>
+            <p className="m-0 text-[17px] leading-relaxed text-ink">
+              We've received <b>{money(d.received_year)}</b> from {d.name} over the last 12 months.
+            </p>
+            <p className="m-0 text-[15px] text-ink-2">
+              {d.received_count} {d.received_count === 1 ? "payment" : "payments"} since {longDate(d.first)},{" "}
+              {money(d.per_payment, { cents: true })} each on average, last on {when(d.last)}.
+              {d.count > 0 && ` We've also paid them ${money(d.spent)}.`}
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="m-0 text-[17px] leading-relaxed text-ink">
+              We've spent <b>{money(d.spent_year)}</b> at {d.name} over the last 12 months, about{" "}
+              <b>{money(d.per_month)} a month</b>.
+            </p>
+            <p className="m-0 text-[15px] text-ink-2">
+              {d.count} {d.count === 1 ? "visit" : "visits"} since {longDate(d.first)},{" "}
+              {money(d.per_visit, { cents: true })} each on average, last on {when(d.last)}.
+              {busiest &&
+                busiest.spent > 0 &&
+                d.months.length > 2 &&
+                ` The most in a month was ${money(busiest.spent)}, in ${monthYear(busiest.month)}.`}
+              {d.received > 0 &&
+                ` ${money(d.received, { cents: true })} came back in refunds over ${d.received_count} ${d.received_count === 1 ? "payment" : "payments"}.`}
+            </p>
+          </>
+        )}
         <Details label="See the numbers">
-          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-            <Stat
-              label="Last 12 months"
-              value={money(d.spent_year)}
-              note={`${money(d.per_month)} a month`}
-              role="spending"
-            />
-            <Stat
-              label="All time"
-              value={money(d.spent)}
-              note={`since ${monthYear(d.first.slice(0, 7))}`}
-              role="spending"
-            />
-            <Stat label="Visits" value={String(d.count)} note={d.category ?? "Not sorted"} role="spending" />
-            <Stat label="Average visit" value={money(d.per_visit, { cents: true })} note="money out" role="spending" />
-          </div>
+          {inbound ? (
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+              <Stat label="Last 12 months" value={money(d.received_year)} note="received" role="savings" />
+              <Stat
+                label="All time"
+                value={money(d.received)}
+                note={`since ${monthYear(d.first.slice(0, 7))}`}
+                role="savings"
+              />
+              <Stat
+                label="Payments"
+                value={String(d.received_count)}
+                note={d.category ?? "Not sorted"}
+                role="savings"
+              />
+              <Stat
+                label="Average payment"
+                value={money(d.per_payment, { cents: true })}
+                note="money in"
+                role="savings"
+              />
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+              <Stat
+                label="Last 12 months"
+                value={money(d.spent_year)}
+                note={`${money(d.per_month)} a month`}
+                role="spending"
+              />
+              <Stat
+                label="All time"
+                value={money(d.spent)}
+                note={`since ${monthYear(d.first.slice(0, 7))}`}
+                role="spending"
+              />
+              <Stat label="Visits" value={String(d.count)} note={d.category ?? "Not sorted"} role="spending" />
+              <Stat
+                label="Average visit"
+                value={money(d.per_visit, { cents: true })}
+                note="money out"
+                role="spending"
+              />
+            </div>
+          )}
         </Details>
       </Card>
 
@@ -112,16 +168,21 @@ export function MerchantPage({ merchantKey }: { merchantKey: string }) {
             right={
               <span className="inline-flex items-center gap-1.5 text-[13px] text-ink-3">
                 <i className="w-3.5 border-t-2 border-dashed border-ink-2" />
-                {money(d.per_month)} a month
+                {money(perMonth)} {inbound ? "a payment" : "a month"}
               </span>
             }
           />
           {d.months.length >= 2 ? (
             <PaymentBars
-              payments={d.months.map((m) => ({ date: `${m.month}-01`, amount: m.spent }))}
-              now={d.per_month}
-              spending
-              label={`What went at ${d.name} each month, oldest first`}
+              payments={d.months.map((m) => ({ date: `${m.month}-01`, amount: amountOf(m) }))}
+              now={perMonth}
+              spending={!inbound}
+              income={inbound}
+              label={
+                inbound
+                  ? `What came in from ${d.name} each month, oldest first`
+                  : `What went at ${d.name} each month, oldest first`
+              }
               describe={(p) => (
                 <>
                   <b className="text-ink">{money(p.amount, { cents: true })}</b> in {monthYear(p.date.slice(0, 7))}

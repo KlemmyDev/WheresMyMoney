@@ -41,6 +41,8 @@ const UNSORTED = "M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01";
 function badge(tx: Transaction): { d: string; colour: string; label: string } | null {
   if (tx.splits?.length) return { d: TAG, colour: "var(--grad)", label: "Split" };
   if (!tx.category) return { d: UNSORTED, colour: "var(--color-ink-3)", label: "Not sorted" };
+  if (tx.category_kind === "income" || tx.amount > 0)
+    return { d: "M12 4v11M7 10.5l5 5 5-5M5 20h14", colour: "var(--color-savings-fill)", label: tx.category };
   const d = BADGES.find(([re]) => re.test(tx.category ?? ""))?.[1] ?? TAG;
   const colour = tx.category_kind === "bills" ? "var(--color-bills-fill)" : "var(--color-spending-fill)";
   return { d, colour, label: tx.category };
@@ -172,8 +174,13 @@ export function MerchantMark({
 export function MerchantIcon({ tx, size = "lg" }: { tx: Transaction; size?: "md" | "lg" }) {
   const name = (tx.merchant_name || tx.merchant || tx.description || "").trim();
   const moneyIn = tx.amount > 0;
-  // Money in, transfers between accounts and balance fixes aren't a merchant: their plain glyph says it best.
-  if (moneyIn || tx.kind === "adjustment" || tx.category_kind === "transfer" || tx.category_kind === "income") {
+  // Transfers between accounts and balance fixes aren't a merchant, nor is money in from someone without a mark
+  // (pay, interest): their plain glyph says it best. The ATO or Medicare paying us shows its mark.
+  const payer = moneyIn && !!(markFor(tx.merchant_key || "") || markFor(name));
+  if (
+    !payer &&
+    (moneyIn || tx.kind === "adjustment" || tx.category_kind === "transfer" || tx.category_kind === "income")
+  ) {
     return (
       <Chip
         g={tx.category_kind === "transfer" ? I.transfer : moneyIn ? I.pay : I.spending}

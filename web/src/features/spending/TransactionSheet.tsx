@@ -3,7 +3,7 @@
  * optionally remember it for the merchant), a note, and delete. Only what was typed in can be deleted; a statement's
  * rows are the bank's, so the sheet says so instead. Deleting asks first.
  */
-import { MerchantIcon, MerchantMark } from "~/features/spending/MerchantIcon";
+import { MerchantIcon, MerchantMark, markFor } from "~/features/spending/MerchantIcon";
 import { MerchantPicker } from "~/features/merchants/MerchantPicker";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -87,7 +87,7 @@ function Body({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col items-center gap-1.5 text-center">
-        {tx.amount < 0 && tx.merchant_key && tx.category_kind !== "transfer" ? (
+        {tx.merchant_key && tx.category_kind !== "transfer" && (tx.amount < 0 || !!markFor(tx.merchant_key)) ? (
           <MerchantMark name={tx.merchant_key} size="xl" />
         ) : (
           <Chip
@@ -245,7 +245,7 @@ function Body({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
           label="Someone's paying us back"
         />
       </label>
-      {tx.merchant && tx.merchant_key && tx.amount < 0 && tx.category_kind !== "transfer" && (
+      {tx.merchant && tx.merchant_key && tx.kind !== "adjustment" && tx.category_kind !== "transfer" && (
         <div className="flex flex-col gap-2 rounded-2xl border border-line bg-tile-2 px-3.5 py-3">
           <div className="flex min-w-0 items-center gap-3">
             <MerchantMark name={tx.merchant_key} size="md" />
