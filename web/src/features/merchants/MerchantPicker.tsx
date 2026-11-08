@@ -1,6 +1,6 @@
 /**
- * Choose the merchant a statement name belongs to: type to find one, or name a new one. Every transaction with that
- * statement name follows, past and future.
+ * Choose the merchant a statement name belongs to (or, with `merge`, the merchant to fold some into): type to find one,
+ * or name a new one. Every transaction with that statement name, or under those merchants, follows, past and future.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -10,29 +10,36 @@ import { Button, ErrorText, Input } from "~/features/common/ui";
 import { MerchantMark } from "~/features/spending/MerchantIcon";
 
 export function MerchantPicker({
-  text,
+  text = "",
   current,
+  merge,
   onDone,
 }: {
   /** The statement name being placed. */
-  text: string;
+  text?: string;
   /** The merchant it belongs to now (left out of the choices). */
-  current: string;
-  onDone: () => void;
+  current?: string;
+  /** Merchant keys to merge into the one chosen, instead of placing a statement name. */
+  merge?: string[];
+  /** Called with the merchant chosen, or nothing when cancelled. */
+  onDone: (key?: string) => void;
 }) {
   const qc = useQueryClient();
   const all = useQuery(merchantDirectoryQuery);
   const [find, setFind] = useState("");
   const assign = useMutation({
-    mutationFn: (body: { key?: string; name?: string }) => apiSend("POST", "merchants/assign", { text, ...body }),
-    onSuccess: () => {
+    mutationFn: (body: { key?: string; name?: string }) =>
+      merge
+        ? apiSend<{ key: string }>("POST", "merchants/merge", { from: merge, into: body.key, name: body.name })
+        : apiSend<{ key: string }>("POST", "merchants/assign", { text, ...body }),
+    onSuccess: (r) => {
       refresh(qc);
-      onDone();
+      onDone(r.key);
     },
   });
   const needle = find.trim().toLowerCase();
   const choices = (all.data ?? [])
-    .filter((m) => m.key !== current)
+    .filter((m) => m.key !== current && !merge?.includes(m.key))
     .filter((m) => !needle || m.name.toLowerCase().includes(needle) || m.key.toLowerCase().includes(needle))
     .slice(0, needle ? 8 : 5);
   const exact = (all.data ?? []).some((m) => m.name.toLowerCase() === needle);
@@ -41,7 +48,7 @@ export function MerchantPicker({
       <Input
         autoFocus
         aria-label="Find or name a merchant"
-        placeholder="Find a merchant, or type a new name"
+        placeholder={merge ? "Merge into… (find one, or type a new name)" : "Find a merchant, or type a new name"}
         value={find}
         onChange={(e) => setFind(e.target.value)}
       />
@@ -72,8 +79,12 @@ export function MerchantPicker({
         )}
       </div>
       <div className="flex items-center justify-between gap-2">
-        <span className="min-w-0 text-[12px] text-ink-3">Every “{text}” transaction moves with it.</span>
-        <Button small onClick={onDone}>
+        <span className="min-w-0 text-[12px] text-ink-3">
+          {merge
+            ? `All their transactions and statement names move into the one you pick.`
+            : `Every “${text}” transaction moves with it.`}
+        </span>
+        <Button small onClick={() => onDone()}>
           Cancel
         </Button>
       </div>

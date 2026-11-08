@@ -203,6 +203,36 @@ def assign(conn: sqlite3.Connection, text: str, key: str | None, name: str | Non
     return {"text": text, "key": key}
 
 
+def merge(conn: sqlite3.Connection, sources: list[str], key: str | None, name: str | None) -> dict[str, Any]:
+    """Fold merchants into one (an existing key, or a new one by name): every statement name that belongs to any of
+    `sources` is mapped to it, so all their transactions move together."""
+    sources = [s for s in dict.fromkeys(sources or []) if s]
+    if not sources:
+        raise ValueError("Which merchants?")
+    if name and name.strip():
+        key = key_of(name)
+        if not key:
+            raise ValueError("Give the merchant a name.")
+        if pretty(key) != name.strip():
+            conn.execute(
+                "INSERT INTO merchant_names (key, name) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET name = excluded.name",
+                (key, " ".join(name.split())[:60]),
+            )
+    if not key:
+        raise ValueError("Pick the merchant to merge into, or name a new one.")
+    book = Book(conn)
+    texts = {
+        text
+        for text, description in conn.execute(
+            "SELECT DISTINCT merchant, description FROM transactions WHERE merchant != ''"
+        ).fetchall()
+        if book.key(text, description) in sources
+    }
+    for text in texts:
+        assign(conn, text, key, None)
+    return {"key": key, "moved": len(texts)}
+
+
 def forget(conn: sqlite3.Connection, text: str) -> dict[str, Any]:
     """Undo a mapping: the statement name goes back to the merchant it would get by itself."""
     conn.execute("DELETE FROM merchant_aliases WHERE text = ?", (text,))

@@ -104,6 +104,12 @@ async def assign_merchant(svc: ServicesDep, body: JsonBody):
     return await run(svc.spending.assign_merchant, body)
 
 
+@router.post("/merchants/merge")
+async def merge_merchants(svc: ServicesDep, body: JsonBody):
+    """Fold merchants into one: {"from": ["STAGE 1", "STAGE 2"], "into": "LA VIDA"} or {"from": [...], "name": "New"}."""
+    return await run(svc.spending.merge_merchants, body)
+
+
 @router.post("/merchants/forget")
 async def forget_merchant(svc: ServicesDep, body: JsonBody):
     """Undo a mapping: {"text": "DOMINOS KEPERRA"} goes back to the merchant it gets by itself."""
