@@ -9,6 +9,7 @@ import type {
   BillUpdate,
   BillsOverview,
   Category,
+  BillCandidate,
   Business,
   MergeSuggestion,
   MerchantDetail,
@@ -94,6 +95,12 @@ export const billQuery = (id: number) =>
   queryOptions({
     queryKey: ["bills", id],
     queryFn: ({ signal }) => apiGet<BillDetail>(`bills/${id}`, undefined, { signal }),
+  });
+
+export const billCandidatesQuery = (id: number) =>
+  queryOptions({
+    queryKey: ["bills", id, "candidates"],
+    queryFn: ({ signal }) => apiGet<BillCandidate[]>(`bills/${id}/candidates`, undefined, { signal }),
   });
 
 export const budgetSuggestionsQuery = queryOptions({

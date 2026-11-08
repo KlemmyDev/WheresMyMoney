@@ -11,6 +11,8 @@ Everything here blocks on SQLite, so call it through asyncio.to_thread from asyn
 from __future__ import annotations
 
 import datetime as dt
+import re
+import sqlite3
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -104,6 +106,66 @@ def clean(body: dict[str, Any]) -> dict[str, Any]:
         "match": " ".join(str(body.get("match") or "").upper().split())[:60],
         "category_id": int(category) if category not in (None, "") else None,
     }
+
+
+_REF_DIGITS = re.compile(r"\d+")
+
+
+def signature(description: str) -> str:
+    """A statement line with its numbers set aside, to tell the same payee's lines apart from others when there's no
+    merchant to go on: "EIDA-4410938271" and "EIDA-4410938295" are both "EIDA-#"."""
+    return " ".join(_REF_DIGITS.sub("#", description.upper()).split())
+
+
+def _unlinked(conn: sqlite3.Connection, exclude: int | None = None) -> list[dict[str, Any]]:
+    """Payments out of the household's bank accounts that aren't part of any bill (statement lines and ones typed in)."""
+    rows = conn.execute(
+        "SELECT t.id, t.date, -t.amount, t.merchant, t.description, a.name FROM transactions t"
+        " JOIN accounts a ON a.id = t.account_id WHERE a.kind = 'bank' AND t.amount < 0 AND t.bill_id IS NULL"
+        " AND t.kind IN ('statement', 'manual') AND t.rule_id IS NULL AND t.id != ?",
+        (exclude if exclude is not None else -1,),
+    ).fetchall()
+    return [
+        {
+            "id": r[0],
+            "date": r[1],
+            "amount": r[2],
+            "merchant": str(r[3] or ""),
+            "description": str(r[4] or ""),
+            "account": r[5],
+        }
+        for r in rows
+    ]
+
+
+def _alike(r: dict[str, Any], merchant: str, sig: str) -> bool:
+    if merchant:
+        return merchants.matches(r["merchant"], merchant)
+    return not r["merchant"] and signature(r["description"]) == sig
+
+
+def _merchant_from_bill(conn: sqlite3.Connection, name: str, ids: list[int]) -> None:
+    from app.features.spending import directory
+
+    clean = merchants.merchant(name)
+    known = merchants.brand(clean) if clean else None
+    key = merchants.CANONICAL.get(known, known) if known else None
+    if not key:
+        return
+    book = directory.Book(conn)
+    marks = ",".join("?" * len(ids))
+    for tx_id, text, description, amount, bill_id in conn.execute(
+        f"SELECT id, merchant, description, amount, bill_id FROM transactions WHERE id IN ({marks})", ids
+    ).fetchall():
+        if book.key(text or "", description, amount, tx_id, bill_id) == key:
+            continue
+        if tx_id in book.overrides or (text and text in book.aliases):
+            continue  # the household already said who it is
+        if text and not directory.is_unnamed(text):
+            directory.assign(conn, text, key, None)
+            book.aliases[text] = key
+        else:
+            conn.execute("UPDATE transactions SET merchant_override = ? WHERE id = ?", (key, tx_id))
 
 
 class BillsService:
@@ -244,43 +306,110 @@ class BillsService:
         }
 
     def link(self, bill_id: int, tx_id: int) -> int:
-        """Make a payment part of a bill, with the same merchant's other payments for about the same amount (any
-        amount for an estimate) that aren't part of a bill yet, sorting those with no category into the bill's.
-        Returns how many were linked."""
+        """Make a payment part of a bill, with its other payments that look the same (the same merchant, or with no
+        merchant the same statement line once its numbers are set aside: "EIDA-4410938271") for about the same amount
+        (any amount for an estimate) that aren't part of a bill yet. Learns how the bill shows up, so it's matched on
+        import from then on. Returns how many were linked."""
         bill = self.get(bill_id)
         if bill is None:
             raise LookupError("That bill has gone.")
         with self.db.writing() as conn:
             row = conn.execute(
-                "SELECT merchant, -amount FROM transactions WHERE id = ? AND amount < 0", (tx_id,)
+                "SELECT merchant, description, -amount FROM transactions WHERE id = ? AND amount < 0", (tx_id,)
             ).fetchone()
             if not row:
                 raise LookupError("That payment has gone.")
-            merchant, amount = str(row[0] or ""), int(row[1])
-            ids = [tx_id]
-            if merchant:
-                rows = conn.execute(
-                    "SELECT t.id, t.merchant, -t.amount FROM transactions t JOIN accounts a ON a.id = t.account_id"
-                    " WHERE a.kind = 'bank' AND t.amount < 0 AND t.bill_id IS NULL AND t.id != ?"
-                    " AND t.kind IN ('statement', 'manual')",
-                    (tx_id,),
-                ).fetchall()
-                near = max(amount // 4, 500)
-                ids += [
-                    r[0]
-                    for r in rows
-                    if merchants.matches(str(r[1] or ""), merchant)
-                    and (bill.how == "estimate" or abs(int(r[2]) - amount) <= near)
-                ]
-            marks = ",".join("?" * len(ids))
-            conn.execute(f"UPDATE transactions SET bill_id = ? WHERE id IN ({marks})", (bill.id, *ids))
-            if bill.category_id is not None:
-                conn.execute(
-                    f"UPDATE transactions SET category_id = ?, category_by = 'bill' WHERE id IN ({marks})"
-                    " AND (category_id IS NULL OR category_by IS NULL OR category_by IN ('rule', 'suggest'))",
-                    (bill.category_id, *ids),
-                )
+            merchant, sig, amount = str(row[0] or ""), signature(str(row[1] or "")), int(row[2])
+            near = max(amount // 4, 500)
+            ids = [tx_id] + [
+                r["id"]
+                for r in _unlinked(conn, exclude=tx_id)
+                if _alike(r, merchant, sig) and (bill.how == "estimate" or abs(r["amount"] - amount) <= near)
+            ]
+            self._attach(conn, bill, ids)
         return len(ids)
+
+    def link_many(self, bill_id: int, tx_ids: list[int]) -> int:
+        """Make exactly these payments part of a bill (picked on the bill's page), and learn how it shows up."""
+        bill = self.get(bill_id)
+        if bill is None:
+            raise LookupError("That bill has gone.")
+        ids = sorted({int(i) for i in tx_ids})
+        if not ids:
+            raise ValueError("Pick the payments that are this bill.")
+        with self.db.writing() as conn:
+            marks = ",".join("?" * len(ids))
+            found = [
+                r[0]
+                for r in conn.execute(
+                    f"SELECT id FROM transactions WHERE id IN ({marks}) AND amount < 0", ids
+                ).fetchall()
+            ]
+            if not found:
+                raise LookupError("Those payments have gone.")
+            self._attach(conn, bill, found)
+        return len(found)
+
+    def candidates(self, bill_id: int) -> list[dict[str, Any]]:
+        """Payments from the last year or so, not part of any bill, that look like this bill: matched by how it shows
+        up (its match, the merchant of a payment already in it, or its name), for about its amount (any amount for an
+        estimate). Newest first, each with why it looks like it."""
+        bill = self.get(bill_id)
+        if bill is None:
+            raise LookupError("That bill has gone.")
+        since = (dates.today() - dt.timedelta(days=400)).isoformat()
+        with self.db.reading() as conn:
+            known = conn.execute(
+                "SELECT DISTINCT merchant, description FROM transactions WHERE bill_id = ?", (bill.id,)
+            ).fetchall()
+            merchants_in = {str(m) for m, _ in known if m}
+            sigs_in = {signature(str(d)) for m, d in known if not m}
+            first = bill.name.upper().split()[0] if bill.name else ""
+            near = max(bill.amount // 4, 500)
+            out = []
+            for r in _unlinked(conn):
+                if r["date"] < since:
+                    continue
+                m = r["merchant"]
+                why = None
+                if bill.match and bill.match in m:
+                    why = f"Shows up as {bill.match}"
+                elif any(merchants.matches(m, k) for k in merchants_in):
+                    why = "Same merchant as its other payments"
+                elif not m and signature(r["description"]) in sigs_in:
+                    why = "Same statement line as its other payments"
+                elif first and len(first) >= 4 and first in m.split():
+                    why = f"Has {bill.name.split()[0]} in it"
+                if why is None:
+                    continue
+                if bill.how != "estimate" and abs(r["amount"] - bill.amount) > near:
+                    continue
+                out.append({**r, "why": why})
+        out.sort(key=lambda r: (r["date"], r["id"]), reverse=True)
+        return out[:60]
+
+    def _attach(self, conn: sqlite3.Connection, bill: Bill, ids: list[int]) -> None:
+        marks = ",".join("?" * len(ids))
+        conn.execute(f"UPDATE transactions SET bill_id = ? WHERE id IN ({marks})", (bill.id, *ids))
+        if bill.category_id is not None:
+            conn.execute(
+                f"UPDATE transactions SET category_id = ?, category_by = 'bill' WHERE id IN ({marks})"
+                " AND (category_id IS NULL OR category_by IS NULL OR category_by IN ('rule', 'suggest'))",
+                (bill.category_id, *ids),
+            )
+        # A bill named for a business the app knows (Superloop) makes its payments that business's, so they show its
+        # name and mark however the statement put it ("EIDA-4410938271").
+        _merchant_from_bill(conn, bill.name, ids)
+        # Learn how the bill shows up, so later statements are matched to it: the merchant its payments share.
+        if not bill.match:
+            names = {
+                r[0]
+                for r in conn.execute(
+                    f"SELECT DISTINCT merchant FROM transactions WHERE id IN ({marks})", ids
+                ).fetchall()
+            }
+            if len(names) == 1 and (name := next(iter(names))):
+                conn.execute("UPDATE bills SET match = ? WHERE id = ?", (name[:60], bill.id))
 
     # -- one bill and what it's cost ------------------------------------------------
 

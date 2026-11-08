@@ -165,7 +165,13 @@ def merchant(description: str) -> str:
             break
     text = text.replace("*", " ").replace("/", " ").replace("\\", " ").replace(".", " ")
     text = _PUNCT.sub(" ", text)
-    words = [w.strip("-") for w in text.split()]
+    words = []
+    for w in (w.strip("-") for w in text.split()):
+        # A name stuck to a reference ("EIDA-4410938271"): keep the name, drop the number.
+        if "-" in w and _HAS_DIGIT.search(w) and w not in ("7-ELEVEN",):
+            words += [p for p in w.split("-") if p and not _HAS_DIGIT.search(p)]
+        else:
+            words.append(w)
     words = [w for w in words if w and (not _HAS_DIGIT.search(w) or w in ("7-ELEVEN", "13CABS"))]
     while len(words) > 1 and words[-1] in _PLACE:
         words.pop()

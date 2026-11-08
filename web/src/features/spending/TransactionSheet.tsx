@@ -53,6 +53,17 @@ function Body({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
   const [excluded, setExcluded] = useState(!!tx.excluded);
   const [oneOff, setOneOff] = useState(!!tx.one_off);
   const [picking, setPicking] = useState(false);
+  const [joining, setJoining] = useState(false);
+  const join = useMutation({
+    mutationFn: (billId: number) =>
+      apiSend<{ linked: number }>("POST", `bills/${billId}/link`, { transaction_id: tx.id }),
+    onSuccess: (r, billId) => {
+      setJoining(false);
+      refresh(qc);
+      const name = bills.data?.bills.find((b) => b.id === billId)?.name ?? "the bill";
+      toast(r.linked > 1 ? `Added ${r.linked} payments to ${name}` : `Added to ${name}`);
+    },
+  });
   const [making, setMaking] = useState(false);
   const bills = useQuery(billsQuery);
   // Unlinking shows straight away, before the list comes back.
@@ -271,11 +282,40 @@ function Body({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
                   Make it a bill to plan for it and see what it costs.
                 </span>
               </span>
-              <Button small onClick={() => setMaking(true)}>
-                Make it a bill
-              </Button>
+              <span className="flex flex-none flex-col gap-1.5">
+                <Button small onClick={() => setMaking(true)}>
+                  Make it a bill
+                </Button>
+                {(bills.data?.bills.length ?? 0) > 0 && (
+                  <Button small onClick={() => setJoining((j) => !j)}>
+                    {joining ? "Close" : "Add to a bill"}
+                  </Button>
+                )}
+              </span>
             </>
           )}
+        </div>
+      )}
+      {joining && !bill && (
+        <div className="flex flex-col gap-1 rounded-2xl border border-line bg-tile-2 p-2">
+          <span className="px-1.5 pt-1 text-[12px] text-ink-3">
+            Which bill is it? Its other payments that look the same are added too, and later statements are matched to
+            it.
+          </span>
+          {(bills.data?.bills ?? []).map((b) => (
+            <button
+              key={b.id}
+              type="button"
+              disabled={join.isPending}
+              onClick={() => join.mutate(b.id)}
+              className="press flex min-h-11 min-w-0 cursor-pointer items-center gap-2.5 rounded-xl border-0 bg-transparent px-1.5 text-left text-ink hover:bg-tile"
+            >
+              <MerchantMark name={b.name} size="md" />
+              <span className="min-w-0 flex-1 truncate">{b.name}</span>
+              <span className="num flex-none text-[13px] text-ink-3">{money(b.amount, { cents: true })}</span>
+            </button>
+          ))}
+          {join.isError && <ErrorText>{errorMessage(join.error)}</ErrorText>}
         </div>
       )}
       <BillDialog bill={making ? "new" : null} fromTx={making ? tx : null} onClose={() => setMaking(false)} />

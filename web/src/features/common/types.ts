@@ -166,6 +166,17 @@ export type Regular = {
 /** The latest change in a regular payment's price. */
 export type MerchantPriceChange = { was: number; now: number; date: string; pct: number | null; up: boolean };
 
+/** A payment that looks like a bill but isn't part of one yet, and why it looks like it. */
+export type BillCandidate = {
+  id: number;
+  date: string;
+  amount: number;
+  merchant: string;
+  description: string;
+  account: string;
+  why: string;
+};
+
 /** A business the app knows: its key (how its statement lines start), name and usual category. */
 export type Business = { key: string; name: string; category: string };
 

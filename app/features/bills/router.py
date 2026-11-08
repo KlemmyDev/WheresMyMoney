@@ -66,6 +66,23 @@ async def dismiss(svc: ServicesDep, body: JsonBody):
     return {"dismissed": True}
 
 
+@router.get("/{bill_id}/candidates")
+async def candidates(svc: ServicesDep, bill_id: int):
+    """Payments not part of any bill that look like this one (how it shows up, about its amount), newest first."""
+    return await run(svc.bills.candidates, bill_id)
+
+
+@router.post("/{bill_id}/link")
+async def link(svc: ServicesDep, bill_id: int, body: JsonBody):
+    """Make payments part of this bill: {"transaction_ids": [12, 15]} exactly those, or {"transaction_id": 12} that
+    one and the payments that look the same. Learns how the bill shows up for later imports."""
+    if body.get("transaction_ids") is not None:
+        linked = await run(svc.bills.link_many, bill_id, [int(i) for i in body.get("transaction_ids") or []])
+    else:
+        linked = await run(svc.bills.link, bill_id, int(body.get("transaction_id") or 0))
+    return {"linked": linked}
+
+
 @router.get("/{bill_id}")
 async def detail(svc: ServicesDep, bill_id: int):
     """One bill: its payments, what they add up to, its price changes and what's ahead, with the payments as
