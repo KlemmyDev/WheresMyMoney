@@ -164,3 +164,10 @@ async def rename_merchant(svc: ServicesDep, key: str, body: JsonBody):
 async def sort_merchant(svc: ServicesDep, body: JsonBody):
     """Remember a merchant's category and sort its transactions: {"transaction_id": 12, "category_id": 3}."""
     return await run(svc.spending.sort_merchant, body.get("transaction_id"), body.get("category_id"))
+
+
+@router.get("/categories/{category_id}/insights")
+async def category_insights(svc: ServicesDep, category_id: int, months: int = 3):
+    """One category: its months, this month's likely finish and next month's, its merchants, weekdays and regular
+    payments, and its transactions over the timeframe (months=1 this month, or 3, 6, 12 with this one)."""
+    return await run(svc.spending.category_insights, category_id, months)

@@ -3,6 +3,7 @@ import { queryOptions, type QueryClient } from "@tanstack/react-query";
 import { apiGet } from "~/features/common/api";
 import type {
   BudgetSuggestions,
+  CategoryInsights,
   BillDetail,
   Account,
   AccountsOverview,
@@ -148,6 +149,13 @@ export const merchantSuggestionsQuery = queryOptions({
   queryKey: ["merchants", "suggestions"],
   queryFn: ({ signal }) => apiGet<MergeSuggestion[]>("merchants/suggestions", undefined, { signal }),
 });
+
+export const categoryInsightsQuery = (id: number, months: number) =>
+  queryOptions({
+    queryKey: ["categories", "insights", id, months],
+    queryFn: ({ signal }) => apiGet<CategoryInsights>(`categories/${id}/insights`, { months }, { signal }),
+    placeholderData: (prev) => prev,
+  });
 
 export const merchantQuery = (key: string) =>
   queryOptions({

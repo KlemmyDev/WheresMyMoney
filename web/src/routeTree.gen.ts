@@ -29,6 +29,7 @@ import { Route as AppSpendingRouteImport } from './routes/_app/spending'
 import { Route as AppTransactionsRouteImport } from './routes/_app/transactions'
 import { Route as AppBillsBillIdRouteImport } from './routes/_app/bills_.$billId'
 import { Route as AppMerchantsKeyRouteImport } from './routes/_app/merchants_.$key'
+import { Route as AppSpendingCategoryIdRouteImport } from './routes/_app/spending_.$categoryId'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -129,6 +130,11 @@ const AppMerchantsKeyRoute = AppMerchantsKeyRouteImport.update({
   path: '/merchants/$key',
   getParentRoute: () => AppRoute,
 } as any)
+const AppSpendingCategoryIdRoute = AppSpendingCategoryIdRouteImport.update({
+  id: '/spending_/$categoryId',
+  path: '/spending/$categoryId',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
@@ -150,6 +156,7 @@ export interface FileRoutesByFullPath {
   '/transactions': typeof AppTransactionsRoute
   '/bills/$billId': typeof AppBillsBillIdRoute
   '/merchants/$key': typeof AppMerchantsKeyRoute
+  '/spending/$categoryId': typeof AppSpendingCategoryIdRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -171,6 +178,7 @@ export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
   '/bills/$billId': typeof AppBillsBillIdRoute
   '/merchants/$key': typeof AppMerchantsKeyRoute
+  '/spending/$categoryId': typeof AppSpendingCategoryIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -194,6 +202,7 @@ export interface FileRoutesById {
   '/_app/': typeof AppIndexRoute
   '/_app/bills_/$billId': typeof AppBillsBillIdRoute
   '/_app/merchants_/$key': typeof AppMerchantsKeyRoute
+  '/_app/spending_/$categoryId': typeof AppSpendingCategoryIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -217,6 +226,7 @@ export interface FileRouteTypes {
     | '/transactions'
     | '/bills/$billId'
     | '/merchants/$key'
+    | '/spending/$categoryId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -238,6 +248,7 @@ export interface FileRouteTypes {
     | '/'
     | '/bills/$billId'
     | '/merchants/$key'
+    | '/spending/$categoryId'
   id:
     | '__root__'
     | '/_app'
@@ -260,6 +271,7 @@ export interface FileRouteTypes {
     | '/_app/'
     | '/_app/bills_/$billId'
     | '/_app/merchants_/$key'
+    | '/_app/spending_/$categoryId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -410,6 +422,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppMerchantsKeyRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/spending_/$categoryId': {
+      id: '/_app/spending_/$categoryId'
+      path: '/spending/$categoryId'
+      fullPath: '/spending/$categoryId'
+      preLoaderRoute: typeof AppSpendingCategoryIdRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
@@ -431,6 +450,7 @@ interface AppRouteChildren {
   AppIndexRoute: typeof AppIndexRoute
   AppBillsBillIdRoute: typeof AppBillsBillIdRoute
   AppMerchantsKeyRoute: typeof AppMerchantsKeyRoute
+  AppSpendingCategoryIdRoute: typeof AppSpendingCategoryIdRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -451,6 +471,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppIndexRoute: AppIndexRoute,
   AppBillsBillIdRoute: AppBillsBillIdRoute,
   AppMerchantsKeyRoute: AppMerchantsKeyRoute,
+  AppSpendingCategoryIdRoute: AppSpendingCategoryIdRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
