@@ -143,13 +143,17 @@ export function DashboardPage() {
     <>
       <div className="grid gap-4 md:grid-cols-12 [&>*]:min-w-0">
         <BalanceHero d={d} />
-        <TodayCard d={d} m={m} />
+        {/* On a tablet (sm to md) the cards stack, so Coming up takes Today's spot under the balance, a bit tighter. */}
+        <div className="contents sm:max-md:hidden">
+          <TodayCard d={d} m={m} />
+        </div>
+        {m && <ComingUp d={d} m={m} compact className="hidden sm:max-md:flex" />}
       </div>
       {s && m && (
         <>
           <MonthCard m={m} sel={sel} setSel={setSel} />
           <div className="grid gap-4 md:grid-cols-12 [&>*]:min-w-0">
-            <ComingUp d={d} m={m} />
+            <ComingUp d={d} m={m} className="sm:max-md:hidden md:col-span-6" />
             <WhereItWent s={s} />
           </div>
         </>
