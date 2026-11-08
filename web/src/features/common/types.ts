@@ -154,10 +154,17 @@ export type BillUpdate = {
 export type MerchantSummary = {
   key: string;
   name: string;
+  /** "in" for someone who mostly pays us (the ATO), "out" for somewhere we spend. */
+  direction: "in" | "out";
   count: number;
   spent: number;
   spent_year: number;
   months: number[];
+  /** Money in from them: payments, total, the last 12 months, and by month. */
+  received_count: number;
+  received: number;
+  received_year: number;
+  months_in: number[];
   first: string;
   last: string;
   category: string | null;
@@ -185,10 +192,16 @@ export type MerchantDetail = {
   spent_year: number;
   per_month: number;
   per_visit: number;
+  direction: "in" | "out";
+  received_count: number;
+  received: number;
+  received_year: number;
+  received_per_month: number;
+  per_payment: number;
   first: string;
   last: string;
   category: string | null;
-  months: { month: string; spent: number }[];
+  months: { month: string; spent: number; received: number }[];
   /** Statement names that belong to it; `mapped` when the household put it here. */
   /** `unnamed`: a BPAY line, which is placed payment by payment rather than moved as a whole. */
   names: { text: string; count: number; last: string; transaction_id: number; mapped: boolean; unnamed: boolean }[];

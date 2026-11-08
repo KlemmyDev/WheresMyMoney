@@ -126,10 +126,12 @@ def _months_back(today: dt.date, n: int) -> list[str]:
 
 
 # Money out at a shop: not transfers between our accounts, money in, balance fixes or uBank's automatic rules.
+# Money out at a shop and money in from whoever pays us (a tax refund, Medicare, a refund): not transfers between our
+# accounts, balance fixes or uBank's automatic rules.
 _SPENDING = (
     "SELECT t.id, t.merchant, t.description, t.amount, t.date, c.name, t.bill_id FROM transactions t"
     " LEFT JOIN categories c ON c.id = t.category_id WHERE t.kind != 'adjustment' AND t.rule_id IS NULL"
-    " AND COALESCE(c.kind, 'spending') IN ('spending', 'bills') AND t.merchant != ''"
+    " AND COALESCE(c.kind, 'spending') IN ('spending', 'bills', 'income') AND t.merchant != ''"
 )
 
 
@@ -139,14 +141,31 @@ def _gather(conn: sqlite3.Connection, book: Book) -> dict[str, dict[str, Any]]:
         key = book.key(text, description, amount, tx_id, bill_id)
         g = out.setdefault(
             key,
-            {"key": key, "spent": 0, "count": 0, "first": day, "last": day, "by_month": {}, "cats": {}, "texts": {}},
+            {
+                "key": key,
+                "spent": 0,
+                "count": 0,
+                "received": 0,
+                "received_count": 0,
+                "first": day,
+                "last": day,
+                "by_month": {},
+                "in_month": {},
+                "cats": {},
+                "texts": {},
+            },
         )
-        g["spent"] -= amount
+        month = _month(day)
         if amount < 0:
+            g["spent"] -= amount
             g["count"] += 1
+            g["by_month"][month] = g["by_month"].get(month, 0) - amount
+        else:
+            g["received"] += amount
+            g["received_count"] += 1
+            g["in_month"][month] = g["in_month"].get(month, 0) + amount
         g["first"] = min(g["first"], day)
         g["last"] = max(g["last"], day)
-        g["by_month"][_month(day)] = g["by_month"].get(_month(day), 0) - amount
         if category:
             g["cats"][category] = g["cats"].get(category, 0) + 1
         t = g["texts"].setdefault(text, {"text": text, "count": 0, "last": day, "transaction_id": tx_id})
@@ -156,8 +175,13 @@ def _gather(conn: sqlite3.Connection, book: Book) -> dict[str, dict[str, Any]]:
     return out
 
 
+def _direction(g: dict[str, Any]) -> str:
+    """ "in" for someone who mostly pays us (the ATO, an employer), "out" for somewhere we spend."""
+    return "in" if g["received"] > g["spent"] else "out"
+
+
 def directory(conn: sqlite3.Connection, today: dt.date) -> list[dict[str, Any]]:
-    """Every merchant with money out, the most spent at over the last year first."""
+    """Every merchant with money out or in, the most spent at over the last year first."""
     book = Book(conn)
     noted = notes(conn)
     cat_names = dict(conn.execute("SELECT id, name FROM categories").fetchall())
@@ -168,17 +192,23 @@ def directory(conn: sqlite3.Connection, today: dt.date) -> list[dict[str, Any]]:
     months = _months_back(today, LIST_MONTHS)
     out = []
     for g in _gather(conn, book).values():
-        if g["count"] == 0:
+        if g["count"] == 0 and g["received_count"] == 0:
             continue
         series = [g["by_month"].get(m, 0) for m in months]
+        series_in = [g["in_month"].get(m, 0) for m in months]
         out.append(
             {
                 "key": g["key"],
                 "name": book.name(g["key"]),
+                "direction": _direction(g),
                 "count": g["count"],
                 "spent": g["spent"],
                 "spent_year": sum(series),
                 "months": series,
+                "received_count": g["received_count"],
+                "received": g["received"],
+                "received_year": sum(series_in),
+                "months_in": series_in,
                 "first": g["first"],
                 "last": g["last"],
                 "category": max(g["cats"].items(), key=lambda kv: kv[1])[0] if g["cats"] else None,
@@ -189,7 +219,7 @@ def directory(conn: sqlite3.Connection, today: dt.date) -> list[dict[str, Any]]:
                 "rules": rule_counts.get(g["key"], 0),
             }
         )
-    out.sort(key=lambda m: (-m["spent_year"], -m["spent"]))
+    out.sort(key=lambda m: (-max(m["spent_year"], m["received_year"]), -max(m["spent"], m["received"])))
     return out
 
 
@@ -198,7 +228,7 @@ def detail(conn: sqlite3.Connection, key: str, today: dt.date) -> dict[str, Any]
     book = Book(conn)
     g = _gather(conn, book).get(key)
     if g is None:
-        raise LookupError("No spending at that merchant.")
+        raise LookupError("Nothing at that merchant.")
     months = _months_back(today, MONTHS)
     first = _month(g["first"])
     shown = [m for m in months if m >= first] or months[-1:]
@@ -208,21 +238,28 @@ def detail(conn: sqlite3.Connection, key: str, today: dt.date) -> dict[str, Any]
         if book.key(r[1], r[2], r[3], r[0], r[6]) == key
     ]
     year = sum(g["by_month"].get(m, 0) for m in months[-12:])
+    year_in = sum(g["in_month"].get(m, 0) for m in months[-12:])
     active = max(1, min(12, len([m for m in months[-12:] if m >= first])))
     return {
         "key": key,
         "name": book.name(key),
         "named": key in book.names,
         "settings": settings(conn, key),
+        "direction": _direction(g),
         "count": g["count"],
         "spent": g["spent"],
         "spent_year": year,
         "per_month": round(year / active),
         "per_visit": round(g["spent"] / g["count"]) if g["count"] else 0,
+        "received_count": g["received_count"],
+        "received": g["received"],
+        "received_year": year_in,
+        "received_per_month": round(year_in / active),
+        "per_payment": round(g["received"] / g["received_count"]) if g["received_count"] else 0,
         "first": g["first"],
         "last": g["last"],
         "category": max(g["cats"].items(), key=lambda kv: kv[1])[0] if g["cats"] else None,
-        "months": [{"month": m, "spent": g["by_month"].get(m, 0)} for m in shown],
+        "months": [{"month": m, "spent": g["by_month"].get(m, 0), "received": g["in_month"].get(m, 0)} for m in shown],
         "names": [
             {**t, "mapped": t["text"] in book.aliases, "unnamed": is_unnamed(t["text"])}
             for t in sorted(g["texts"].values(), key=lambda t: (-t["count"], t["text"]))

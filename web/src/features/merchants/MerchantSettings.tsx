@@ -17,6 +17,7 @@ import { Button, ErrorText, Input, Segmented } from "~/features/common/ui";
 type Rule = { over: boolean; amount: string; category_id: number | null };
 
 const KINDS = ["spending", "bills"] as const;
+const IN_KINDS = ["income"] as const;
 
 export function MerchantSettings({ d }: { d: MerchantDetail }) {
   const qc = useQueryClient();
@@ -67,7 +68,7 @@ export function MerchantSettings({ d }: { d: MerchantDetail }) {
             <CategoryPicker
               value={category}
               categories={categories}
-              kinds={KINDS}
+              kinds={d.direction === "in" ? IN_KINDS : KINDS}
               label={`Default category for ${d.name}`}
               placeholder="No default"
               className={
@@ -80,7 +81,7 @@ export function MerchantSettings({ d }: { d: MerchantDetail }) {
           </div>
           <span className="text-[13px] text-ink-3">
             {category != null
-              ? `Spending at ${d.name} goes to ${nameOf(category)} unless a rule below says otherwise.`
+              ? `${d.direction === "in" ? "Money from" : "Spending at"} ${d.name} goes to ${nameOf(category)} unless a rule below says otherwise.`
               : "Without a default, it's sorted the way you've sorted it before."}
           </span>
         </div>
@@ -123,7 +124,7 @@ export function MerchantSettings({ d }: { d: MerchantDetail }) {
               <CategoryPicker
                 value={r.category_id}
                 categories={categories}
-                kinds={KINDS}
+                kinds={d.direction === "in" ? IN_KINDS : KINDS}
                 allowClear={false}
                 label={`Category when ${r.over ? "over" : "under"} ${r.amount ? money(parseMoney(r.amount)) : "the amount"}`}
                 onChange={(id) => set(i, { category_id: id })}

@@ -188,3 +188,34 @@ def test_a_bpay_matched_to_a_bill_takes_the_bills_name(client: TestClient, house
     ok(client.put(f"/api/transactions/{tx['id']}", json={"bill_id": bill["id"]}))
     again = next(t for t in ok(client.get("/api/transactions")) if t["id"] == tx["id"])
     assert again["merchant_key"] == "CAR INSURANCE" and again["merchant_name"] == "Car insurance"
+
+
+def test_money_in_shows_up_too(client: TestClient, household: dict) -> None:
+    acc = household["Spending"]
+    refund = ok(
+        client.post(
+            "/api/transactions",
+            json={"account_id": acc, "amount": 184300, "description": "ATO 012345678 TAX REFUND", "date": "2026-10-08"},
+        )
+    )
+    spend(client, acc, 6000, "WOOLWORTHS MITCHELTON", "2026-10-02")
+    ok(
+        client.post(
+            "/api/transactions",
+            json={"account_id": acc, "amount": 1500, "description": "WOOLWORTHS MITCHELTON", "date": "2026-10-03"},
+        )
+    )
+    listed = {m["key"]: m for m in ok(client.get("/api/merchants/directory"))}
+    ato = listed["ATO"]
+    assert refund["merchant_key"] == "ATO"
+    assert ato["direction"] == "in" and ato["received"] == 184300 and ato["received_count"] == 1 and ato["count"] == 0
+    woolies = listed["WOOLWORTHS"]
+    assert woolies["direction"] == "out" and woolies["spent"] == 6000 and woolies["received"] == 1500
+    d = ok(client.get("/api/merchants/directory/ATO"))
+    assert d["received_year"] == 184300 and d["per_payment"] == 184300
+    assert next(m for m in d["months"] if m["month"] == "2026-10") == {
+        "month": "2026-10",
+        "spent": 0,
+        "received": 184300,
+    }
+    assert [t["id"] for t in d["transactions"]] == [refund["id"]]

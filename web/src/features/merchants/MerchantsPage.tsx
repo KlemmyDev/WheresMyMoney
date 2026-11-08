@@ -1,36 +1,84 @@
 /**
- * Every merchant the household spends at: its mark, how often and how much over the last year, and a little bar for
- * each month. Search by name, sort by most spent, most recent or A to Z, and open one for its whole story.
+ * Every merchant the household spends at, and everyone who pays us (Money in: the ATO, Medicare, refunds): its mark,
+ * how often and how much over the last year, and a little bar for each month. Search by name, sort by most, most
+ * recent or A to Z, and open one for its whole story. The sort, filters and search live in the address (and are
+ * remembered on this device), so coming back from a merchant finds the list as it was left.
  */
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { errorMessage } from "~/features/common/api";
 import { Loading } from "~/features/common/brand";
 import { Card, ChoiceChip } from "~/features/common/ds";
 import { dayDate, longDate, money } from "~/features/common/format";
 import { merchantDirectoryQuery } from "~/features/common/queries";
 import type { MerchantSummary } from "~/features/common/types";
-import { Button, Empty, ErrorText, Input, PageHead, cn } from "~/features/common/ui";
+import { Button, Empty, ErrorText, Input, PageHead, Segmented, cn } from "~/features/common/ui";
 import { MerchantPicker } from "~/features/merchants/MerchantPicker";
 import { MerchantMark } from "~/features/spending/MerchantIcon";
 
+export type MerchantSearch = { sort?: "spent" | "recent" | "name"; dir?: "in"; unset?: true; q?: string };
+
+const yearOf = (m: MerchantSummary, dir: "in" | "out") => (dir === "in" ? m.received_year : m.spent_year);
 const SORTS = {
-  spent: { label: "Most spent", by: (a: MerchantSummary, b: MerchantSummary) => b.spent_year - a.spent_year },
-  recent: { label: "Most recent", by: (a: MerchantSummary, b: MerchantSummary) => b.last.localeCompare(a.last) },
-  name: { label: "A to Z", by: (a: MerchantSummary, b: MerchantSummary) => a.name.localeCompare(b.name) },
+  spent: {
+    label: "Most",
+    by: (dir: "in" | "out") => (a: MerchantSummary, b: MerchantSummary) => yearOf(b, dir) - yearOf(a, dir),
+  },
+  recent: { label: "Most recent", by: () => (a: MerchantSummary, b: MerchantSummary) => b.last.localeCompare(a.last) },
+  name: { label: "A to Z", by: () => (a: MerchantSummary, b: MerchantSummary) => a.name.localeCompare(b.name) },
 } as const;
 
-export function MerchantsPage() {
+/** Where the last view of the list is remembered on this device. */
+const SAVED = "wmm:merchants-view";
+
+export function MerchantsPage({ search }: { search: MerchantSearch }) {
   const q = useQuery(merchantDirectoryQuery);
-  const [find, setFind] = useState("");
-  const [sort, setSort] = useState<keyof typeof SORTS>("spent");
-  const [unset, setUnset] = useState(false);
+  const navigate = useNavigate();
+  const sort = search.sort ?? "spent";
+  const dir = search.dir ?? "out";
+  const unset = !!search.unset;
+  // Opened without any view in the address (from the menu, or "All merchants"): pick up where it was left.
+  const [restored] = useState<MerchantSearch | null>(() => {
+    if (search.sort || search.dir || search.unset || search.q) return null;
+    try {
+      const saved = JSON.parse(localStorage.getItem(SAVED) ?? "null") as MerchantSearch | null;
+      return saved && (saved.sort || saved.dir || saved.unset || saved.q) ? saved : null;
+    } catch {
+      return null;
+    }
+  });
+  // The search box types freely; the address follows a moment later.
+  const [find, setFind] = useState(search.q ?? restored?.q ?? "");
+  const go = (patch: Partial<MerchantSearch>) => {
+    const next = { ...search, ...patch };
+    const clean: MerchantSearch = {
+      sort: next.sort && next.sort !== "spent" ? next.sort : undefined,
+      dir: next.dir === "in" ? "in" : undefined,
+      unset: next.unset ? true : undefined,
+      q: next.q || undefined,
+    };
+    try {
+      localStorage.setItem(SAVED, JSON.stringify(clean));
+    } catch {
+      // Private window or storage off: the address still keeps it.
+    }
+    navigate({ to: "/merchants", search: clean, replace: true });
+  };
+  useEffect(() => {
+    if (restored) navigate({ to: "/merchants", search: restored, replace: true });
+  }, [restored, navigate]);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if ((search.q ?? "") !== find.trim()) go({ q: find.trim() });
+    }, 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [find]);
   // Picking merchants to merge: Select, tick a few, then Merge into one.
   const [selecting, setSelecting] = useState(false);
   const [picked, setPicked] = useState<string[]>([]);
   const [merging, setMerging] = useState(false);
-  const navigate = useNavigate();
   const stop = () => {
     setSelecting(false);
     setPicked([]);
@@ -39,12 +87,16 @@ export function MerchantsPage() {
   if (q.isError) return <ErrorText>{errorMessage(q.error)}</ErrorText>;
   if (!q.data) return <Loading />;
   const needle = find.trim().toLowerCase();
-  const shown = q.data
+  // Money out: anywhere we've spent. Money in: anyone who's paid us (refunds from a shop count there too).
+  const side = q.data.filter((m) => (dir === "in" ? m.received_count > 0 : m.count > 0));
+  const shown = side
     .filter((m) => !needle || m.name.toLowerCase().includes(needle) || m.key.toLowerCase().includes(needle))
     .filter((m) => !unset || !m.default_category)
-    .sort(SORTS[sort].by);
-  const unsetCount = q.data.filter((m) => !m.default_category).length;
-  const year = q.data.reduce((a, m) => a + m.spent_year, 0);
+    .sort(SORTS[sort].by(dir));
+  const unsetCount = side.filter((m) => !m.default_category).length;
+  const year = side.reduce((a, m) => a + yearOf(m, dir), 0);
+  const top = [...side].sort(SORTS.spent.by(dir))[0];
+  const inCount = q.data.filter((m) => m.received_count > 0).length;
   return (
     <>
       <PageHead over={`Money · ${q.data.length} merchants`} title="Merchants" />
@@ -52,12 +104,24 @@ export function MerchantsPage() {
         <Empty title="No merchants yet">Import a statement and the shops you spend at show up here.</Empty>
       ) : (
         <>
+          <Segmented
+            label="Money out or in"
+            value={dir}
+            options={[
+              { value: "out", label: "Money out" },
+              { value: "in", label: `Money in · ${inCount}` },
+            ]}
+            onChange={(v) => go({ dir: v === "in" ? "in" : undefined })}
+          />
           <p className="m-0 text-[16px] text-ink-2">
-            {money(year)} spent at {q.data.length} merchants over the last 12 months.
-            {q.data[0] && q.data[0].spent_year > 0 && (
+            {dir === "in"
+              ? `${money(year)} received from ${side.length} ${side.length === 1 ? "payer" : "payers"} over the last 12 months.`
+              : `${money(year)} spent at ${side.length} merchants over the last 12 months.`}
+            {top && yearOf(top, dir) > 0 && (
               <>
                 {" "}
-                The most at <span className="text-ink">{q.data[0].name}</span>, {money(q.data[0].spent_year)}.
+                The most {dir === "in" ? "from" : "at"} <span className="text-ink">{top.name}</span>,{" "}
+                {money(yearOf(top, dir))}.
               </>
             )}
           </p>
@@ -72,11 +136,11 @@ export function MerchantsPage() {
             />
             <div role="group" aria-label="Sort" className="no-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1">
               {(Object.keys(SORTS) as (keyof typeof SORTS)[]).map((k) => (
-                <ChoiceChip key={k} pressed={sort === k} onClick={() => setSort(k)}>
-                  {SORTS[k].label}
+                <ChoiceChip key={k} pressed={sort === k} onClick={() => go({ sort: k })}>
+                  {k === "spent" ? (dir === "in" ? "Most received" : "Most spent") : SORTS[k].label}
                 </ChoiceChip>
               ))}
-              <ChoiceChip pressed={unset} onClick={() => setUnset((u) => !u)}>
+              <ChoiceChip pressed={unset} onClick={() => go({ unset: unset ? undefined : true })}>
                 No default yet · {unsetCount}
               </ChoiceChip>
             </div>
@@ -114,6 +178,7 @@ export function MerchantsPage() {
               <MerchantRow
                 key={m.key}
                 m={m}
+                dir={dir}
                 picked={selecting ? picked.includes(m.key) : undefined}
                 onPick={() => setPicked((p) => (p.includes(m.key) ? p.filter((k) => k !== m.key) : [...p, m.key]))}
               />
@@ -125,8 +190,19 @@ export function MerchantsPage() {
   );
 }
 
-function MerchantRow({ m, picked, onPick }: { m: MerchantSummary; picked?: boolean; onPick: () => void }) {
-  const top = Math.max(...m.months, 1);
+function MerchantRow({
+  m,
+  dir,
+  picked,
+  onPick,
+}: {
+  m: MerchantSummary;
+  dir: "in" | "out";
+  picked?: boolean;
+  onPick: () => void;
+}) {
+  const months = dir === "in" ? m.months_in : m.months;
+  const top = Math.max(...months, 1);
   const thisYear = String(new Date().getFullYear());
   const body = (
     <>
@@ -167,24 +243,28 @@ function MerchantRow({ m, picked, onPick }: { m: MerchantSummary; picked?: boole
           )}
         </span>
         <span className="block truncate text-[13px] text-ink-3">
-          {m.count} {m.count === 1 ? "visit" : "visits"} · last{" "}
-          {m.last.startsWith(thisYear) ? dayDate(m.last) : longDate(m.last)}
+          {dir === "in"
+            ? `${m.received_count} ${m.received_count === 1 ? "payment" : "payments"}`
+            : `${m.count} ${m.count === 1 ? "visit" : "visits"}`}{" "}
+          · last {m.last.startsWith(thisYear) ? dayDate(m.last) : longDate(m.last)}
           {m.category ? ` · ${m.category}` : ""}
           {m.note ? ` · ${m.note}` : ""}
         </span>
       </span>
       {/* The last 12 months, a bar each. */}
       <span aria-hidden className="hidden h-7 w-[84px] flex-none items-end gap-[2px] sm:flex">
-        {m.months.map((v, i) => (
+        {months.map((v, i) => (
           <i
             key={i}
-            className="block flex-1 rounded-t-[2px] bg-spending-fill"
+            className={cn("block flex-1 rounded-t-[2px]", dir === "in" ? "bg-good" : "bg-spending-fill")}
             style={{ height: v > 0 ? `max(2px, ${(v / top) * 100}%)` : "1px", opacity: v > 0 ? 0.85 : 0.25 }}
           />
         ))}
       </span>
       <span className="flex w-[96px] flex-none flex-col items-end">
-        <span className="num">{money(m.spent_year)}</span>
+        <span className={cn("num", dir === "in" && "text-good")}>
+          {dir === "in" ? `+${money(m.received_year)}` : money(m.spent_year)}
+        </span>
         <span className="text-[12px] text-ink-3">last 12 months</span>
       </span>
     </>
