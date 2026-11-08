@@ -3,6 +3,7 @@
  * optionally remember it for the merchant), a note, and delete. Only what was typed in can be deleted; a statement's
  * rows are the bank's, so the sheet says so instead. Deleting asks first.
  */
+import { MerchantIcon } from "~/features/spending/MerchantIcon";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
@@ -472,12 +473,7 @@ export function TxRow({
       onClick={() => onOpen(tx)}
       className="chip-host press flex min-h-16 w-full cursor-pointer items-center gap-3 rounded-2xl border-0 bg-transparent px-1.5 text-left text-ink hover:bg-tile-2"
     >
-      <Chip
-        g={tx.amount > 0 ? I.pay : I.spending}
-        tone={tx.splits?.length ? "grad" : tx.amount > 0 ? "savings" : tx.category ? "spending" : "neutral"}
-        size="lg"
-        round
-      />
+      <MerchantIcon tx={tx} />
       <span className="min-w-0 flex-1">
         <span className="block truncate">{tx.merchant || tx.description}</span>
         <span className="block truncate text-[13px] text-ink-3">
