@@ -394,9 +394,14 @@ export function Banner({
       <Chip g={g} tone={tone} size="lg" />
       <span className="min-w-0 flex-1">
         <span className="block font-semibold">{title}</span>
-        {children && <span className="block text-[13px] text-ink-3">{children}</span>}
+        {children && <span className="mt-0.5 block text-[13px] text-ink-3">{children}</span>}
       </span>
-      {action}
+      {/* On a phone the buttons get their own row, full width and shared evenly; beside the words from tablet up. */}
+      {action && (
+        <span className="flex w-full gap-2 sm:w-auto sm:shrink-0 [&>*]:grow [&>*]:whitespace-nowrap sm:[&>*]:grow-0">
+          {action}
+        </span>
+      )}
     </div>
   );
 }

@@ -55,7 +55,7 @@ export function LoanPage() {
       <PageHead
         over={`Money · ${lo.rate_bp != null ? `${(lo.rate_bp / 100).toFixed(2)}% a year` : "Home loan"}${goal ? ` · aiming to cover it by ${monthYear(goal)}` : ""}`}
         title="Home loan"
-        actions={<Button onClick={() => setRateOpen(true)}>Rate changed?</Button>}
+        actions={spotted ? undefined : <Button onClick={() => setRateOpen(true)}>Rate changed?</Button>}
       />
       {spotted && (
         <Banner
@@ -63,12 +63,12 @@ export function LoanPage() {
           tone="loan"
           title={`The rate changed to ${(spotted.value / 100).toFixed(2)}%`}
           action={
-            <span className="flex gap-2">
+            <>
               <Button onClick={() => setSeen(true)}>Dismiss</Button>
               <Button primary onClick={() => setRateOpen(true)}>
                 Check what changes
               </Button>
-            </span>
+            </>
           }
         >
           Spotted in a statement from {monthYear(spotted.date)}
