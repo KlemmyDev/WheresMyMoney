@@ -118,6 +118,8 @@ def test_a_merchants_own_sorting_by_amount(client: TestClient, household: dict) 
     later = spend(client, acc, 5500, "7-ELEVEN 2201 KEPERRA", "2026-10-09")
     assert later["category_id"] == fuel
     assert ok(client.get(f"/api/merchants/directory/{key}"))["settings"]["category_id"] == eating
+    row = next(m for m in ok(client.get("/api/merchants/directory")) if m["key"] == key)
+    assert row["default_category"] == "Eating out" and row["rules"] == 1
     bad = client.put(
         f"/api/merchants/settings/{key}", json={"rules": [{"over": True, "amount": 0, "category_id": fuel}]}
     )
@@ -133,3 +135,56 @@ def test_a_merchant_note(client: TestClient, household: dict) -> None:
     assert next(m for m in ok(client.get("/api/merchants/directory")) if m["key"] == key)["note"].startswith("Car")
     again = next(t for t in ok(client.get("/api/transactions")) if t["id"] == tx["id"])
     assert again["merchant_note"] == "Car insurance for the Mazda"
+
+
+def test_bpay_payments_get_their_merchant_one_by_one(client: TestClient, household: dict) -> None:
+    acc = household["Spending"]
+    hollard = spend(client, acc, 9800, "Internet BPay", "2026-09-15")
+    hollard2 = spend(client, acc, 9800, "Internet BPay", "2026-10-15")
+    rates = spend(client, acc, 51200, "Internet BPay", "2026-10-10")
+    school = spend(client, acc, 33400, "Internet BPay", "2026-10-20")
+    assert hollard["merchant_unnamed"] is True and hollard["merchant_key"] == "BPAY"
+    assert hollard["merchant_name"] == "BPAY (who to?)"
+
+    # Every BPAY of $98 is Hollard.
+    ok(
+        client.post(
+            "/api/merchants/assign", json={"transaction_id": hollard["id"], "scope": "amount", "name": "Hollard"}
+        )
+    )
+    # This one $512 payment was the council rates.
+    ok(
+        client.post(
+            "/api/merchants/assign", json={"transaction_id": rates["id"], "scope": "this", "name": "Council rates"}
+        )
+    )
+    by_id = {t["id"]: t for t in ok(client.get("/api/transactions"))}
+    assert by_id[hollard2["id"]]["merchant_key"] == "HOLLARD"
+    assert by_id[rates["id"]]["merchant_name"] == "Council rates"
+    assert by_id[school["id"]]["merchant_key"] == "BPAY"  # nobody's said yet
+    listed = {m["key"]: m for m in ok(client.get("/api/merchants/directory"))}
+    assert listed["HOLLARD"]["count"] == 2 and listed["BPAY"]["count"] == 1
+    assert ok(client.get("/api/merchants/directory/HOLLARD"))["amounts"] == [{"text": "INTERNET BPAY", "amount": 9800}]
+
+    # Merging what's left of BPAY moves just those payments, not every BPAY.
+    ok(client.post("/api/merchants/merge", json={"from": ["BPAY"], "name": "School fees"}))
+    listed = {m["key"]: m for m in ok(client.get("/api/merchants/directory"))}
+    assert "BPAY" not in listed and listed["SCHOOL FEES"]["count"] == 1 and listed["HOLLARD"]["count"] == 2
+
+    # A new $98 BPAY lands at Hollard by itself; undo the amount and it doesn't.
+    later = spend(client, acc, 9800, "Internet BPay", "2026-10-26")
+    assert later["merchant_key"] == "HOLLARD"
+    ok(client.post("/api/merchants/forget", json={"text": "INTERNET BPAY", "amount": 9800}))
+    assert next(t for t in ok(client.get("/api/transactions")) if t["id"] == later["id"])["merchant_key"] == "BPAY"
+
+
+def test_a_bpay_matched_to_a_bill_takes_the_bills_name(client: TestClient, household: dict) -> None:
+    bill = ok(
+        client.post(
+            "/api/bills", json={"name": "Car insurance", "amount": 9800, "every": "monthly", "next_due": "2026-11-15"}
+        )
+    )["added"]
+    tx = spend(client, household["Spending"], 9800, "Internet BPay", "2026-10-15")
+    ok(client.put(f"/api/transactions/{tx['id']}", json={"bill_id": bill["id"]}))
+    again = next(t for t in ok(client.get("/api/transactions")) if t["id"] == tx["id"])
+    assert again["merchant_key"] == "CAR INSURANCE" and again["merchant_name"] == "Car insurance"

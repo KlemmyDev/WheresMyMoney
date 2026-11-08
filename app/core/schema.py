@@ -226,6 +226,19 @@ def _merchant_sorting(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS merchant_amount_rules_by_key ON merchant_amount_rules (key, sort)")
 
 
+def _unnamed_payments(conn: sqlite3.Connection) -> None:
+    """A payment whose statement line doesn't say who it was to (uBank's BPAY is just "Internet BPay") gets its
+    merchant another way: transactions.`merchant_override` for that one payment, or merchant_amount_aliases for every
+    payment with that statement name and amount (cents, positive)."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(transactions)")}
+    if "merchant_override" not in cols:
+        conn.execute("ALTER TABLE transactions ADD COLUMN merchant_override TEXT")
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS merchant_amount_aliases (text TEXT NOT NULL, amount INTEGER NOT NULL,"
+        " key TEXT NOT NULL, PRIMARY KEY (text, amount))"
+    )
+
+
 def _investments(conn: sqlite3.Connection) -> None:
     """Investments: the ETFs held, entered by hand as they're bought and sold.
 
@@ -356,4 +369,5 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _one_offs,
     _merchant_book,
     _merchant_sorting,
+    _unnamed_payments,
 ]
