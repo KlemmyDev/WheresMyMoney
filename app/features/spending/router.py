@@ -111,6 +111,18 @@ async def merge_merchants(svc: ServicesDep, body: JsonBody):
     return await run(svc.spending.merge_merchants, body)
 
 
+@router.post("/merchants/unmerge")
+async def unmerge_merchant(svc: ServicesDep, body: JsonBody):
+    """Undo what was put into a merchant by hand: {"key": "LA VIDA POOLS"}."""
+    return await run(svc.spending.unmerge_merchant, str(body.get("key") or ""))
+
+
+@router.get("/businesses")
+async def businesses(svc: ServicesDep):
+    """The businesses the app knows (key, name, usual category), for picking when naming a merchant."""
+    return await run(svc.spending.businesses)
+
+
 @router.post("/merchants/forget")
 async def forget_merchant(svc: ServicesDep, body: JsonBody):
     """Undo a mapping: {"text": "DOMINOS KEPERRA"} goes back to the merchant it gets by itself."""

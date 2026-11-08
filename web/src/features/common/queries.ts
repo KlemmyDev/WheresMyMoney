@@ -9,6 +9,7 @@ import type {
   BillUpdate,
   BillsOverview,
   Category,
+  Business,
   MergeSuggestion,
   MerchantDetail,
   MerchantGroup,
@@ -128,6 +129,12 @@ export const merchantsQuery = (all: boolean) =>
 export const merchantDirectoryQuery = queryOptions({
   queryKey: ["merchants", "directory"],
   queryFn: ({ signal }) => apiGet<MerchantSummary[]>("merchants/directory", undefined, { signal }),
+});
+
+export const businessesQuery = queryOptions({
+  queryKey: ["businesses"],
+  queryFn: ({ signal }) => apiGet<Business[]>("businesses", undefined, { signal }),
+  staleTime: Infinity,
 });
 
 export const merchantSuggestionsQuery = queryOptions({

@@ -5,7 +5,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiSend, errorMessage } from "~/features/common/api";
-import { merchantDirectoryQuery, refresh } from "~/features/common/queries";
+import { businessesQuery, merchantDirectoryQuery, refresh } from "~/features/common/queries";
+import { sameName } from "~/features/merchants/names";
 import { money } from "~/features/common/format";
 import { Button, ErrorText, Input, Segmented } from "~/features/common/ui";
 import { MerchantMark } from "~/features/spending/MerchantIcon";
@@ -30,6 +31,7 @@ export function MerchantPicker({
 }) {
   const qc = useQueryClient();
   const all = useQuery(merchantDirectoryQuery);
+  const known = useQuery(businessesQuery);
   const [find, setFind] = useState("");
   const [scope, setScope] = useState<"amount" | "this">("amount");
   const assign = useMutation({
@@ -49,7 +51,17 @@ export function MerchantPicker({
     .filter((m) => m.key !== current && !merge?.includes(m.key))
     .filter((m) => !needle || m.name.toLowerCase().includes(needle) || m.key.toLowerCase().includes(needle))
     .slice(0, needle ? 8 : 5);
-  const exact = (all.data ?? []).some((m) => m.name.toLowerCase() === needle);
+  // A merchant by that name already (or the same key): pick it rather than make a second one.
+  const exact = (all.data ?? []).some((m) => sameName(find, m));
+  // Businesses the app knows that aren't merchants here yet: picking one gives its mark, name and category.
+  const have = new Set((all.data ?? []).map((m) => m.key));
+  const businesses = needle
+    ? (known.data ?? [])
+        .filter((b) => !have.has(b.key) && b.key !== current)
+        .filter((b) => b.name.toLowerCase().includes(needle) || b.key.toLowerCase().includes(needle))
+        .slice(0, 5)
+    : [];
+  const knownExact = businesses.some((b) => sameName(find, b));
   return (
     <div className="flex flex-col gap-2 rounded-2xl border border-line bg-tile-2 p-2.5">
       {payment && (
@@ -84,7 +96,25 @@ export function MerchantPicker({
             <span className="flex-none text-[12px] text-ink-3">{m.count} visits</span>
           </button>
         ))}
-        {needle && !exact && (
+        {businesses.map((b) => (
+          <button
+            key={b.key}
+            type="button"
+            disabled={assign.isPending}
+            onClick={() => assign.mutate({ key: b.key })}
+            className="press flex min-h-11 min-w-0 cursor-pointer items-center gap-2.5 rounded-xl border-0 bg-transparent px-1.5 text-left text-ink hover:bg-tile"
+          >
+            <MerchantMark name={b.key} size="md" />
+            <span className="min-w-0 flex-1 truncate">{b.name}</span>
+            <span className="flex-none text-[12px] text-ink-3">{b.category}</span>
+          </button>
+        ))}
+        {needle && exact && (
+          <span className="px-1.5 py-1.5 text-[12px] text-ink-3">
+            There's already a merchant called that: pick it above rather than making a second one.
+          </span>
+        )}
+        {needle && !exact && !knownExact && (
           <button
             type="button"
             disabled={assign.isPending}

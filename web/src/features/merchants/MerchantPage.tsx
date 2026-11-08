@@ -10,7 +10,9 @@ import { Loading } from "~/features/common/brand";
 import { PaymentBars } from "~/features/common/charts";
 import { Card, CardHead, Details, Stat } from "~/features/common/ds";
 import { dayDate, longDate, money, monthYear } from "~/features/common/format";
-import { merchantQuery, refresh } from "~/features/common/queries";
+import { businessesQuery, merchantDirectoryQuery, merchantQuery, refresh } from "~/features/common/queries";
+import { useToast } from "~/features/common/overlay";
+import { sameName } from "~/features/merchants/names";
 import type { MerchantDetail } from "~/features/common/types";
 import { Button, Empty, ErrorText, Input, Pill } from "~/features/common/ui";
 import { MerchantPicker } from "~/features/merchants/MerchantPicker";
@@ -232,67 +234,78 @@ export function MerchantPage({ merchantKey }: { merchantKey: string }) {
 /** The mark and name; the name can be changed (empty goes back to the one it gets by itself). */
 function Title({ d }: { d: MerchantDetail }) {
   const qc = useQueryClient();
+  const toast = useToast();
   const [editing, setEditing] = useState(false);
   const [merging, setMerging] = useState(false);
+  const [unmerging, setUnmerging] = useState(false);
   const navigate = useNavigate();
-  const [text, setText] = useState(d.name);
-  const save = useMutation({
-    mutationFn: (name: string) => apiSend("PUT", `merchants/directory/${encodeURIComponent(d.key)}`, { name }),
-    onSuccess: () => {
-      setEditing(false);
+  const unmerge = useMutation({
+    mutationFn: () => apiSend<{ moved: number }>("POST", "merchants/unmerge", { key: d.key }),
+    onSuccess: (r) => {
+      setUnmerging(false);
       refresh(qc);
+      toast(`Unmerged: ${r.moved} ${r.moved === 1 ? "thing" : "things"} went back where they were`);
     },
   });
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="flex min-w-0 flex-1 basis-full items-center gap-3 sm:basis-auto">
         <MerchantMark name={d.key} size="xl" />
-        {editing ? (
-          <form
-            className="flex min-w-0 flex-1 items-center gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              save.mutate(text);
-            }}
-          >
-            <Input
-              autoFocus
-              aria-label="Merchant name"
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              className="max-w-sm"
-            />
-            <Button primary small type="submit" disabled={save.isPending}>
-              Save
-            </Button>
-            <Button small type="button" onClick={() => setEditing(false)}>
-              Cancel
-            </Button>
-          </form>
-        ) : (
-          <div className="min-w-0">
-            <h1 className="m-0 line-clamp-2 min-w-0 text-[28px] leading-9 font-semibold tracking-[-0.03em] break-words sm:text-[40px] sm:leading-[46px]">
-              {d.name}
-            </h1>
-            {(d.settings.note || d.category) && (
-              <span className="text-[14px] text-ink-3">
-                {[d.settings.note, d.category && `Mostly ${d.category}`].filter(Boolean).join(" · ")}
-              </span>
-            )}
-          </div>
-        )}
+        <div className="min-w-0">
+          <h1 className="m-0 line-clamp-2 min-w-0 text-[28px] leading-9 font-semibold tracking-[-0.03em] break-words sm:text-[40px] sm:leading-[46px]">
+            {d.name}
+          </h1>
+          {(d.settings.note || d.category) && (
+            <span className="text-[14px] text-ink-3">
+              {[d.settings.note, d.category && `Mostly ${d.category}`].filter(Boolean).join(" · ")}
+            </span>
+          )}
+        </div>
       </div>
-      {!editing && (
-        <div className="flex gap-2">
-          <Button onClick={() => setMerging((m) => !m)}>{merging ? "Cancel merge" : "Merge into…"}</Button>
-          <Button
-            onClick={() => {
-              setText(d.name);
-              setEditing(true);
+      <div className="flex flex-wrap gap-2">
+        {d.mapped > 0 &&
+          (unmerging ? (
+            <>
+              <Button primary onClick={() => unmerge.mutate()} disabled={unmerge.isPending}>
+                Unmerge {d.mapped}
+              </Button>
+              <Button onClick={() => setUnmerging(false)}>Keep</Button>
+            </>
+          ) : (
+            <Button onClick={() => setUnmerging(true)}>Unmerge…</Button>
+          ))}
+        <Button
+          onClick={() => {
+            setMerging((m) => !m);
+            setEditing(false);
+          }}
+        >
+          {merging ? "Cancel merge" : "Merge into…"}
+        </Button>
+        <Button
+          onClick={() => {
+            setEditing((e) => !e);
+            setMerging(false);
+          }}
+        >
+          {editing ? "Cancel" : "Rename"}
+        </Button>
+      </div>
+      {unmerging && (
+        <p className="m-0 w-full text-[13px] text-ink-3">
+          Unmerge puts the {d.mapped} statement {d.mapped === 1 ? "name or payment" : "names and payments"} moved here
+          by hand back where they'd be by themselves.
+        </p>
+      )}
+      {editing && (
+        <div className="w-full">
+          <NamePicker
+            d={d}
+            onDone={(key) => {
+              setEditing(false);
+              if (key && key !== d.key) navigate({ to: "/merchants/$key", params: { key } });
             }}
-          >
-            Rename
-          </Button>
+          />
         </div>
       )}
       {merging && (
@@ -306,8 +319,119 @@ function Title({ d }: { d: MerchantDetail }) {
           />
         </div>
       )}
-      {save.isError && <ErrorText>{errorMessage(save.error)}</ErrorText>}
     </div>
+  );
+}
+
+/**
+ * Naming a merchant: pick the business it really is (its mark, name and usual category follow, and every statement
+ * name here moves to it), or the merchant it's the same as, or just give it a new name. A name that's already
+ * another merchant's is pointed out rather than made twice.
+ */
+function NamePicker({ d, onDone }: { d: MerchantDetail; onDone: (key?: string) => void }) {
+  const qc = useQueryClient();
+  const all = useQuery(merchantDirectoryQuery);
+  const known = useQuery(businessesQuery);
+  const [text, setText] = useState(d.name);
+  const merge = useMutation({
+    mutationFn: (into: string) => apiSend<{ key: string }>("POST", "merchants/merge", { from: [d.key], into }),
+    onSuccess: (r) => {
+      refresh(qc);
+      onDone(r.key);
+    },
+  });
+  const rename = useMutation({
+    mutationFn: (name: string) => apiSend("PUT", `merchants/directory/${encodeURIComponent(d.key)}`, { name }),
+    onSuccess: () => {
+      refresh(qc);
+      onDone();
+    },
+  });
+  const needle = text.trim().toLowerCase();
+  const typed = needle && needle !== d.name.toLowerCase();
+  const merchants = typed
+    ? (all.data ?? [])
+        .filter((m) => m.key !== d.key)
+        .filter((m) => m.name.toLowerCase().includes(needle) || m.key.toLowerCase().includes(needle))
+        .slice(0, 4)
+    : [];
+  const have = new Set((all.data ?? []).map((m) => m.key));
+  const businesses = typed
+    ? (known.data ?? [])
+        .filter((b) => b.key !== d.key && !have.has(b.key))
+        .filter((b) => b.name.toLowerCase().includes(needle) || b.key.toLowerCase().includes(needle))
+        .slice(0, 6)
+    : [];
+  const clash = (all.data ?? []).find((m) => m.key !== d.key && sameName(text, m));
+  const row =
+    "press flex min-h-11 min-w-0 cursor-pointer items-center gap-2.5 rounded-xl border-0 bg-transparent px-1.5 text-left text-ink hover:bg-tile";
+  return (
+    <form
+      className="flex flex-col gap-2 rounded-2xl border border-line bg-tile-2 p-2.5"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!clash && text.trim()) rename.mutate(text.trim());
+      }}
+    >
+      <Input
+        autoFocus
+        aria-label="Merchant name"
+        placeholder="Type the business's name"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+      />
+      {businesses.length > 0 && (
+        <div className="flex flex-col">
+          <span className="px-1.5 pt-1 text-[11px] font-semibold tracking-[0.08em] text-ink-3 uppercase">
+            Known businesses
+          </span>
+          {businesses.map((b) => (
+            <button
+              key={b.key}
+              type="button"
+              className={row}
+              disabled={merge.isPending}
+              onClick={() => merge.mutate(b.key)}
+            >
+              <MerchantMark name={b.key} size="md" />
+              <span className="min-w-0 flex-1 truncate">{b.name}</span>
+              <span className="flex-none text-[12px] text-ink-3">{b.category}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {merchants.length > 0 && (
+        <div className="flex flex-col">
+          <span className="px-1.5 pt-1 text-[11px] font-semibold tracking-[0.08em] text-ink-3 uppercase">
+            Your merchants: merge into
+          </span>
+          {merchants.map((m) => (
+            <button
+              key={m.key}
+              type="button"
+              className={row}
+              disabled={merge.isPending}
+              onClick={() => merge.mutate(m.key)}
+            >
+              <MerchantMark name={m.key} size="md" />
+              <span className="min-w-0 flex-1 truncate">{m.name}</span>
+              <span className="flex-none text-[12px] text-ink-3">{m.count} visits</span>
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button primary small type="submit" disabled={rename.isPending || !!clash || !text.trim()}>
+          Just rename it
+        </Button>
+        <span className="min-w-0 flex-1 text-[12px] text-ink-3">
+          {clash
+            ? `There's already a merchant called ${clash.name}. Merge into it above instead.`
+            : "Picking a known business gives it that business's mark, name and usual category."}
+        </span>
+      </div>
+      {(merge.isError || rename.isError) && <ErrorText>{errorMessage(merge.error ?? rename.error)}</ErrorText>}
+    </form>
   );
 }
 
