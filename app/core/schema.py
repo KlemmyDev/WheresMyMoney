@@ -252,6 +252,17 @@ def _celebrations(conn: sqlite3.Connection) -> None:
     add_missing_categories(conn)
 
 
+def _names_stuck_to_numbers(conn: sqlite3.Connection) -> None:
+    """Merchants cut down again: a name stuck to a reference ("EIDA-4410938271") now keeps the name instead of being
+    dropped with the number."""
+    from app.features.spending import merchants
+
+    for tx_id, description, was in conn.execute("SELECT id, description, merchant FROM transactions").fetchall():
+        now = merchants.merchant(description)
+        if now != was:
+            conn.execute("UPDATE transactions SET merchant = ? WHERE id = ?", (now, tx_id))
+
+
 def _investments(conn: sqlite3.Connection) -> None:
     """Investments: the ETFs held, entered by hand as they're bought and sold.
 
@@ -385,4 +396,5 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _unnamed_payments,
     _merge_dismissed,
     _celebrations,
+    _names_stuck_to_numbers,
 ]

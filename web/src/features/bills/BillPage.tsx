@@ -2,7 +2,7 @@
  * One bill, opened from the Bills page or a bill in the Overview's "Coming up": what it costs and when it's next due
  * in a sentence, then each payment as a bar against what it is now, what's ahead, and every payment to open.
  */
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { BillDialog } from "~/features/bills/BillsPage";
@@ -11,9 +11,11 @@ import { PaymentBars } from "~/features/common/charts";
 import { Card, CardHead, Details, Stat } from "~/features/common/ds";
 import { EVERY_LABEL, dayDate, longDate, money, monthYear, pct } from "~/features/common/format";
 import { Chip, I } from "~/features/common/icons";
-import { accountsQuery, billQuery } from "~/features/common/queries";
+import { accountsQuery, billCandidatesQuery, billQuery, refresh } from "~/features/common/queries";
+import { apiSend, errorMessage } from "~/features/common/api";
+import { useToast } from "~/features/common/overlay";
 import type { BillDetail } from "~/features/common/types";
-import { Button, Empty, Pill } from "~/features/common/ui";
+import { Button, Empty, ErrorText, Pill } from "~/features/common/ui";
 import { TransactionSheet, TxRow } from "~/features/spending/TransactionSheet";
 
 const HOW = {
@@ -175,6 +177,8 @@ export function BillPage({ id }: { id: number }) {
         </Card>
       </div>
 
+      <Candidates billId={b.id} name={b.name} />
+
       {d.transactions.length > 0 && (
         <Card aria-labelledby="bp-list" className="flex flex-col gap-1">
           <CardHead
@@ -208,4 +212,85 @@ function changeSentence(d: BillDetail): string {
   const c = d.changes[d.changes.length - 1];
   if (!c) return "";
   return ` It went ${c.now > c.was ? "up" : "down"} from ${money(c.was, { cents: true })} to ${money(c.now, { cents: true })} in ${monthYear(c.date.slice(0, 7))}.`;
+}
+
+/**
+ * Payments that look like this bill but aren't part of any bill yet (how it shows up, about its amount): tick the
+ * ones that are and link them, or link them all. Linking teaches the bill how it shows up, so later statements are
+ * matched to it by themselves.
+ */
+function Candidates({ billId, name }: { billId: number; name: string }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const q = useQuery(billCandidatesQuery(billId));
+  const [picked, setPicked] = useState<number[] | null>(null);
+  const link = useMutation({
+    mutationFn: (ids: number[]) =>
+      apiSend<{ linked: number }>("POST", `bills/${billId}/link`, { transaction_ids: ids }),
+    onSuccess: (r) => {
+      setPicked(null);
+      refresh(qc);
+      toast(`Added ${r.linked} ${r.linked === 1 ? "payment" : "payments"} to ${name}`);
+    },
+  });
+  const list = q.data ?? [];
+  if (!list.length) return null;
+  const chosen = picked ?? list.map((c) => c.id);
+  const thisYear = String(new Date().getFullYear());
+  return (
+    <Card aria-labelledby="bp-cand" className="flex flex-col gap-2">
+      <CardHead
+        id="bp-cand"
+        title="Looks like this bill"
+        right={<span className="text-[13px] text-ink-3">{list.length}</span>}
+      />
+      <p className="m-0 text-[13px] text-ink-3">
+        Payments that aren't part of a bill yet but look like {name}. Untick any that aren't.
+      </p>
+      <ul className="m-0 flex list-none flex-col p-0">
+        {list.map((c) => {
+          const on = chosen.includes(c.id);
+          return (
+            <li key={c.id}>
+              <button
+                type="button"
+                role="checkbox"
+                aria-checked={on}
+                onClick={() => setPicked(on ? chosen.filter((i) => i !== c.id) : [...chosen, c.id])}
+                className="press flex min-h-12 w-full min-w-0 cursor-pointer items-center gap-3 rounded-xl border-0 bg-transparent px-1.5 text-left text-ink hover:bg-tile-2"
+              >
+                <span
+                  aria-hidden
+                  className={
+                    "flex size-5 flex-none items-center justify-center rounded-md border-2 " +
+                    (on ? "border-teal bg-teal text-page" : "border-line-2")
+                  }
+                >
+                  {on && (
+                    <svg viewBox="0 0 24 24" className="size-3.5" fill="none" stroke="currentColor" strokeWidth={3.4}>
+                      <path d="M5 12.5l4.5 4.5L19 7.5" />
+                    </svg>
+                  )}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="mono block truncate text-[13px]">{c.description}</span>
+                  <span className="block truncate text-[12px] text-ink-3">
+                    {c.date.startsWith(thisYear) ? dayDate(c.date) : longDate(c.date)} · {c.why}
+                  </span>
+                </span>
+                <span className="num flex-none">{money(c.amount, { cents: true })}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button primary small disabled={!chosen.length || link.isPending} onClick={() => link.mutate(chosen)}>
+          {chosen.length === list.length ? `Add all ${list.length}` : `Add ${chosen.length}`}
+        </Button>
+        <span className="text-[12px] text-ink-3">Later statements with it are matched by themselves.</span>
+      </div>
+      {link.isError && <ErrorText>{errorMessage(link.error)}</ErrorText>}
+    </Card>
+  );
 }
