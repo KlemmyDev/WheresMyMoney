@@ -646,6 +646,7 @@ class AccountsService:
             "monthly_growth": monthly_growth,
             "planned_growth": planned_growth,
             "changes": self.loan_changes(lo["id"])[:6],
+            "interest_charged": self.interest_charged(lo["id"]),
             "recent": {"date": recent.date, "months": recent.months, "points": recent.points},
             "planned": {"date": planned.date, "months": planned.months, "points": planned.points},
             "scenarios": loan.scenarios(owed, offsetting, rate, repayment, monthly_growth, (0, 20000, 50000, 100000)),
@@ -660,6 +661,41 @@ class AccountsService:
                 for a in sorted(ov["accounts"], key=lambda a: -a["balance"])
                 if a["offsets_loan"]
             ],
+        }
+
+    def interest_charged(self, loan_id: int, months: int = 12) -> dict[str, Any] | None:
+        """The interest the loan's imported statements actually charged: each of the last `months` months (this one
+        included), the latest charge and the year's total. None until a loan statement is imported. On the loan what's
+        owed is positive, so a charge is a positive row; a reversal of one (negative) takes it back off."""
+        today = dates.today()
+        first = dates.add_months(today.replace(day=1), -(months - 1))
+        keys = [dates.add_months(first, i).strftime("%Y-%m") for i in range(months)]
+        with self.db.reading() as conn:
+            if not conn.execute(
+                "SELECT 1 FROM transactions WHERE account_id = ? AND kind = 'statement' LIMIT 1", (loan_id,)
+            ).fetchone():
+                return None
+            rows = conn.execute(
+                "SELECT date, amount FROM transactions WHERE account_id = ? AND kind = 'statement'"
+                " AND UPPER(description) LIKE '%INTEREST%' AND date >= ? ORDER BY date",
+                (loan_id, first.isoformat()),
+            ).fetchall()
+            last = conn.execute(
+                "SELECT date, amount FROM transactions WHERE account_id = ? AND kind = 'statement'"
+                " AND UPPER(description) LIKE '%INTEREST%' AND amount > 0 ORDER BY date DESC, id DESC LIMIT 1",
+                (loan_id,),
+            ).fetchone()
+        by_month = dict.fromkeys(keys, 0)
+        for day, amount in rows:
+            if day[:7] in by_month:
+                by_month[day[:7]] += amount
+        counted = [m for m in keys if by_month[m]]
+        total = sum(by_month.values())
+        return {
+            "months": [{"month": m, "amount": by_month[m]} for m in keys],
+            "last": {"date": last[0], "amount": last[1]} if last else None,
+            "year": total,
+            "per_month": round(total / len(counted)) if counted else 0,
         }
 
     def change_rate(self, rate_bp: int, repayment: int | None, since: str) -> dict[str, Any]:
