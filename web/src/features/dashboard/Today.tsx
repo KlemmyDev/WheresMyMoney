@@ -1,11 +1,11 @@
 /**
- * The top of the Overview, in plain words: what you can spend today, whether the bills are covered until pay day,
- * and whether anything needs you. It answers the everyday questions before any of the detail below it.
+ * Beside the account total on the Overview, in plain words: how much is left to spend this month, whether the bills
+ * are covered until pay day, and whether anything needs you. It answers the everyday questions before any of the
+ * detail below it.
  */
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { Count } from "~/features/common/charts";
-import { BigNumber, Card, ChoiceChip, Eyebrow, Term } from "~/features/common/ds";
+import { Card, ChoiceChip, Eyebrow, Term } from "~/features/common/ds";
 import { dayDate, money, parseDate } from "~/features/common/format";
 import { Chip, I, type Glyph, type Tone } from "~/features/common/icons";
 import { useActions } from "~/features/common/layout";
@@ -19,27 +19,63 @@ const ordinal = (n: number) => {
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
 };
 
+/** Within this of the plan counts as about right. */
+const NEAR = 5000;
+
+/** Whether spending is on track: near the plan, and every category within its budget (and none racing ahead). */
+function onTrack(s: NonNullable<Dashboard["spending"]>): { ok: boolean; title: string; budgets: string } {
+  const budgeted = s.categories.filter((c) => c.budget);
+  const over = budgeted.filter((c) => c.spent > (c.budget ?? 0));
+  const close = budgeted.filter(
+    (c) => c.spent <= (c.budget ?? 0) && c.spent > (c.budget ?? 0) * Math.min(1, s.pace + 0.2),
+  );
+  const list = (cs: typeof budgeted) =>
+    cs.length > 2
+      ? `${cs
+          .slice(0, 2)
+          .map((c) => c.name)
+          .join(", ")} and ${cs.length - 2} more`
+      : cs.map((c) => c.name).join(" and ");
+  const budgets = over.length
+    ? `Over budget: ${list(over)}.`
+    : close.length
+      ? `${list(close)} ${close.length === 1 ? "is" : "are"} close to ${close.length === 1 ? "its budget" : "their budgets"}.`
+      : budgeted.length
+        ? "Every category is within its budget."
+        : "";
+  if (s.left < 0) return { ok: false, title: `Spending is ${money(-s.left)} over for the month`, budgets };
+  if (over.length)
+    return { ok: false, title: `${list(over)} ${over.length === 1 ? "is" : "are"} over budget`, budgets };
+  if (s.vs_pace > NEAR) return { ok: false, title: "Spending is a bit faster than planned", budgets };
+  return { ok: true, title: "Spending is on track", budgets };
+}
+
 function Line({
   g,
   tone,
   title,
   sub,
   action,
+  children,
 }: {
   g: Glyph;
   tone: Tone;
   title: string;
   sub?: React.ReactNode;
   action?: React.ReactNode;
+  children?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-3 border-t border-line pt-3.5 sm:flex-nowrap md:first:border-t-0 md:first:pt-0">
-      <Chip g={g} tone={tone} size="lg" />
-      <span className="min-w-0 flex-1 max-sm:basis-[calc(100%-60px)]">
-        <span className="block text-[16px] font-semibold text-ink">{title}</span>
-        {sub && <span className="block text-[14px] text-ink-3">{sub}</span>}
-      </span>
-      {action && <span className="flex-none max-sm:ml-[52px]">{action}</span>}
+    <div className="flex flex-col gap-2.5 border-t border-line pt-3.5 first:border-t-0 first:pt-0">
+      <div className="flex items-start gap-3">
+        <Chip g={g} tone={tone} size="lg" />
+        <span className="min-w-0 flex-1">
+          <span className="block text-[16px] leading-snug font-semibold text-ink">{title}</span>
+          {sub && <span className="mt-0.5 block text-[14px] text-ink-3">{sub}</span>}
+        </span>
+      </div>
+      {action && <span className="ml-[52px]">{action}</span>}
+      {children}
     </div>
   );
 }
@@ -52,6 +88,9 @@ export function TodayCard({ d, m }: { d: Dashboard; m: Month | null }) {
   // When the spending money is next topped up: the day after the month ends.
   const restart = s ? parseDate(s.end) : null;
   if (restart) restart.setDate(restart.getDate() + 1);
+
+  // On track: the spending balance near where the plan has it by now, and every category within its budget.
+  const track = s ? onTrack(s) : { ok: true, title: "", budgets: "" };
 
   // Bills before the next pay.
   const held = d.bills?.balance ?? null;
@@ -118,83 +157,82 @@ export function TodayCard({ d, m }: { d: Dashboard; m: Month | null }) {
     );
   else needs = <Line g={I.shield} tone="savings" title="Nothing needs you right now" sub="Everything adds up." />;
 
-  const after = s && whatIf != null && s.remaining ? (s.left - whatIf) / s.remaining : null;
-
   return (
-    <Card lit aria-labelledby="today-h" className="flex flex-col gap-3.5">
+    <Card aria-labelledby="today-h" className="flex flex-col gap-3.5 md:col-span-4">
       <Eyebrow id="today-h">Today, {dayDate(d.today)}</Eyebrow>
-      <div className="grid gap-3.5 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] md:items-center md:gap-10">
-        {s ? (
-          <div className="flex flex-col gap-2">
-            <div className="text-[15px] text-ink-2">You can spend</div>
-            <div className="flex flex-wrap items-baseline gap-x-2">
-              <BigNumber size="xl">
-                <Count k="today:safe" value={Math.max(0, s.safe_per_day)} format={(v) => money(v)} />
-              </BigNumber>
-              <span className="text-[18px] text-ink-2">today</span>
+      {s ? (
+        <Line
+          g={I.spending}
+          tone={track.ok ? "savings" : "spending"}
+          title={track.title}
+          sub={
+            <>
+              {money(Math.max(s.left, 0))} left of {money(s.allowance)},{" "}
+              {Math.abs(s.vs_pace) < NEAR ? (
+                <>
+                  about where the <Term k="plan">plan</Term> has it.
+                </>
+              ) : s.vs_pace < 0 ? (
+                <>
+                  {money(-s.vs_pace)} more than the <Term k="plan">plan</Term> has by now.
+                </>
+              ) : (
+                <>
+                  {money(s.vs_pace)} less than the <Term k="plan">plan</Term> has by now.
+                </>
+              )}{" "}
+              {track.budgets}
+              {s.remaining
+                ? ` Topped up on the ${restart ? ordinal(restart.getDate()) : "1st"}.`
+                : " Topped up tomorrow."}
+            </>
+          }
+        >
+          {s.left > 0 && (
+            <div className="ml-[52px] flex flex-wrap items-center gap-2">
+              <span className="text-[13px] text-ink-3">If I spend</span>
+              {[50, 100, 250].map((v) => (
+                <ChoiceChip
+                  key={v}
+                  pressed={whatIf === v * 100}
+                  onClick={() => setWhatIf(whatIf === v * 100 ? null : v * 100)}
+                >
+                  ${v}
+                </ChoiceChip>
+              ))}
+              {whatIf != null && (
+                <span className="basis-full text-[14px] text-ink-2" aria-live="polite">
+                  Then <b className="text-ink">{money(s.left - whatIf)}</b> is left for the month.
+                </span>
+              )}
             </div>
-            <p className="m-0 text-[15px] text-ink-3">
-              {s.left < 0
-                ? `The spending money has run out: ${money(-s.left)} more than there was.`
-                : s.remaining
-                  ? `${money(s.left)} left for the next ${s.remaining} days, until it's topped up on the ${restart ? ordinal(restart.getDate()) : "next month"}. `
-                  : "It's the last day of the month: whatever's left is yours. "}
-              {s.left >= 0 &&
-                (s.vs_pace <= 0 ? (
-                  <>
-                    You're {money(-s.vs_pace)} <Term k="plan">under plan</Term>.
-                  </>
-                ) : (
-                  <>
-                    You're {money(s.vs_pace)} <Term k="plan">over plan</Term>, so the daily amount is lower.
-                  </>
-                ))}
-            </p>
-            {s.remaining > 0 && s.left > 0 && (
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[14px] text-ink-2">What if I spend</span>
-                {[50, 100, 250].map((v) => (
-                  <ChoiceChip
-                    key={v}
-                    pressed={whatIf === v * 100}
-                    onClick={() => setWhatIf(whatIf === v * 100 ? null : v * 100)}
-                  >
-                    ${v}
-                  </ChoiceChip>
-                ))}
-                {after != null && (
-                  <span className="text-[14px] text-ink-2" aria-live="polite">
-                    Then <b className="text-ink">{money(Math.max(0, after))}</b> a day after that.
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-        ) : (
-          <p className="m-0 text-[15px] text-ink-3">
-            Give one account the spending job on the Accounts page, and this shows what you can spend each day.
-          </p>
-        )}
-        <div className="flex flex-col gap-3.5">
-          {held != null && m && (
-            <Line
-              g={I.bills}
-              tone="bills"
-              title={
-                held >= due
-                  ? `Bills are covered${payDay ? ` until pay on ${payDay}` : ""}`
-                  : `Bills are ${money(due - held)} short${payDay ? ` before pay on ${payDay}` : ""}`
-              }
-              sub={
-                held >= due
-                  ? `${money(due)} due before then, and ${money(held)} is set aside.`
-                  : `${money(due)} is due and ${money(held)} is set aside. Move some money into Bills.`
-              }
-            />
           )}
-          {needs}
-        </div>
-      </div>
+        </Line>
+      ) : (
+        <Line
+          g={I.spending}
+          tone="spending"
+          title="No spending account yet"
+          sub="Give one account the spending job on the Accounts page, and this shows what's left each month."
+        />
+      )}
+      {held != null && m && (
+        <Line
+          g={I.bills}
+          tone="bills"
+          title={
+            held >= due
+              ? `Bills are covered${payDay ? ` until pay on ${payDay}` : ""}`
+              : `Bills are ${money(due - held)} short${payDay ? ` before pay on ${payDay}` : ""}`
+          }
+          sub={
+            held >= due
+              ? `${money(due)} due before then, and ${money(held)} is set aside.`
+              : `${money(due)} is due and ${money(held)} is set aside. Move some money into Bills.`
+          }
+        />
+      )}
+      {needs}
     </Card>
   );
 }

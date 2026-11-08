@@ -650,7 +650,7 @@ export const GLOSSARY = {
   ],
   plan: [
     "The plan",
-    "The month's spending money spread evenly over its days. Under plan means less has been spent so far than that; over plan means more, so there's a little less to spend each day for the rest of the month.",
+    "Where the spending balance would be today if the month's money were spent evenly. Under plan means more is left than that, so you're on track; over plan means less is left, so the rest of the month needs a little care.",
   ],
   super: [
     "Super",

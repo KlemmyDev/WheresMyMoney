@@ -127,7 +127,8 @@ function AddForm({ onClose }: { onClose: () => void }) {
   const month = spending.data?.month;
   const affectsSafe =
     month && kind !== "income" && from === month.account_id && !cash && date >= month.start && cents > 0;
-  const safeAfter = month ? month.safe_per_day - (affectsSafe ? cents / Math.max(month.remaining, 1) : 0) : null;
+  // What's left to spend this month once this is in.
+  const safeAfter = month ? month.left - (affectsSafe ? cents : 0) : null;
 
   const save = useMutation({
     mutationFn: async () => {
@@ -194,7 +195,7 @@ function AddForm({ onClose }: { onClose: () => void }) {
           {kind === "spend" && cash
             ? "Paid in cash, so the account's balance stays as it is."
             : "The next statement import looks for a match and merges it, so it won't count twice."}
-          {safeThen != null && ` You can now spend ${money(Math.max(safeThen, 0))} a day.`}
+          {safeThen != null && ` That leaves ${money(Math.max(safeThen, 0))} to spend this month.`}
         </p>
         {undo.isError && <ErrorText>{errorMessage(undo.error)}</ErrorText>}
         <div className="mt-2 flex flex-wrap justify-center gap-2">
@@ -367,11 +368,11 @@ function AddForm({ onClose }: { onClose: () => void }) {
         </div>
         {month && safeAfter != null ? (
           <div className="rounded-2xl bg-sunken p-3.5">
-            <div className="eyebrow">Then you can spend</div>
+            <div className="eyebrow">Left to spend after</div>
             <div className="num text-[20px]" style={{ color: safeAfter < 0 ? "var(--color-bad)" : undefined }}>
               {money(Math.max(safeAfter, 0))}
             </div>
-            <div className="text-[13px] text-ink-3">a day, for the {month.remaining} days left</div>
+            <div className="text-[13px] text-ink-3">this month, with {month.remaining} days to go</div>
           </div>
         ) : (
           <span />

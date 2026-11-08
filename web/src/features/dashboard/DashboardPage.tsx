@@ -137,10 +137,13 @@ export function DashboardPage() {
     );
   const s = d.spending;
   const m = s ? buildMonth(d, s) : null;
-  // Plain answers first (Today), then the month, what's coming and where it went, then the accounts in detail.
+  // The account total leads, with today's plain answers beside it; then the month, what's coming and where it went.
   return (
     <>
-      <TodayCard d={d} m={m} />
+      <div className="grid gap-4 md:grid-cols-12 [&>*]:min-w-0">
+        <BalanceHero d={d} />
+        <TodayCard d={d} m={m} />
+      </div>
       <QuickActions />
       {s && m && (
         <>
@@ -152,12 +155,13 @@ export function DashboardPage() {
         </>
       )}
       <div className="grid gap-4 md:grid-cols-12 [&>*]:min-w-0">
-        <BalanceHero d={d} />
-        <div className="md:col-span-4">
+        <div className="md:col-span-7">
           <RecentActivity />
         </div>
+        <div className="md:col-span-5">
+          <GoalsCard d={d} />
+        </div>
       </div>
-      <GoalsCard d={d} />
     </>
   );
 }

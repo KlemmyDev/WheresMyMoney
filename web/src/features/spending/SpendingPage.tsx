@@ -99,14 +99,16 @@ export function SpendingPage() {
           </Details>
         </Card>
         <Card lit aria-labelledby="sp-safe" className="justify-center md:col-span-4" tint="accent">
-          <Eyebrow id="sp-safe">You can spend</Eyebrow>
+          <Eyebrow id="sp-safe">Left to spend</Eyebrow>
           <div className="flex items-baseline gap-2">
             <BigNumber>
-              <Count k="sp:safe" value={m.safe_per_day} format={(v) => money(v, { cents: true })} />
+              <Count k="sp:left" value={Math.max(m.left, 0)} format={(v) => money(v)} />
             </BigNumber>
-            <span className="text-[15px] text-ink-3">a day</span>
           </div>
-          <div className="text-[13px] text-ink-3">for the next {m.remaining} days. Under pace adds to tomorrow.</div>
+          <div className="text-[13px] text-ink-3">
+            of {money(m.allowance)}, with {m.remaining} days to go. The plan has{" "}
+            {money(Math.max(0, m.allowance - Math.round(m.allowance * m.pace)))} left by now.
+          </div>
         </Card>
       </div>
       <Tile i={4} aria-labelledby="s-daily">
@@ -120,7 +122,7 @@ export function SpendingPage() {
               </span>
               <span className="inline-flex items-center gap-1.5">
                 <i className="w-3.5 border-t-2 border-dashed border-ink-2" />
-                Even pace {money(m.even_per_day)}/day
+                The plan, {money(m.even_per_day)} a day
               </span>
             </span>
           }
