@@ -80,7 +80,7 @@ function sources(accounts: Account[]): Account[] {
 
 function SourceNote({ from, perMonth, growth }: { from: Account | undefined; perMonth: number; growth: number }) {
   if (!from) return null;
-  if (from.role === "spending") return <>You can spend about {money(perMonth / 30)} less each day.</>;
+  if (from.role === "spending") return <>That's {money(perMonth)} a month less spending money.</>;
   if (growth > 0 && perMonth > growth)
     return (
       <span className="text-bills">
@@ -606,7 +606,7 @@ function TopUp({ goal, index, onClose }: { goal: Goal; index: number; onClose: (
                     {money(a.balance)} ·{" "}
                     {a.role === "offset"
                       ? "costs a little loan interest"
-                      : `you can spend ${money(amt / 24)} less each day`}
+                      : `${money(amt)} less spending money this month`}
                   </span>
                 </span>
               </button>

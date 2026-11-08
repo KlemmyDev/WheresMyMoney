@@ -273,7 +273,7 @@ function RateChange({ v, spotted, onClose }: { v: LoanView; spotted: Spotted; on
         </label>
       )}
       <p className="m-0 text-[13px] text-ink-3">
-        What you can spend each day doesn't change: the loan is paid from {bills?.name ?? "Bills"}.
+        Spending money doesn't change: the loan is paid from {bills?.name ?? "Bills"}.
       </p>
 
       {save.isError && <ErrorText>{errorMessage(save.error)}</ErrorText>}

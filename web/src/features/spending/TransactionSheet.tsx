@@ -168,7 +168,7 @@ function Body({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
           <span className="block text-[12px] text-ink-3">
             {excluded
               ? tx.amount < 0
-                ? "Not counted as spending. What you can spend each day counts it as coming back; mark their payment the same way when it lands."
+                ? "Not counted as spending, and the money counts as coming back; mark their payment the same way when it lands."
                 : "Not counted as income: it squares up what was spent for them."
               : tx.amount < 0
                 ? "Counted in this month's spending."

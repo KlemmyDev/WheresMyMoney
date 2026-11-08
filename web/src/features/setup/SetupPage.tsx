@@ -855,7 +855,7 @@ function StepCurrent({ accounts, next, back, busy }: StepProps) {
             If your banking app exports one, we sort it into categories.
           </Option>
           <Option on={detail === "balances"} onClick={() => setDetail("balances")} title="Balances only">
-            Skip categories. You still see what you can spend each day.
+            Skip categories. You still see what's left to spend each month.
           </Option>
         </div>
         <div className="flex flex-[0_1_320px] flex-col gap-2 rounded-xl bg-page p-4 text-[13px]">
