@@ -1,115 +1,15 @@
 /**
- * A transaction's icon: a stylised mark for the merchant (its brand colours and a monogram, so Woolworths reads as
- * Woolworths at a glance without copying anyone's logo), with the category as a small badge in the corner. A merchant
- * that isn't known gets its first letter on a tile; money in, transfers and adjustments keep their plain glyph.
+ * A transaction's icon: a stylised mark for the merchant (drawn in merchantMarks.ts), with the category as a small
+ * badge in the corner. A merchant without a mark shows what kind of place it is (a dumbbell for a gym, a shield for
+ * insurance), else its category's glyph, else its first letter. Money in, transfers and adjustments keep their plain
+ * glyph.
  */
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import type { Transaction } from "~/features/common/types";
 import { Chip, I } from "~/features/common/icons";
+import { markFor, placeFor, type Shape } from "~/features/spending/merchantMarks";
 
-type Mark = { bg: string; fg: string; text: string; bar?: string; ring?: string };
-
-/** Known merchants by how their statement line starts (longest match wins), each with a stylised mark. */
-const MARKS: Record<string, Mark> = {
-  // Groceries
-  WOOLWORTHS: { bg: "#1f8a3c", fg: "#fff", text: "W" },
-  WOOLIES: { bg: "#1f8a3c", fg: "#fff", text: "W" },
-  COLES: { bg: "#e01a22", fg: "#fff", text: "C" },
-  ALDI: { bg: "#0b2a6f", fg: "#fff", text: "A", bar: "#f39200" },
-  IGA: { bg: "#e2231a", fg: "#fff", text: "IGA" },
-  HARRIS: { bg: "#2d6a2e", fg: "#fff", text: "HF" },
-  COSTCO: { bg: "#0a5aa6", fg: "#fff", text: "C", bar: "#e31837" },
-  // Takeaway and eating out
-  MCDONALDS: { bg: "#da291c", fg: "#ffc72c", text: "M" },
-  "GUZMAN Y GOMEZ": { bg: "#111111", fg: "#ffd200", text: "GYG" },
-  KFC: { bg: "#c8102e", fg: "#fff", text: "KFC" },
-  "HUNGRY JACKS": { bg: "#f5821f", fg: "#7a1e10", text: "HJ" },
-  DOMINOS: { bg: "#006491", fg: "#fff", text: "D", bar: "#e31837" },
-  "PIZZA HUT": { bg: "#c8102e", fg: "#fff", text: "PH" },
-  SUBWAY: { bg: "#008938", fg: "#ffc20e", text: "S" },
-  "GRILL D": { bg: "#1a1a1a", fg: "#f2b705", text: "G" },
-  NANDOS: { bg: "#d7282f", fg: "#fff", text: "N" },
-  OPORTO: { bg: "#e4002b", fg: "#ffd100", text: "O" },
-  "RED ROOSTER": { bg: "#e4002b", fg: "#fff", text: "RR" },
-  STARBUCKS: { bg: "#00704a", fg: "#fff", text: "S" },
-  "GLORIA JEANS": { bg: "#4b2a1a", fg: "#fff", text: "GJ" },
-  "BOOST JUICE": { bg: "#e5006d", fg: "#fff", text: "B" },
-  "UBER EATS": { bg: "#06c167", fg: "#000", text: "UE" },
-  DOORDASH: { bg: "#ff3008", fg: "#fff", text: "DD" },
-  MENULOG: { bg: "#ff8000", fg: "#fff", text: "M" },
-  // Fuel
-  BP: { bg: "#009b3a", fg: "#ffe600", text: "bp" },
-  AMPOL: { bg: "#1b2a6b", fg: "#fff", text: "A", bar: "#e4002b" },
-  CALTEX: { bg: "#1b2a6b", fg: "#fff", text: "C", bar: "#e4002b" },
-  SHELL: { bg: "#ffd500", fg: "#dd1d21", text: "S" },
-  "7-ELEVEN": { bg: "#008163", fg: "#fff", text: "7", bar: "#f47b20" },
-  "7 ELEVEN": { bg: "#008163", fg: "#fff", text: "7", bar: "#f47b20" },
-  "UNITED PETROLEUM": { bg: "#0057a8", fg: "#fff", text: "U" },
-  PUMA: { bg: "#d2232a", fg: "#fff", text: "P" },
-  // Shops
-  BUNNINGS: { bg: "#0d5c3b", fg: "#fff", text: "B", bar: "#d42c2c" },
-  KMART: { bg: "#e4002b", fg: "#fff", text: "K" },
-  TARGET: { bg: "#fff", fg: "#cc0000", text: "◎", ring: "#cc0000" },
-  "BIG W": { bg: "#0055a5", fg: "#fff", text: "W" },
-  "JB HI": { bg: "#ffe100", fg: "#111", text: "JB" },
-  OFFICEWORKS: { bg: "#0057b8", fg: "#fff", text: "O", bar: "#e4002b" },
-  "HARVEY NORMAN": { bg: "#003b71", fg: "#fff", text: "HN" },
-  "THE GOOD GUYS": { bg: "#ffd200", fg: "#111", text: "GG" },
-  MYER: { bg: "#111111", fg: "#fff", text: "M" },
-  "DAVID JONES": { bg: "#111111", fg: "#fff", text: "DJ" },
-  IKEA: { bg: "#0058a3", fg: "#ffdb00", text: "IK" },
-  SMIGGLE: { bg: "#e6007e", fg: "#fff", text: "S", bar: "#00b5e2" },
-  "CHEMIST WAREHOUSE": { bg: "#e30613", fg: "#ffe500", text: "CW" },
-  PRICELINE: { bg: "#e5007e", fg: "#fff", text: "P" },
-  SPOTLIGHT: { bg: "#e4002b", fg: "#fff", text: "S" },
-  REBEL: { bg: "#e4002b", fg: "#fff", text: "r" },
-  AMAZON: { bg: "#131921", fg: "#fff", text: "a", bar: "#ff9900" },
-  EBAY: { bg: "#fff", fg: "#0064d2", text: "e", ring: "#e53238" },
-  // Drinks
-  "DAN MURPHYS": { bg: "#0f4c2e", fg: "#fff", text: "DM" },
-  BWS: { bg: "#e4002b", fg: "#fff", text: "BWS" },
-  LIQUORLAND: { bg: "#c8102e", fg: "#fff", text: "L" },
-  // Subscriptions and online
-  NETFLIX: { bg: "#000", fg: "#e50914", text: "N" },
-  SPOTIFY: { bg: "#1db954", fg: "#000", text: "S" },
-  "DISNEY PLUS": { bg: "#0b1a4a", fg: "#fff", text: "D+" },
-  DISNEY: { bg: "#0b1a4a", fg: "#fff", text: "D+" },
-  STAN: { bg: "#0071eb", fg: "#fff", text: "S" },
-  BINGE: { bg: "#111", fg: "#ff4d6d", text: "B" },
-  KAYO: { bg: "#111", fg: "#00e676", text: "K" },
-  YOUTUBE: { bg: "#ff0000", fg: "#fff", text: "▶" },
-  "APPLE.COM": { bg: "#1d1d1f", fg: "#fff", text: "A" },
-  APPLE: { bg: "#1d1d1f", fg: "#fff", text: "A" },
-  GOOGLE: { bg: "#fff", fg: "#4285f4", text: "G", ring: "#34a853" },
-  STEAMGAMES: { bg: "#1b2838", fg: "#66c0f4", text: "S" },
-  STEAM: { bg: "#1b2838", fg: "#66c0f4", text: "S" },
-  PLAYSTATION: { bg: "#003791", fg: "#fff", text: "PS" },
-  XBOX: { bg: "#107c10", fg: "#fff", text: "X" },
-  NINTENDO: { bg: "#e60012", fg: "#fff", text: "N" },
-  PAYPAL: { bg: "#003087", fg: "#fff", text: "P", bar: "#009cde" },
-  AFTERPAY: { bg: "#b2fce4", fg: "#000", text: "A" },
-  UBER: { bg: "#000", fg: "#fff", text: "U" },
-  // Going out and travel
-  "EVENT CINEMAS": { bg: "#d50032", fg: "#fff", text: "E" },
-  HOYTS: { bg: "#e4002b", fg: "#fff", text: "H" },
-  QANTAS: { bg: "#e40000", fg: "#fff", text: "Q" },
-  VIRGIN: { bg: "#e10a0a", fg: "#fff", text: "V" },
-  JETSTAR: { bg: "#ff5115", fg: "#fff", text: "J" },
-  AIRBNB: { bg: "#ff5a5f", fg: "#fff", text: "A" },
-  TRANSLINK: { bg: "#0072ce", fg: "#fff", text: "go" },
-  LINKT: { bg: "#5b2d90", fg: "#fff", text: "L" },
-  // Phone and internet
-  TELSTRA: { bg: "#0d54ff", fg: "#fff", text: "T" },
-  OPTUS: { bg: "#00b2a9", fg: "#ffd100", text: "O" },
-  VODAFONE: { bg: "#e60000", fg: "#fff", text: "V" },
-};
-const KEYS = Object.keys(MARKS).sort((a, b) => b.length - a.length);
-
-export function markFor(merchant: string): Mark | null {
-  const m = merchant.toUpperCase().replace(/'/g, "");
-  const key = KEYS.find((k) => m === k || m.startsWith(k + " ") || (k.length >= 5 && m.startsWith(k)));
-  return key ? MARKS[key] : null;
-}
+export { markFor };
 
 /** The category badge's glyph (stroke paths, 24 × 24) and colour, by the category's name and kind. */
 const BADGES: [RegExp, string][] = [
@@ -151,43 +51,119 @@ const PLAIN = ["#5b6ee1", "#2f9e8f", "#c2683b", "#8d5bd6", "#3a8fd1", "#b4507a",
 
 const SIZES = { md: 32, lg: 40, xl: 56 } as const;
 
-/** A merchant's mark on its own (the Merchants pages): its stylised brand tile, or its first letter. */
+function Art({ shapes }: { shapes: Shape[] }) {
+  return (
+    <svg
+      viewBox="0 0 32 32"
+      className="absolute inset-0 size-full"
+      fill="none"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {shapes.map((sh, i) =>
+        "d" in sh ? (
+          <path key={i} d={sh.d} fill={sh.fill ?? "none"} fillRule="evenodd" stroke={sh.stroke} strokeWidth={sh.w} />
+        ) : (
+          <text
+            key={i}
+            x={sh.x ?? 16}
+            y={sh.y ?? 19.2}
+            fontSize={sh.s ?? 9}
+            fill={sh.fill}
+            fontWeight={sh.weight ?? 800}
+            fontStyle={sh.italic ? "italic" : undefined}
+            textAnchor="middle"
+            fontFamily="var(--font-sans), system-ui, sans-serif"
+            letterSpacing="-0.02em"
+          >
+            {sh.t}
+          </text>
+        ),
+      )}
+    </svg>
+  );
+}
+
+/** A glyph (24 × 24 strokes) on a soft tile in its colour. */
+function GlyphTile({ d, colour }: { d: string; colour: string }) {
+  return (
+    <span
+      className="flex size-full items-center justify-center rounded-full"
+      style={{
+        background: `color-mix(in srgb, ${colour} 24%, var(--color-tile-2))`,
+        color: `color-mix(in srgb, ${colour} 75%, white)`,
+      }}
+    >
+      <svg
+        viewBox="0 0 24 24"
+        className="size-[54%]"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.9}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d={d} />
+      </svg>
+    </span>
+  );
+}
+
+/**
+ * A merchant's mark on its own (the Merchants pages, the sheet): its drawn mark, or what kind of place it is, or
+ * `fallback` (a category's glyph), or its first letter.
+ */
 export function MerchantMark({
   name,
   size = "lg",
+  fallback,
   children,
 }: {
   name: string;
   size?: keyof typeof SIZES;
+  fallback?: { d: string; colour: string } | null;
   children?: ReactNode;
 }) {
   const px = SIZES[size];
   const mark = markFor(name);
-  const letter = (name.match(/[A-Za-z0-9]/)?.[0] ?? "?").toUpperCase();
-  const plain = PLAIN[[...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % PLAIN.length];
-  const text = mark?.text ?? letter;
-  const tile: CSSProperties = mark
-    ? {
-        background: mark.bg,
-        color: mark.fg,
-        boxShadow: mark.ring ? `inset 0 0 0 2px ${mark.ring}` : "inset 0 0 0 1px rgb(255 255 255 / 0.08)",
-      }
-    : {
-        background: `color-mix(in srgb, ${plain} 22%, var(--color-tile-2))`,
-        color: `color-mix(in srgb, ${plain} 70%, white)`,
-      };
-  const fontPx = Math.round(px * (text.length >= 3 ? 0.3 : text.length === 2 ? 0.38 : 0.48));
-  return (
-    <span aria-hidden className="relative inline-flex flex-none" style={{ width: px, height: px }}>
+  const place = mark ? null : (placeFor(name) ?? fallback ?? null);
+  let face: ReactNode;
+  if (mark) {
+    const text = mark.text ?? (name.match(/[A-Za-z0-9]/)?.[0] ?? "?").toUpperCase();
+    const fontPx = Math.round(px * (text.length >= 3 ? 0.3 : text.length === 2 ? 0.38 : 0.48));
+    face = (
       <span
         className="relative flex size-full items-center justify-center overflow-hidden rounded-full leading-none font-extrabold tracking-[-0.02em]"
-        style={{ ...tile, fontSize: fontPx }}
+        style={{
+          background: mark.bg,
+          color: mark.fg ?? "#fff",
+          fontSize: fontPx,
+          boxShadow: mark.ring ? `inset 0 0 0 1.5px ${mark.ring}` : "inset 0 0 0 1px rgb(255 255 255 / 0.08)",
+        }}
       >
-        {text}
-        {mark?.bar && (
-          <i className="absolute inset-x-0 bottom-0 block h-[18%] rounded-b-full" style={{ background: mark.bar }} />
-        )}
+        {mark.art ? <Art shapes={mark.art} /> : text}
       </span>
+    );
+  } else if (place) {
+    face = <GlyphTile d={place.d} colour={place.colour} />;
+  } else {
+    const plain = PLAIN[[...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % PLAIN.length];
+    face = (
+      <span
+        className="flex size-full items-center justify-center rounded-full leading-none font-extrabold"
+        style={{
+          background: `color-mix(in srgb, ${plain} 22%, var(--color-tile-2))`,
+          color: `color-mix(in srgb, ${plain} 70%, white)`,
+          fontSize: Math.round(px * 0.44),
+        }}
+      >
+        {(name.match(/[A-Za-z0-9]/)?.[0] ?? "?").toUpperCase()}
+      </span>
+    );
+  }
+  return (
+    <span aria-hidden className="relative inline-flex flex-none" style={{ width: px, height: px }}>
+      {face}
       {children}
     </span>
   );
@@ -209,9 +185,13 @@ export function MerchantIcon({ tx, size = "lg" }: { tx: Transaction; size?: "md"
   }
   const px = SIZES[size];
   const b = badge(tx);
+  const shown = markFor(tx.merchant_key ?? "") ? (tx.merchant_key ?? name) : name;
+  // With no mark and no kind of place, the category's glyph is the face, so it needs no badge as well.
+  const plainFace = !markFor(shown) && !placeFor(shown) && !!tx.category && !tx.splits?.length;
+  const fallback = plainFace && b ? { d: b.d, colour: tx.category_kind === "bills" ? "#e0a21a" : "#e5508a" } : null;
   return (
-    <MerchantMark name={markFor(tx.merchant_key ?? "") ? (tx.merchant_key ?? name) : name} size={size}>
-      {b && (
+    <MerchantMark name={shown} size={size} fallback={fallback}>
+      {b && !plainFace && (
         <span
           className="absolute -right-1 -bottom-1 flex items-center justify-center rounded-full text-white ring-2 ring-tile"
           style={{ width: px * 0.45, height: px * 0.45, background: b.colour }}

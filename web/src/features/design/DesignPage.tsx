@@ -2,6 +2,8 @@
  * The design system, live: every token and component in the current theme. Use it to check a component looks right
  * in dark and light before it goes on a page, and as the reference for which piece to reach for.
  */
+import { MerchantMark } from "~/features/spending/MerchantIcon";
+import { MARKS, PLACES } from "~/features/spending/merchantMarks";
 import { useState, type ReactNode } from "react";
 import {
   Banner,
@@ -266,6 +268,31 @@ export function DesignPage() {
       <EmptyState g={I.bills} tone="bills" title="No bills yet" action={<Button primary>Add a bill</Button>}>
         Enter each bill once with its amount and how often.
       </EmptyState>
+
+      <Section
+        title="Merchant marks"
+        note="Drawn impressions in each merchant's colours, then kinds of place for merchants without one (merchantMarks.ts)"
+      >
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(88px,1fr))] gap-x-2 gap-y-4">
+          {Object.keys(MARKS).map((k) => (
+            <div key={k} className="flex min-w-0 flex-col items-center gap-1.5 text-center">
+              <MerchantMark name={k.trim()} size="xl" />
+              <span className="w-full truncate text-[11px] text-ink-3">{k.trim()}</span>
+            </div>
+          ))}
+        </div>
+        <div className="mt-5 grid grid-cols-[repeat(auto-fill,minmax(88px,1fr))] gap-x-2 gap-y-4">
+          {PLACES.map((p) => {
+            const example = p.re.source.match(/[A-Z][A-Z ]+/)?.[0] ?? "";
+            return (
+              <div key={p.re.source} className="flex min-w-0 flex-col items-center gap-1.5 text-center">
+                <MerchantMark name={example} size="lg" />
+                <span className="w-full truncate text-[11px] text-ink-3">{example.toLowerCase()}</span>
+              </div>
+            );
+          })}
+        </div>
+      </Section>
 
       <div className="text-[13px] text-ink-3">
         Role colours: {Object.keys(ROLE).join(", ")}. Every tap target is at least 44px.
