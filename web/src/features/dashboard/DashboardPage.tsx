@@ -13,7 +13,8 @@ import { I } from "~/features/common/icons";
 import { parseDate } from "~/features/common/format";
 import { dashboardQuery } from "~/features/common/queries";
 import type { SpendingMonth } from "~/features/common/types";
-import { Empty, ErrorText } from "~/features/common/ui";
+import { useActions } from "~/features/common/layout";
+import { Button, Empty, ErrorText } from "~/features/common/ui";
 import { ComingUp, MonthCard, type Month } from "~/features/dashboard/OverviewMonth";
 import { BalanceHero, GoalsCard } from "~/features/dashboard/OverviewParts";
 
@@ -35,6 +36,7 @@ function greeting(hour: number): string {
 export function DashboardPage() {
   const q = useQuery(dashboardQuery("30d"));
   const session = useQuery(sessionQuery);
+  const { checkin } = useActions();
   if (q.isError) return <ErrorText>{errorMessage(q.error)}</ErrorText>;
   const d = q.data;
   if (!d) return <Loading />;
@@ -82,6 +84,22 @@ export function DashboardPage() {
             </Link>
           }
         />
+      )}
+      {d.checkin.next < d.today && (
+        <Banner
+          g={I.offset}
+          tone="bills"
+          title="Time for a check-in"
+          action={
+            <Button small onClick={checkin}>
+              Check in
+            </Button>
+          }
+        >
+          {d.checkin.last
+            ? `The last one was ${Math.round((parseDate(d.today).getTime() - parseDate(d.checkin.last.date).getTime()) / 86400000)} days ago, so balances are a guess until then.`
+            : "Type in what uBank shows so the balances are right."}
+        </Banner>
       )}
       <div className="grid gap-4 md:grid-cols-12 [&>*]:min-w-0">
         <BalanceHero d={d} />

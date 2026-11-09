@@ -2,7 +2,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { apiGet, apiSend, errorMessage } from "~/features/common/api";
+import { apiGet, apiSend, errorMessage, NetworkError } from "~/features/common/api";
 import { Logo } from "~/features/common/brand";
 import { Card } from "~/features/common/ds";
 import { Chip, I } from "~/features/common/icons";
@@ -29,6 +29,7 @@ export function LoginPage({ redirectTo }: { redirectTo?: string }) {
   const session = useQuery(sessionQuery);
   const setup = session.data?.setup_required;
   const [f, setF] = useState({ username: "", password: "", code: "" });
+  const [show, setShow] = useState(false);
   const go = useMutation({
     mutationFn: () => apiSend("POST", setup ? "auth/setup" : "auth/login", f),
     onSuccess: async () => {
@@ -96,15 +97,41 @@ export function LoginPage({ redirectTo }: { redirectTo?: string }) {
           </div>
           <div>
             <Label htmlFor="li-pass">Password</Label>
-            <Input
-              id="li-pass"
-              type="password"
-              autoComplete={setup ? "new-password" : "current-password"}
-              value={f.password}
-              onChange={(e) => setF({ ...f, password: e.target.value })}
-            />
+            <div className="relative">
+              <Input
+                id="li-pass"
+                type={show ? "text" : "password"}
+                autoComplete={setup ? "new-password" : "current-password"}
+                className="pr-16"
+                value={f.password}
+                onChange={(e) => setF({ ...f, password: e.target.value })}
+              />
+              <button
+                type="button"
+                onClick={() => setShow((v) => !v)}
+                aria-pressed={show}
+                aria-label={show ? "Hide the password" : "Show the password"}
+                className="absolute top-0 right-0 h-full min-w-11 cursor-pointer border-0 bg-transparent px-3 text-[13px] font-semibold text-teal"
+              >
+                {show ? "Hide" : "Show"}
+              </button>
+            </div>
           </div>
-          {go.isError && <ErrorText>{errorMessage(go.error)}</ErrorText>}
+          {go.isError &&
+            (go.error instanceof NetworkError ? (
+              <div
+                role="alert"
+                className="flex flex-col gap-2 rounded-2xl border border-line bg-tile-2 p-3.5 text-[14px]"
+              >
+                <span className="font-semibold">Can't reach your home server</span>
+                <span className="text-ink-3">If you're away from home, turn on the home VPN, then try again.</span>
+                <Button small className="self-start" onClick={() => go.mutate()} disabled={go.isPending}>
+                  Try again
+                </Button>
+              </div>
+            ) : (
+              <ErrorText>{errorMessage(go.error)}</ErrorText>
+            ))}
           <Button primary type="submit" className="min-h-12 text-[15px]" disabled={go.isPending}>
             {setup ? "Make the account" : "Sign in"}
           </Button>
