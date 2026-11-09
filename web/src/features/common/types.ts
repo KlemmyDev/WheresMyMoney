@@ -376,7 +376,15 @@ export type CategoryInsights = {
   transactions: Transaction[];
 };
 
-export type Due = { bill_id: number; name: string; date: string; amount: number; how: string };
+/** A bill falling due; `paid` is the payment that covers that due date, once there is one. */
+export type Due = {
+  bill_id: number;
+  name: string;
+  date: string;
+  amount: number;
+  how: string;
+  paid: { transaction_id: number; date: string; amount: number } | null;
+};
 
 export type BillsOverview = {
   bills: Bill[];

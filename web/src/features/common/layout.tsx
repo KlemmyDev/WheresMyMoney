@@ -217,8 +217,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             g={I.bills}
             tone="bills"
             label="Pay a bill"
-            sub="Mark one paid"
-            onClick={() => navigate({ to: "/bills" })}
+            sub="Mark one paid, on Coming up"
+            onClick={() => {
+              setSheet(null);
+              navigate({ to: "/", hash: "coming-up" });
+            }}
           />
           <ActionTile
             g={I.savings}

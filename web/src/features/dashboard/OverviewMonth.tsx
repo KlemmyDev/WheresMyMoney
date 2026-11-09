@@ -9,6 +9,7 @@ import { Card, CardHead, Details } from "~/features/common/ds";
 import { dayDate, money, shortDate } from "~/features/common/format";
 import { Chip, I } from "~/features/common/icons";
 import type { Dashboard, SpendingMonth } from "~/features/common/types";
+import { MarkPaid } from "~/features/bills/MarkPaid";
 import { cn } from "~/features/common/ui";
 
 /** One spending month, day by day: its figures, which day is today, and each day's date. */
@@ -305,11 +306,11 @@ export function ComingUp({
   const end = d.spending?.end ?? d.today;
   const all = d.due.items.filter((b) => b.date >= d.today && b.date <= end);
   const rows = compact ? all.slice(0, 6) : all;
-  const total = all.reduce((t, b) => t + b.amount, 0);
+  const total = all.filter((b) => !b.paid).reduce((t, b) => t + b.amount, 0);
   const held = d.bills?.balance ?? null;
   const until = `before ${shortDate(end)}`;
   return (
-    <Card aria-labelledby={compact ? "up-h-compact" : "up-h"} className={className}>
+    <Card id="coming-up" aria-labelledby={compact ? "up-h-compact" : "up-h"} className={className}>
       <CardHead
         id={compact ? "up-h-compact" : "up-h"}
         title="Coming up"
@@ -330,34 +331,47 @@ export function ComingUp({
       </p>
       <div className={cn("-mx-1", compact ? "grid grid-cols-1 gap-x-2 sm:max-md:grid-cols-2" : "flex flex-col")}>
         {rows.map((b) => (
-          <button
+          <div
             key={`${b.bill_id}-${b.date}`}
-            type="button"
-            onClick={() => navigate({ to: "/bills/$billId", params: { billId: String(b.bill_id) } })}
             className={cn(
-              "group chip-host press flex min-w-0 cursor-pointer items-center rounded-2xl border-0 bg-transparent px-1.5 text-left text-ink hover:bg-tile-2",
-              compact ? "min-h-13 gap-2.5" : "min-h-16 gap-3",
+              "flex min-w-0 items-center gap-2 rounded-2xl px-1.5 hover:bg-tile-2",
+              compact ? "min-h-13" : "min-h-16",
             )}
-            title={`${b.name}: ${money(b.amount, { cents: true })} due ${dayDate(b.date)}. Open the bill`}
           >
-            <Chip g={I.bills} tone="bills" size={compact ? "md" : "lg"} />
-            <span className="min-w-0 flex-1">
-              <span className="block truncate">{b.name}</span>
-              <span className={cn("block truncate text-[13px]", b.how === "manual" ? "text-warn" : "text-ink-3")}>
-                {dayDate(b.date)} · {HOW[b.how] ?? "Auto-pay"}
+            <button
+              type="button"
+              onClick={() => navigate({ to: "/bills/$billId", params: { billId: String(b.bill_id) } })}
+              className={cn(
+                "group chip-host press flex min-w-0 flex-1 cursor-pointer items-center border-0 bg-transparent p-0 text-left text-ink",
+                compact ? "gap-2.5" : "gap-3",
+              )}
+              title={`${b.name}: ${money(b.amount, { cents: true })} due ${dayDate(b.date)}. Open the bill`}
+            >
+              <Chip g={I.bills} tone="bills" size={compact ? "md" : "lg"} />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate">{b.name}</span>
+                <span
+                  className={cn(
+                    "block truncate text-[13px]",
+                    b.how === "manual" && !b.paid ? "text-warn" : "text-ink-3",
+                  )}
+                >
+                  {dayDate(b.date)} · {HOW[b.how] ?? "Auto-pay"}
+                </span>
               </span>
-            </span>
-            {b.how === "estimate" ? (
-              <span
-                className="hatched num shrink-0 rounded-lg px-2 py-0.5 whitespace-nowrap"
-                style={{ ["--c" as string]: "var(--color-bills-fill)" }}
-              >
-                about {money(b.amount)}
-              </span>
-            ) : (
-              <span className="num shrink-0 whitespace-nowrap">−{money(b.amount, { cents: true })}</span>
-            )}
-          </button>
+              {b.how === "estimate" ? (
+                <span
+                  className="hatched num shrink-0 rounded-lg px-2 py-0.5 whitespace-nowrap"
+                  style={{ ["--c" as string]: "var(--color-bills-fill)" }}
+                >
+                  about {money(b.amount)}
+                </span>
+              ) : (
+                <span className="num shrink-0 whitespace-nowrap">−{money(b.amount, { cents: true })}</span>
+              )}
+            </button>
+            {(b.how === "manual" || b.paid) && <MarkPaid due={b} />}
+          </div>
         ))}
       </div>
       {all.length > rows.length && (

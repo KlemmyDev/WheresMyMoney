@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.core import dates
-from app.dependencies import JsonBody, ServicesDep, run
+from app.dependencies import JsonBody, ServicesDep, UserDep, run
 
 router = APIRouter(prefix="/api/bills")
 
@@ -81,6 +81,20 @@ async def link(svc: ServicesDep, bill_id: int, body: JsonBody):
     else:
         linked = await run(svc.bills.link, bill_id, int(body.get("transaction_id") or 0))
     return {"linked": linked}
+
+
+@router.post("/{bill_id}/pay")
+async def pay(svc: ServicesDep, bill_id: int, body: JsonBody, user: UserDep):
+    """Mark it paid by hand: {"amount": 21500, "date": "2026-11-10"}, both optional (its amount, today). Undo with
+    DELETE /api/transactions/{transaction_id}."""
+    amount = body.get("amount")
+    return await run(
+        svc.bills.pay,
+        bill_id,
+        int(amount) if amount not in (None, "") else None,
+        str(body["date"]) if body.get("date") else None,
+        user.id if user else None,
+    )
 
 
 @router.get("/{bill_id}")
