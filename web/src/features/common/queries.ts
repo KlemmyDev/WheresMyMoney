@@ -411,11 +411,19 @@ export type NetWorthPoint = {
   date: string;
   accounts: number;
   shares: number;
+  /** Crypto, apart from shares. */
+  crypto: number;
   super: number;
   home: number;
   other: number;
   loan: number;
 };
+
+/** Net worth at a point: everything owned less the home loan (or, without the home, leaving out both). The one sum
+ * every page uses, so Overview, Net worth and Future agree. */
+export function netWorthOf(p: NetWorthPoint, home = true): number {
+  return p.accounts + p.shares + (p.crypto ?? 0) + p.super + p.other + (home ? p.home - p.loan : 0);
+}
 
 export type NetWorth = {
   range: string;
@@ -428,6 +436,17 @@ export type NetWorth = {
   }[];
   loan: { id: number; name: string; balance: number; rate_bp: number | null; offsetting: number } | null;
   shares: { value: number; funds: number };
+  crypto: { value: number; funds: number };
+  /** In a year: what's put away (super after tax going in, the offsetting accounts, the funds) and the loan paid down. */
+  likely: {
+    month: string;
+    put_away: number;
+    super: number;
+    accounts: number;
+    shares: number;
+    loan_down: number;
+    gain: number;
+  };
   super: { person: string; balance: number; as_of: string | null }[];
   assets: Asset[];
   now: NetWorthPoint;

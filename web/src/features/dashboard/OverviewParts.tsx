@@ -18,7 +18,7 @@ import {
   type Role as DsRole,
 } from "~/features/common/ds";
 import { dayDate, money, parseDate, pct, todayIso } from "~/features/common/format";
-import { dashboardQuery, netWorthQuery } from "~/features/common/queries";
+import { dashboardQuery, netWorthOf, netWorthQuery } from "~/features/common/queries";
 import { I } from "~/features/common/icons";
 import { useActions } from "~/features/common/layout";
 import { useStoredFlag } from "~/features/common/theme";
@@ -149,7 +149,7 @@ export function BalanceHero({ d }: { d: Dashboard }) {
   const last = d.checkin.last;
   const since = last ? daysBetween(last.date, d.today) : null;
   const w = worth.data?.now;
-  const netWorth = w ? w.accounts + w.shares + w.super + w.other + w.home - w.loan : null;
+  const netWorth = w ? netWorthOf(w) : null;
   // Drag (or hover) along the chart to read any point; vertical swipes still scroll the page.
   const scrub = (e: PointerEvent<HTMLDivElement>) => {
     if (n < 2) return;

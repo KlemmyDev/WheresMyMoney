@@ -9,13 +9,21 @@ import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { apiSend, errorMessage } from "~/features/common/api";
 import { Loading } from "~/features/common/brand";
-import { Bar, BigNumber, Card, CardHead, ChoiceChip, Eyebrow, ROLE, Sheet, type Role } from "~/features/common/ds";
+import { Bar, Card, CardHead, ChoiceChip, ROLE, Sheet, type Role } from "~/features/common/ds";
+import { EntityHeader, EntityHero, LikelyCard } from "~/features/common/entity";
 import { longDate, money, monthYear, parseMoney } from "~/features/common/format";
 import { Chip, I, type Glyph, type Tone } from "~/features/common/icons";
-import { netWorthQuery, refresh, type Asset, type NetWorth, type NetWorthPoint } from "~/features/common/queries";
+import {
+  netWorthOf,
+  netWorthQuery,
+  refresh,
+  type Asset,
+  type NetWorth,
+  type NetWorthPoint,
+} from "~/features/common/queries";
 import { ScrubChart } from "~/features/common/ScrubChart";
 import { useStoredFlag } from "~/features/common/theme";
-import { Button, ErrorText, Input, PageHead, Pill, Segmented, Switch } from "~/features/common/ui";
+import { Button, ErrorText, Input, Pill, Segmented, Switch } from "~/features/common/ui";
 
 type Range = "1y" | "3y" | "5y";
 const signed = (c: number) => `${c >= 0 ? "+" : "−"}${money(Math.abs(c))}`;
@@ -33,8 +41,8 @@ const ACCOUNT_LOOK: Record<string, { g: Glyph; tone: Tone }> = {
 };
 
 /** Net worth at a point, with or without the home and its loan. */
-const total = (p: NetWorthPoint, home: boolean) =>
-  p.accounts + p.shares + p.super + p.other + (home ? p.home - p.loan : 0);
+const total = (p: NetWorthPoint, home: boolean) => netWorthOf(p, home);
+const RANGE_NAME: Record<Range, string> = { "1y": "the last year", "3y": "three years", "5y": "five years" };
 
 export function NetWorthPage() {
   const [range, setRange] = useState<Range>("1y");
@@ -45,81 +53,132 @@ export function NetWorthPage() {
   if (q.isError) return <ErrorText>{errorMessage(q.error)}</ErrorText>;
   if (!q.data) return <Loading />;
   const n = q.data;
+  const series = n.history.map((p) => total(p, home));
+  const now = series[series.length - 1];
+  const delta = now - series[0];
+  const own = n.now.accounts + n.now.shares + (n.now.crypto ?? 0) + n.now.super + n.now.other + (home ? n.now.home : 0);
+  const owe = home ? n.now.loan : 0;
+  const homeAsset = n.assets.find((a) => a.kind === "home");
+  const likely = now + n.likely.gain;
+  const freedom = n.now.super + n.now.shares;
   return (
     <>
-      <PageHead over="Overview" title="Net worth" />
+      <EntityHeader
+        back={{ to: "/", label: "Overview" }}
+        title="Net worth"
+        sub={`Everything you own, less the home loan${homeAsset ? " · the home is your own estimate" : ""}`}
+        timeframe={
+          <Segmented<Range>
+            label="Timeframe"
+            value={range}
+            onChange={setRange}
+            options={[
+              { value: "1y", label: "Year" },
+              { value: "3y", label: "3 years" },
+              { value: "5y", label: "5 years" },
+            ]}
+          />
+        }
+        actions={
+          <>
+            <label className="flex items-center gap-2 text-[14px] font-semibold">
+              Count the home
+              <Switch checked={home} onChange={(v) => setNoHome(!v)} label="Count the home" />
+            </label>
+            <Button onClick={() => setEditing(homeAsset ?? "new")}>Update values</Button>
+          </>
+        }
+      />
+      <EntityHero
+        tint="accent"
+        label="Net worth in a sentence"
+        numbers={[
+          { label: "Net worth", value: money(now), note: "today" },
+          { label: "You own", value: money(own), note: home ? "with the home" : "without the home" },
+          { label: "You owe", value: money(owe), note: home ? "the home loan" : "left out with the home" },
+          { label: `Up over ${RANGE_NAME[range]}`, value: signed(delta), note: `from ${money(series[0])}` },
+        ]}
+      >
+        <p className="m-0 text-[17px] leading-relaxed text-ink">
+          You&apos;re worth <b>{money(now)}</b>
+          {home ? "" : ", not counting the home"}, {delta >= 0 ? "up" : "down"} <b>{money(Math.abs(delta))}</b> over{" "}
+          {RANGE_NAME[range]}.
+        </p>
+        <p className="m-0 text-[15px] text-ink-2">
+          At the pace you&apos;re putting money away it&apos;s likely about <b className="text-ink">{money(likely)}</b>{" "}
+          by {monthYear(n.likely.month)}.{home && homeAsset ? " The home is your own estimate, and held flat." : ""}
+        </p>
+      </EntityHero>
       <div className="grid gap-4 md:grid-cols-12 [&>*]:min-w-0">
-        <Hero n={n} home={home} setHome={(v) => setNoHome(!v)} range={range} setRange={setRange} />
-        <div className="flex flex-col gap-4 md:col-span-4">
+        <Hero n={n} series={series} range={range} />
+        <LikelyCard
+          id="nw-likely"
+          className="md:col-span-4"
+          now={{
+            label: `By ${monthYear(n.likely.month)}`,
+            total: `about ${money(likely)}`,
+            bar: {
+              label: `${money(now)} now and ${money(n.likely.gain)} likely over the year`,
+              max: Math.max(likely, now, 1),
+              segments: [
+                { value: now, role: "accent" },
+                { value: Math.max(n.likely.gain, 0), role: "accent", likely: true },
+              ],
+            },
+            text: (
+              <>
+                Put away in the next 12 months: <b className="text-ink">+{money(n.likely.put_away)}</b> (super +
+                {money(n.likely.super)}, accounts +{money(n.likely.accounts)}, ETFs +{money(n.likely.shares)}).
+                {home && n.likely.loan_down ? ` The loan paid down: +${money(n.likely.loan_down)}.` : ""}
+              </>
+            ),
+          }}
+          note="The home and crypto are held flat: the app doesn't guess either."
+        />
+        <div className="flex flex-col gap-4 md:col-span-5">
           <MadeOf n={n} home={home} />
           <Moved n={n} home={home} range={range} />
         </div>
         <Owned n={n} home={home} onEdit={setEditing} />
         <Owed n={n} home={home} />
+        <Card aria-labelledby="nw-fire" className="flex flex-col gap-2 md:col-span-7">
+          <CardHead id="nw-fire" title="Early retirement" />
+          <p className="m-0 text-[14px] text-ink-2">
+            Freedom counts what can pay for your years: super and ETFs, <b className="text-ink">{money(freedom)}</b>.
+            The home never counts, and crypto stays out unless you turn it on.
+          </p>
+          <Link to="/retirement" className="self-start text-[14px] font-semibold text-teal no-underline">
+            Open the plan →
+          </Link>
+        </Card>
       </div>
       <AssetSheet asset={editing} kinds={n.kinds} onClose={() => setEditing(null)} />
     </>
   );
 }
 
-function Hero({
-  n,
-  home,
-  setHome,
-  range,
-  setRange,
-}: {
-  n: NetWorth;
-  home: boolean;
-  setHome: (v: boolean) => void;
-  range: Range;
-  setRange: (r: Range) => void;
-}) {
-  const series = n.history.map((p) => total(p, home));
+function Hero({ n, series, range }: { n: NetWorth; series: number[]; range: Range }) {
   const now = series[series.length - 1];
-  const delta = now - series[0];
   const len = series.length;
   return (
-    <Card lit aria-labelledby="nw-hero" className="flex flex-col gap-4 md:col-span-8">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <Eyebrow id="nw-hero">{home ? "Net worth" : "Net worth, without the home"}</Eyebrow>
-          <BigNumber size="xl" className="mt-1">
-            {money(now)}
-          </BigNumber>
-          <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[13px] text-ink-3">
-            <Pill tone={delta >= 0 ? "good" : "bad"}>
-              {delta >= 0 ? "▲" : "▼"} {signed(delta)}
-            </Pill>
-            over {range === "1y" ? "the last year" : range === "3y" ? "three years" : "five years"}
-          </div>
-        </div>
-        <label className="flex items-center gap-2 text-[14px] font-semibold">
-          Count the home
-          <Switch checked={home} onChange={setHome} label="Count the home" />
-        </label>
-      </div>
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[13px] text-ink-3">Drag across the chart to read any month</span>
-        <Segmented<Range>
-          label="Range"
-          value={range}
-          onChange={setRange}
-          options={[
-            { value: "1y", label: "1Y" },
-            { value: "3y", label: "3Y" },
-            { value: "5y", label: "5Y" },
-          ]}
-        />
-      </div>
+    <Card aria-labelledby="nw-chart" className="flex flex-col gap-3 md:col-span-8">
+      <CardHead
+        id="nw-chart"
+        title="Over time"
+        right={<span className="text-[13px] text-ink-3">Drag across the chart to read any month</span>}
+      />
       <ScrubChart
-        label={`Net worth over ${range.toUpperCase()}, now ${money(now)}`}
+        label={`Net worth over ${RANGE_NAME[range]}, now ${money(now)}`}
         lines={[{ name: "Net worth", values: series, colour: ROLE.accent, fill: true }]}
         at={(i) => (n.history[i] ? (i === len - 1 ? "Today" : monthYear(n.history[i].date)) : "")}
         format={(v) => money(v)}
-        height={190}
+        height={220}
         axis={[0, Math.round((len - 1) / 2), len - 1]}
       />
+      <p className="m-0 text-[12px] text-ink-3">
+        Accounts come from check-ins and imports; super, the home and crypto are values you update. The loan sits below
+        the line.
+      </p>
     </Card>
   );
 }
@@ -128,7 +187,8 @@ function groups(p: NetWorthPoint, home: boolean) {
   return [
     { name: "Home", value: home ? p.home : 0, role: "offset" as Role },
     { name: "Super", value: p.super, role: "savings" as Role },
-    { name: "Shares", value: p.shares, role: "invest" as Role },
+    { name: "ETFs", value: p.shares, role: "invest" as Role },
+    { name: "Crypto", value: p.crypto ?? 0, role: "bills" as Role },
     { name: "Accounts", value: Math.max(p.accounts, 0), role: "accent" as Role },
     { name: "Other", value: p.other, role: "spending" as Role },
   ].filter((g) => g.value > 0);
@@ -167,7 +227,8 @@ function Moved({ n, home, range }: { n: NetWorth; home: boolean; range: Range })
   const b = n.now;
   const moves = [
     { name: "Accounts", v: b.accounts - a.accounts, g: I.accounts, tone: "grad" as Tone },
-    { name: "Shares", v: b.shares - a.shares, g: I.invest, tone: "invest" as Tone },
+    { name: "ETFs", v: b.shares - a.shares, g: I.invest, tone: "invest" as Tone },
+    { name: "Crypto", v: (b.crypto ?? 0) - (a.crypto ?? 0), g: I.invest, tone: "bills" as Tone },
     { name: "Super", v: b.super - a.super, g: I.retire, tone: "savings" as Tone },
     ...(home
       ? [
@@ -273,6 +334,7 @@ function Owned({ n, home, onEdit }: { n: NetWorth; home: boolean; onEdit: (a: As
     assets.reduce((s, a) => s + a.value, 0) +
       n.super.reduce((s, p) => s + p.balance, 0) +
       n.shares.value +
+      (n.crypto?.value ?? 0) +
       n.accounts.reduce((s, a) => s + Math.max(a.balance, 0), 0) || 1;
   return (
     <Card aria-labelledby="nw-own" className="flex flex-col gap-1 md:col-span-7">
@@ -307,11 +369,23 @@ function Owned({ n, home, onEdit }: { n: NetWorth; home: boolean; onEdit: (a: As
         <OwnedRow
           g={I.invest}
           tone="invest"
-          name="Shares"
-          sub="ETF holdings · prices looked up daily"
+          name="ETFs"
+          sub="Holdings · prices looked up daily"
           value={n.shares.value}
           badge={{ text: "Live price", tone: "good" }}
           share={n.shares.value / owned}
+          to="/investments"
+        />
+      )}
+      {(n.crypto?.funds ?? 0) > 0 && (
+        <OwnedRow
+          g={I.invest}
+          tone="bills"
+          name="Crypto"
+          sub="Coins held · prices looked up daily"
+          value={n.crypto.value}
+          badge={{ text: "Live price", tone: "good" }}
+          share={n.crypto.value / owned}
           to="/investments"
         />
       )}

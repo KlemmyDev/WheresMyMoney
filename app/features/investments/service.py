@@ -607,12 +607,13 @@ class InvestmentsService:
             for day, (v, c) in zip(samples, self._values(funds, trades, closes, samples), strict=True)
         ]
 
-    def values_on(self, days: list[dt.date]) -> list[int]:
-        """The portfolio's value at the end of each of these days (in order), in cents."""
+    def values_on(self, days: list[dt.date], crypto: bool | None = None) -> list[int]:
+        """The portfolio's value at the end of each of these days (in order), in cents. `crypto`: only crypto (True),
+        everything but crypto (False), or all of it (None)."""
         if not days:
             return []
         with self.db.reading() as conn:
-            funds = self._funds(conn)
+            funds = [f for f in self._funds(conn) if crypto is None or (f["kind"] == "crypto") == crypto]
             trades = self._trades(conn)
             closes = {
                 f["id"]: conn.execute(
@@ -622,6 +623,20 @@ class InvestmentsService:
                 for f in funds
             }
         return [round(v) for v, _ in self._values(funds, trades, closes, days)]
+
+    def bought_lately(self, days: int = 365, crypto: bool = False) -> int:
+        """What went into the funds (buys less sells, at their prices) over the last `days`, in cents."""
+        since = (dates.today() - dt.timedelta(days=days)).isoformat()
+        with self.db.reading() as conn:
+            kinds = {f["id"]: f["kind"] for f in self._funds(conn)}
+            total = 0.0
+            for fund_id, side, units, price in conn.execute(
+                "SELECT fund_id, side, units, price FROM trades WHERE date > ?", (since,)
+            ):
+                if (kinds.get(fund_id) == "crypto") != crypto:
+                    continue
+                total += units * price * (1 if side == "buy" else -1)
+        return round(total)
 
     def _values(
         self,
