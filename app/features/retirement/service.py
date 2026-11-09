@@ -350,8 +350,12 @@ class RetirementService:
         return int(row[0] or 0)
 
     def overview(self) -> dict[str, Any]:
+        history = self.history()
         return {
-            "people": self.people(),
+            # Each person, with their balances as given (statements, check-ins), oldest first.
+            "people": [
+                {**p, "values": [{"date": d, "balance": b} for d, b in history.get(p["id"], [])]} for p in self.people()
+            ],
             "settings": self.settings(),
             "funds": known_funds.listing(),
             "spending_now": self.spending_now(),
