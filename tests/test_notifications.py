@@ -100,3 +100,15 @@ def test_notifications_go_only_by_web_push(client: TestClient) -> None:
     with client.app.state.services.db.reading() as conn:  # type: ignore[attr-defined]
         tables = {t[0] for t in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
     assert "notify_channels" not in tables
+
+
+def test_new_bills_spotted_are_told_once_per_set() -> None:
+    rule = BY_ID["spotted"]
+    assert rule.check(facts(), rule.defaults) is None
+    one = rule.check(facts(spotted=[{"key": "NETFLIX|monthly", "name": "Netflix"}]), rule.defaults)
+    assert one and one.title == "Netflix looks like a bill" and one.url == "/bills/spotted"
+    two = rule.check(
+        facts(spotted=[{"key": "NETFLIX|monthly", "name": "Netflix"}, {"key": "GYM|weekly", "name": "Gym"}]),
+        rule.defaults,
+    )
+    assert two and two.title == "We spotted 2 bills" and two.key != one.key

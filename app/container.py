@@ -91,6 +91,7 @@ def build_services(config: Config) -> Services:
             bills_ahead=bills.due(today, today + dt.timedelta(days=14)),
             last_statement=last_statement(),
             price_changes=spending.price_changes(),
+            spotted=[{"key": x["key"], "name": x["name"]} for x in bills.spotted()["suggestions"]],
         )
 
     return Services(
