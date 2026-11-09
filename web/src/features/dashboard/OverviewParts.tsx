@@ -23,7 +23,7 @@ import { I } from "~/features/common/icons";
 import { useActions } from "~/features/common/layout";
 import { useStoredFlag } from "~/features/common/theme";
 import type { Dashboard, Role, Target } from "~/features/common/types";
-import { Button, Segmented } from "~/features/common/ui";
+import { Button, Segmented, cn } from "~/features/common/ui";
 import { TopUpSheet, goalLook } from "~/features/goals/GoalFlows";
 
 const ROLE_DS: Record<Role, DsRole> = {
@@ -258,6 +258,12 @@ export function BalanceHero({ d }: { d: Dashboard }) {
               >
                 <span className="block text-[11px] text-ink-3">{ago(Math.round((n - 1 - at) * step))}</span>
                 <span className="num block text-[14px] text-ink">{show(spark[at], { cents: true })}</span>
+                {at > 0 && !hidden && (
+                  <span className={cn("num block text-[11px]", spark[at] - spark[0] >= 0 ? "text-good" : "text-bad")}>
+                    {spark[at] - spark[0] >= 0 ? "+" : "−"}
+                    {money(Math.abs(spark[at] - spark[0]))} since {ago(Math.round((n - 1) * step))}
+                  </span>
+                )}
               </span>
             </>
           )}
@@ -281,7 +287,22 @@ export function BalanceHero({ d }: { d: Dashboard }) {
       <Details label="See the numbers">
         <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
           {accounts.map((a) => (
-            <Stat key={a.id} label={a.name} value={show(a.balance)} note={aimNote(a)} role={ROLE_DS[a.role]} />
+            // Hover or focus a figure to see how it's moved over the last 30 days.
+            <div key={a.id} tabIndex={0} className="group relative rounded-2xl outline-offset-2">
+              <Stat label={a.name} value={show(a.balance)} note={aimNote(a)} role={ROLE_DS[a.role]} />
+              {a.change_30d != null && !hidden && (
+                <span
+                  role="tooltip"
+                  className="pointer-events-none absolute -top-2 left-1/2 z-10 -translate-x-1/2 -translate-y-full rounded-xl border border-line-2 bg-raised px-2.5 py-1.5 text-[12px] whitespace-nowrap opacity-0 shadow-[var(--shadow-float)] transition-opacity duration-150 group-hover:opacity-100 group-focus:opacity-100"
+                >
+                  <span className="text-ink-3">Last 30 days </span>
+                  <span className={cn("num", a.change_30d >= 0 ? "text-good" : "text-bad")}>
+                    {a.change_30d >= 0 ? "+" : "−"}
+                    {money(Math.abs(a.change_30d))}
+                  </span>
+                </span>
+              )}
+            </div>
           ))}
         </div>
       </Details>
@@ -340,7 +361,7 @@ export function GoalsCard({ d }: { d: Dashboard }) {
                   key={g.id}
                   onClick={() => setOpen(g.id)}
                   aria-label={`${g.name}: ${money(g.saved)} of ${money(g.target)}. Top up`}
-                  className="press flex min-h-16 cursor-pointer items-center gap-3 rounded-[18px] border border-line bg-tile-2 px-3 py-2.5 text-left text-ink"
+                  className="group press flex min-h-16 cursor-pointer items-center gap-3 rounded-[18px] border border-line bg-tile-2 px-3 py-2.5 text-left text-ink transition-colors duration-150 hover:border-line-2 hover:bg-raised"
                 >
                   <Ring value={p} size={52} role={look.role} label={`${g.name} ${Math.round(p)}%`}>
                     <span className="num text-[12px]">{Math.round(p)}%</span>
@@ -351,6 +372,12 @@ export function GoalsCard({ d }: { d: Dashboard }) {
                       {money(g.saved)} of {money(g.target)} · {money(Math.max(0, g.target - g.saved))} to go
                     </span>
                     {planned > 0 && <span className="block text-[12px] text-teal">+{money(planned)} planned</span>}
+                  </span>
+                  <span
+                    aria-hidden
+                    className="flex-none text-[13px] font-semibold text-teal opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100"
+                  >
+                    Top up →
                   </span>
                 </button>
               );

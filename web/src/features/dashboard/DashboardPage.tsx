@@ -10,10 +10,23 @@ import { errorMessage } from "~/features/common/api";
 import { Loading } from "~/features/common/brand";
 import { Banner } from "~/features/common/ds";
 import { I } from "~/features/common/icons";
+import { parseDate } from "~/features/common/format";
 import { dashboardQuery } from "~/features/common/queries";
+import type { SpendingMonth } from "~/features/common/types";
 import { Empty, ErrorText } from "~/features/common/ui";
-import { ComingUp, SpendingCard } from "~/features/dashboard/OverviewMonth";
+import { ComingUp, MonthCard, type Month } from "~/features/dashboard/OverviewMonth";
 import { BalanceHero, GoalsCard } from "~/features/dashboard/OverviewParts";
+
+/** The month's days as dates, and which one is today, for the day-by-day chart. */
+function monthOf(s: SpendingMonth): Month {
+  const first = parseDate(s.start);
+  const dates = s.daily.map((_, i) => {
+    const d = new Date(first);
+    d.setDate(first.getDate() + i);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  });
+  return { s, today: s.day - 1, dates };
+}
 
 function greeting(hour: number): string {
   return hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
@@ -74,7 +87,7 @@ export function DashboardPage() {
         <BalanceHero d={d} />
         <ComingUp d={d} compact className="md:col-span-4" />
       </div>
-      {s && <SpendingCard s={s} />}
+      {s && <MonthCard m={monthOf(s)} />}
       <GoalsCard d={d} />
     </>
   );
