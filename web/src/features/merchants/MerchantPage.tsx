@@ -1,14 +1,25 @@
 /**
- * One merchant: its mark and name (rename it), what's gone there in a sentence, month by month as bars, the statement
+ * One merchant, on the entity template: its mark and name (rename it), what's gone there in a sentence, month by month
+ * with the timeframe brightened, the statement
  * names that belong to it (mapped by hand, or found by themselves; move or unmap one), and every transaction.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { apiSend, errorMessage } from "~/features/common/api";
 import { Loading } from "~/features/common/brand";
-import { PaymentBars } from "~/features/common/charts";
-import { Card, CardHead, Details, Stat } from "~/features/common/ds";
+import { Card, CardHead } from "~/features/common/ds";
+import {
+  EntityHeader,
+  EntityHero,
+  Legend,
+  MONTH_RANGES,
+  MonthBars,
+  Timeframe,
+  rangeName,
+  useTimeframe,
+  type MonthRange,
+} from "~/features/common/entity";
 import { dayDate, longDate, money, monthYear } from "~/features/common/format";
 import { businessesQuery, merchantDirectoryQuery, merchantQuery, refresh } from "~/features/common/queries";
 import { useToast } from "~/features/common/overlay";
@@ -26,6 +37,7 @@ const FIRST = 12;
 
 export function MerchantPage({ merchantKey }: { merchantKey: string }) {
   const q = useQuery(merchantQuery(merchantKey));
+  const [range, setRange] = useTimeframe<MonthRange>("wmm:range:merchant", MONTH_RANGES, "12");
   const [open, setOpen] = useState<number | null>(null);
   const [all, setAll] = useState(false);
   const name = q.data?.name;
@@ -57,14 +69,14 @@ export function MerchantPage({ merchantKey }: { merchantKey: string }) {
   const busiest = d.months.reduce((a, m) => (amountOf(m) > amountOf(a) ? m : a), d.months[0]);
   // The reference line: a month's spending, or for someone who pays us now and then (a tax refund), a usual payment.
   const perMonth = inbound ? d.per_payment : d.per_month;
+  // The last year of months on the chart; the timeframe brightens its last few and totals them.
+  const shown = d.months.slice(-12);
+  const lit = shown.slice(-Number(range));
+  const litFrom = lit[0]?.month;
+  const litTotal = lit.reduce((t, m) => t + amountOf(m), 0);
   return (
     <>
-      <div className="flex flex-col gap-2">
-        <Link to="/merchants" className="self-start text-[14px] font-semibold text-teal no-underline">
-          ← All merchants
-        </Link>
-        <Title d={d} />
-      </div>
+      <Title d={d} timeframe={<Timeframe options={MONTH_RANGES} value={range} onChange={setRange} />} />
 
       {d.unnamed && (
         <Card className="flex flex-col gap-1.5" aria-label="About BPAY payments">
@@ -79,11 +91,24 @@ export function MerchantPage({ merchantKey }: { merchantKey: string }) {
         </Card>
       )}
 
-      <Card
-        lit
+      <EntityHero
         tint={inbound ? "savings" : "spending"}
-        className="flex flex-col gap-2"
-        aria-label={`${d.name} in a sentence`}
+        label={`${d.name} in a sentence`}
+        numbers={
+          inbound
+            ? [
+                { label: "Last 12 months", value: money(d.received_year), note: "received" },
+                { label: "All time", value: money(d.received), note: `since ${monthYear(d.first.slice(0, 7))}` },
+                { label: "Payments", value: String(d.received_count), note: d.category ?? "Not sorted" },
+                { label: "Average payment", value: money(d.per_payment, { cents: true }), note: "money in" },
+              ]
+            : [
+                { label: "Last 12 months", value: money(d.spent_year), note: `${money(d.per_month)} a month` },
+                { label: "All time", value: money(d.spent), note: `since ${monthYear(d.first.slice(0, 7))}` },
+                { label: "Visits", value: String(d.count), note: d.category ?? "Not sorted" },
+                { label: "Average visit", value: money(d.per_visit, { cents: true }), note: "money out" },
+              ]
+        }
       >
         {inbound ? (
           <>
@@ -114,54 +139,7 @@ export function MerchantPage({ merchantKey }: { merchantKey: string }) {
             </p>
           </>
         )}
-        <Details label="See the numbers">
-          {inbound ? (
-            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-              <Stat label="Last 12 months" value={money(d.received_year)} note="received" role="savings" />
-              <Stat
-                label="All time"
-                value={money(d.received)}
-                note={`since ${monthYear(d.first.slice(0, 7))}`}
-                role="savings"
-              />
-              <Stat
-                label="Payments"
-                value={String(d.received_count)}
-                note={d.category ?? "Not sorted"}
-                role="savings"
-              />
-              <Stat
-                label="Average payment"
-                value={money(d.per_payment, { cents: true })}
-                note="money in"
-                role="savings"
-              />
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-              <Stat
-                label="Last 12 months"
-                value={money(d.spent_year)}
-                note={`${money(d.per_month)} a month`}
-                role="spending"
-              />
-              <Stat
-                label="All time"
-                value={money(d.spent)}
-                note={`since ${monthYear(d.first.slice(0, 7))}`}
-                role="spending"
-              />
-              <Stat label="Visits" value={String(d.count)} note={d.category ?? "Not sorted"} role="spending" />
-              <Stat
-                label="Average visit"
-                value={money(d.per_visit, { cents: true })}
-                note="money out"
-                role="spending"
-              />
-            </div>
-          )}
-        </Details>
-      </Card>
+      </EntityHero>
 
       <RegularCard d={d} />
 
@@ -171,31 +149,46 @@ export function MerchantPage({ merchantKey }: { merchantKey: string }) {
             id="mp-months"
             title="Month by month"
             right={
-              <span className="inline-flex items-center gap-1.5 text-[13px] text-ink-3">
-                <i className="w-3.5 border-t-2 border-dashed border-ink-2" />
-                {money(perMonth)} {inbound ? "a payment" : "a month"}
-              </span>
+              <Legend
+                items={[
+                  { label: inbound ? "In" : "Spent", kind: "solid", role: inbound ? "savings" : "spending" },
+                  { label: `${money(perMonth)} ${inbound ? "a payment" : "a usual month"}`, kind: "line", role: "ink" },
+                ]}
+              />
             }
           />
           {d.months.length >= 2 ? (
-            <PaymentBars
-              payments={d.months.map((m) => ({ date: `${m.month}-01`, amount: amountOf(m) }))}
-              now={perMonth}
-              spending={!inbound}
-              income={inbound}
-              label={
-                inbound
-                  ? `What came in from ${d.name} each month, oldest first`
-                  : `What went at ${d.name} each month, oldest first`
-              }
-              describe={(p) => (
+            <MonthBars
+              name={inbound ? `What came in from ${d.name}` : `What went at ${d.name}`}
+              months={shown.map((m) => ({ key: m.month, label: monthYear(m.month), value: amountOf(m) }))}
+              line={{ value: perMonth, label: inbound ? "a usual payment" : "a usual month" }}
+              role={inbound ? "savings" : "spending"}
+              litFrom={litFrom}
+              format={money}
+              height={180}
+              describe={(m, isNow) => (
                 <>
-                  <b className="text-ink">{money(p.amount, { cents: true })}</b> in {monthYear(p.date.slice(0, 7))}
+                  <b className="text-ink">{m.label}</b>: {money(m.value, { cents: true })}
+                  {isNow ? " so far" : ""}
+                  {perMonth > 0 && !isNow
+                    ? m.value > perMonth * 1.15
+                      ? `, more than ${inbound ? "usual" : "a usual month"}`
+                      : m.value < perMonth * 0.85
+                        ? `, less than ${inbound ? "usual" : "a usual month"}`
+                        : ", about usual"
+                    : ""}
+                  .
                 </>
               )}
             />
           ) : (
             <p className="m-0 text-[14px] text-ink-3">The chart fills in after a second month.</p>
+          )}
+          {d.months.length >= 2 && (
+            <p className="m-0 text-[13px] text-ink-3">
+              Brighter bars are inside the timeframe: {money(litTotal)} {inbound ? "came in" : "went"} over{" "}
+              {rangeName(Number(range))}.
+            </p>
           )}
         </Card>
         <Names d={d} />
@@ -231,8 +224,8 @@ export function MerchantPage({ merchantKey }: { merchantKey: string }) {
   );
 }
 
-/** The mark and name; the name can be changed (empty goes back to the one it gets by itself). */
-function Title({ d }: { d: MerchantDetail }) {
+/** The header: mark, name and timeframe; the name can be changed (empty goes back to the one it gets by itself). */
+function Title({ d, timeframe }: { d: MerchantDetail; timeframe: ReactNode }) {
   const qc = useQueryClient();
   const toast = useToast();
   const [editing, setEditing] = useState(false);
@@ -248,49 +241,45 @@ function Title({ d }: { d: MerchantDetail }) {
     },
   });
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <div className="flex min-w-0 flex-1 basis-full items-center gap-3 sm:basis-auto">
-        <MerchantMark name={d.key} size="xl" />
-        <div className="min-w-0">
-          <h1 className="m-0 line-clamp-2 min-w-0 text-[28px] leading-9 font-semibold tracking-[-0.03em] break-words sm:text-[40px] sm:leading-[46px]">
-            {d.name}
-          </h1>
-          {(d.settings.note || d.category) && (
-            <span className="text-[14px] text-ink-3">
-              {[d.settings.note, d.category && `Mostly ${d.category}`].filter(Boolean).join(" · ")}
-            </span>
-          )}
-        </div>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {d.mapped > 0 &&
-          (unmerging ? (
-            <>
-              <Button primary onClick={() => unmerge.mutate()} disabled={unmerge.isPending}>
-                Unmerge {d.mapped}
-              </Button>
-              <Button onClick={() => setUnmerging(false)}>Keep</Button>
-            </>
-          ) : (
-            <Button onClick={() => setUnmerging(true)}>Unmerge…</Button>
-          ))}
-        <Button
-          onClick={() => {
-            setMerging((m) => !m);
-            setEditing(false);
-          }}
-        >
-          {merging ? "Cancel merge" : "Merge into…"}
-        </Button>
-        <Button
-          onClick={() => {
-            setEditing((e) => !e);
-            setMerging(false);
-          }}
-        >
-          {editing ? "Cancel" : "Rename"}
-        </Button>
-      </div>
+    <div className="flex flex-col gap-3">
+      <EntityHeader
+        back={{ to: "/merchants", label: "Merchants" }}
+        mark={<MerchantMark name={d.key} size="xl" />}
+        title={d.name}
+        sub={[d.settings.note, d.category && `Mostly ${d.category}`].filter(Boolean).join(" · ") || undefined}
+        timeframe={timeframe}
+        actions={
+          <div className="flex flex-wrap gap-2">
+            {d.mapped > 0 &&
+              (unmerging ? (
+                <>
+                  <Button primary onClick={() => unmerge.mutate()} disabled={unmerge.isPending}>
+                    Unmerge {d.mapped}
+                  </Button>
+                  <Button onClick={() => setUnmerging(false)}>Keep</Button>
+                </>
+              ) : (
+                <Button onClick={() => setUnmerging(true)}>Unmerge…</Button>
+              ))}
+            <Button
+              onClick={() => {
+                setMerging((m) => !m);
+                setEditing(false);
+              }}
+            >
+              {merging ? "Cancel merge" : "Merge into…"}
+            </Button>
+            <Button
+              onClick={() => {
+                setEditing((e) => !e);
+                setMerging(false);
+              }}
+            >
+              {editing ? "Cancel" : "Rename"}
+            </Button>
+          </div>
+        }
+      />
       {unmerging && (
         <p className="m-0 w-full text-[13px] text-ink-3">
           Unmerge puts the {d.mapped} statement {d.mapped === 1 ? "name or payment" : "names and payments"} moved here
