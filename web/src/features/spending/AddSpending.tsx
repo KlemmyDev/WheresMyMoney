@@ -1,24 +1,25 @@
 /**
- * Adding a transaction by hand (the canvas's "Add a transaction"): what happened (spent, income, or a transfer
- * between accounts), the amount on a number pad (typed on a desktop), what it was, when, its category, which account,
- * and what safe to spend becomes. Then "Added", with Undo, as a hand entry can be taken back. A statement import later
- * matches it to the bank's row, so it won't count twice.
+ * Adding a transaction by hand (the uplift canvas's SfAdd): one sheet. What happened (a spend, income, or a transfer
+ * between accounts), the amount on the number pad, where (with recent places a tap away), when, the category (guessed
+ * from where it was, as last time) and which account. Add closes the sheet with a toast and Undo. A statement import
+ * later matches it to the bank's row, so it never counts twice.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiSend, errorMessage } from "~/features/common/api";
 import { CategoryPicker } from "~/features/common/CategoryPicker";
-import { ChoiceChip, Keypad, Sheet, useSheetTop } from "~/features/common/ds";
+import { ChoiceChip, Keypad, Sheet } from "~/features/common/ds";
 import { money, todayIso } from "~/features/common/format";
 import { Chip, I, type Glyph, type Tone } from "~/features/common/icons";
-import { accountsQuery, categoriesQuery, refresh, spendingQuery } from "~/features/common/queries";
+import { useToast } from "~/features/common/overlay";
+import { accountsQuery, categoriesQuery, merchantDirectoryQuery, refresh } from "~/features/common/queries";
 import type { Account, Transaction } from "~/features/common/types";
 import { Button, ErrorText, Input, Switch, cn } from "~/features/common/ui";
 
 type Kind = "spend" | "income" | "transfer";
 
 const KINDS: { k: Kind; label: string; sub: string; g: Glyph; tone: Tone }[] = [
-  { k: "spend", label: "Spent", sub: "Money out", g: I.spending, tone: "spending" },
+  { k: "spend", label: "Spend", sub: "Money out", g: I.spending, tone: "spending" },
   { k: "income", label: "Income", sub: "Pay, refunds, gifts", g: I.pay, tone: "savings" },
   { k: "transfer", label: "Transfer", sub: "Between accounts", g: I.transfer, tone: "offset" },
 ];
@@ -85,7 +86,8 @@ function AddForm({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
   const accounts = useQuery(accountsQuery);
   const categories = useQuery(categoriesQuery);
-  const spending = useQuery(spendingQuery);
+  const directory = useQuery(merchantDirectoryQuery);
+  const toast = useToast();
   const [kind, setKind] = useState<Kind>("spend");
   const [entry, setEntry] = useState("");
   const [what, setWhat] = useState("");
@@ -94,10 +96,7 @@ function AddForm({ onClose }: { onClose: () => void }) {
   const [cash, setCash] = useState(false);
   const [fromId, setFrom] = useState<number | null>(null);
   const [toId, setTo] = useState<number | null>(null);
-  const [added, setAdded] = useState<Transaction[] | null>(null);
-  // Safe to spend as it was worked out when it was added (the month refetches with the spend already in it).
-  const [safeThen, setSafeThen] = useState<number | null>(null);
-  const top = useSheetTop<HTMLElement>(!!added);
+  const [changingCategory, setChangingCategory] = useState(false);
 
   const banks = (accounts.data?.accounts ?? []).filter((a) => a.kind === "bank");
   const from =
@@ -123,12 +122,21 @@ function AddForm({ onClose }: { onClose: () => void }) {
     ? entry.split(".")[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",") + (entry.includes(".") ? `.${entry.split(".")[1]}` : "")
     : "0";
 
-  // What safe to spend becomes, when it's spending from the spending account.
-  const month = spending.data?.month;
-  const affectsSafe =
-    month && kind !== "income" && from === month.account_id && !cash && date >= month.start && cents > 0;
-  // What's left to spend this month once this is in.
-  const safeAfter = month ? month.left - (affectsSafe ? cents : 0) : null;
+  // Places spent at lately, newest first, and the category each was sorted into last time.
+  const places = (directory.data ?? [])
+    .filter((m) => m.direction === "out")
+    .sort((a, b) => b.last.localeCompare(a.last));
+  const known = places.find((m) => m.name.toLowerCase() === what.trim().toLowerCase());
+  const guessName = kind === "spend" ? (known?.default_category ?? known?.category ?? null) : null;
+  const guessed = guessName ? (cats.find((c) => c.name === guessName)?.id ?? null) : null;
+  const chosen = category ?? guessed;
+  const canAdd =
+    cents > 0 &&
+    (kind === "transfer"
+      ? from != null && to != null && from !== to
+      : kind === "spend"
+        ? !!what.trim() && chosen != null
+        : true);
 
   const save = useMutation({
     mutationFn: async () => {
@@ -150,83 +158,41 @@ function AddForm({ onClose }: { onClose: () => void }) {
         });
         return [out, into];
       }
-      const desc = what || cats.find((c) => c.id === category)?.name || (kind === "income" ? "Income" : "Spending");
+      const desc = what || cats.find((c) => c.id === chosen)?.name || (kind === "income" ? "Income" : "Spending");
       return [
         await apiSend<Transaction>("POST", "transactions", {
           account_id: from,
           amount: kind === "income" ? cents : -cents,
           description: desc,
-          category_id: category,
+          category_id: chosen,
           cash: kind === "spend" && cash,
           date,
         }),
       ];
     },
     onSuccess: (txs) => {
-      setSafeThen(affectsSafe && safeAfter != null ? safeAfter : null);
-      setAdded(txs);
       refresh(qc);
+      onClose();
+      const catName = cats.find((c) => c.id === chosen)?.name;
+      const said =
+        kind === "transfer"
+          ? `Moved ${money(cents, { cents: true })} from ${name(from)} to ${name(to)}`
+          : kind === "income"
+            ? `Added ${money(cents, { cents: true })} into ${name(from)}${catName ? ` · ${catName}` : ""}`
+            : `Added ${money(cents, { cents: true })} · ${what.trim()}${catName ? `, ${catName}` : ""}`;
+      toast(date === todayIso() ? said : `${said}, ${date === yesterday() ? "yesterday" : date}`, async () => {
+        for (const t of txs) await apiSend("DELETE", `transactions/${t.id}`);
+        refresh(qc);
+      });
     },
   });
-
-  const undo = useMutation({
-    mutationFn: async () => {
-      for (const t of added ?? []) await apiSend("DELETE", `transactions/${t.id}`);
-    },
-    onSuccess: () => {
-      setAdded(null);
-      refresh(qc);
-    },
-  });
-
-  if (added) {
-    const k = KINDS.find((x) => x.k === kind)!;
-    return (
-      <div
-        ref={top as React.RefObject<HTMLDivElement>}
-        className="flex flex-col items-center gap-3 pt-2 pb-2 text-center"
-      >
-        <Chip g={k.g} tone={k.tone} size="xxl" solid />
-        <h3 className="m-0 text-[22px] font-semibold">
-          {money(cents, { cents: true })}{" "}
-          {kind === "transfer" ? `moved to ${name(to)}` : kind === "income" ? `in to ${name(from)}` : "added"}
-        </h3>
-        <p className="m-0 max-w-[400px] text-[14px] text-ink-2">
-          {kind === "spend" && cash
-            ? "Paid in cash, so the account's balance stays as it is."
-            : "The next statement import looks for a match and merges it, so it won't count twice."}
-          {safeThen != null && ` That leaves ${money(Math.max(safeThen, 0))} to spend this month.`}
-        </p>
-        {undo.isError && <ErrorText>{errorMessage(undo.error)}</ErrorText>}
-        <div className="mt-2 flex flex-wrap justify-center gap-2">
-          <Button onClick={() => undo.mutate()} disabled={undo.isPending}>
-            Undo
-          </Button>
-          <Button
-            onClick={() => {
-              setAdded(null);
-              setEntry("");
-              setWhat("");
-              setCategory(null);
-            }}
-          >
-            Add another
-          </Button>
-          <Button primary onClick={onClose}>
-            Done
-          </Button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <form
-      ref={top as React.RefObject<HTMLFormElement>}
       className="flex flex-col gap-5 pb-2"
       onSubmit={(e) => {
         e.preventDefault();
-        if (cents) save.mutate();
+        if (canAdd) save.mutate();
       }}
     >
       <div className="grid grid-cols-3 gap-2" role="group" aria-label="What happened">
@@ -238,6 +204,7 @@ function AddForm({ onClose }: { onClose: () => void }) {
             onClick={() => {
               setKind(k.k);
               setCategory(null);
+              setChangingCategory(false);
               setFrom(null);
             }}
             className="chip-host press flex cursor-pointer flex-col items-start gap-2 rounded-[18px] border border-line bg-tile-2 p-3 text-left text-ink aria-pressed:border-line-2 aria-pressed:bg-raised"
@@ -261,7 +228,7 @@ function AddForm({ onClose }: { onClose: () => void }) {
             {shownAmount}
           </span>
         </div>
-        {/* The number pad on a phone; a desktop types into the field instead. */}
+        {/* The number pad; on a desktop the number keys type into the field too. */}
         <label className="sr-only" htmlFor="as-amount">
           Amount
         </label>
@@ -274,20 +241,33 @@ function AddForm({ onClose }: { onClose: () => void }) {
           onChange={(e) => setEntry(e.target.value.replace(/[^0-9.]/g, ""))}
           placeholder="Type the amount"
         />
-        <div className="mt-3 sm:hidden">
+        <div className="mt-3 sm:mx-auto sm:max-w-[360px]">
           <Keypad value={entry} onChange={setEntry} />
         </div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="flex flex-col gap-2">
-          <span className="eyebrow">Description</span>
-          <Input
-            value={what}
-            onChange={(e) => setWhat(e.target.value)}
-            placeholder={kind === "income" ? "Pay, a refund…" : kind === "transfer" ? "Optional" : "Woolworths"}
-          />
-        </label>
+        <div className="flex min-w-0 flex-col gap-2">
+          <label className="flex flex-col gap-2">
+            <span className="eyebrow">
+              {kind === "spend" ? "Where" : kind === "income" ? "What" : "Note (optional)"}
+            </span>
+            <Input
+              value={what}
+              onChange={(e) => setWhat(e.target.value)}
+              placeholder={kind === "income" ? "Pay, a refund…" : kind === "transfer" ? "Optional" : "Woolworths"}
+            />
+          </label>
+          {kind === "spend" && !known && places.length > 0 && (
+            <div role="group" aria-label="Recent places" className="no-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1">
+              {places.slice(0, 6).map((m) => (
+                <ChoiceChip key={m.key} pressed={false} onClick={() => setWhat(m.name)}>
+                  {m.name}
+                </ChoiceChip>
+              ))}
+            </div>
+          )}
+        </div>
         <fieldset className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
           <legend className="eyebrow mb-2">When</legend>
           <div className="flex gap-2">
@@ -309,33 +289,45 @@ function AddForm({ onClose }: { onClose: () => void }) {
         </fieldset>
       </div>
 
-      {kind !== "transfer" && (
-        <fieldset className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
-          <legend className="eyebrow mb-2">Category</legend>
-          <div className="flex flex-wrap gap-2">
-            {chips.map((c) => (
-              <ChoiceChip
-                key={c.id}
-                pressed={category === c.id}
-                onClick={() => setCategory(category === c.id ? null : c.id)}
-                role={kind === "income" ? "savings" : "spending"}
-              >
-                {c.name}
-              </ChoiceChip>
-            ))}
-            <div className="w-40">
-              <CategoryPicker
-                label="Another category"
-                value={chips.some((c) => c.id === category) ? null : category}
-                categories={categories.data?.categories ?? []}
-                kinds={kind === "income" ? ["income"] : ["spending", "bills"]}
-                placeholder="More…"
-                className="min-h-11 rounded-full border-line-2 bg-transparent text-[14px] text-ink-2"
-                onChange={(c) => setCategory(c)}
-              />
+      {kind === "spend" && guessed != null && category == null && !changingCategory ? (
+        <div className="flex items-center gap-3 rounded-2xl border border-line bg-tile-2 px-3.5 py-2.5">
+          <span className="min-w-0 flex-1">
+            <span className="block font-semibold">{cats.find((c) => c.id === guessed)?.name}</span>
+            <span className="block text-[13px] text-ink-3">Guessed from {known?.name}, as last time</span>
+          </span>
+          <Button small onClick={() => setChangingCategory(true)}>
+            Change
+          </Button>
+        </div>
+      ) : (
+        kind !== "transfer" && (
+          <fieldset className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
+            <legend className="eyebrow mb-2">Category</legend>
+            <div className="flex flex-wrap gap-2">
+              {chips.map((c) => (
+                <ChoiceChip
+                  key={c.id}
+                  pressed={category === c.id}
+                  onClick={() => setCategory(category === c.id ? null : c.id)}
+                  role={kind === "income" ? "savings" : "spending"}
+                >
+                  {c.name}
+                </ChoiceChip>
+              ))}
+              <div className="w-40">
+                <CategoryPicker
+                  label="Another category"
+                  value={chips.some((c) => c.id === category) ? null : category}
+                  categories={categories.data?.categories ?? []}
+                  kinds={kind === "income" ? ["income"] : ["spending", "bills"]}
+                  placeholder="More…"
+                  className="min-h-11 rounded-full border-line-2 bg-transparent text-[14px] text-ink-2"
+                  onChange={(c) => setCategory(c)}
+                />
+              </div>
             </div>
-          </div>
-        </fieldset>
+          </fieldset>
+        )
       )}
 
       <AccountChips
@@ -360,24 +352,18 @@ function AddForm({ onClose }: { onClose: () => void }) {
         </label>
       )}
 
-      <div>
-        {month && safeAfter != null ? (
-          <div className="rounded-2xl bg-sunken p-3.5">
-            <div className="eyebrow">Left to spend after</div>
-            <div className="num text-[20px]" style={{ color: safeAfter < 0 ? "var(--color-bad)" : undefined }}>
-              {money(Math.max(safeAfter, 0))}
-            </div>
-            <div className="text-[13px] text-ink-3">this month, with {month.remaining} days to go</div>
-          </div>
-        ) : null}
-      </div>
+      <p className="m-0 text-[13px] text-ink-3">
+        {kind === "transfer"
+          ? "The next statement import matches both sides, so the move never counts twice."
+          : "The next statement import matches it, so it never counts twice."}
+      </p>
 
       {save.isError && <ErrorText>{errorMessage(save.error)}</ErrorText>}
       <div className="flex gap-2">
         <Button type="button" className="flex-1" onClick={onClose}>
           Cancel
         </Button>
-        <Button primary type="submit" className="min-h-12 flex-[2] text-[15px]" disabled={!cents || save.isPending}>
+        <Button primary type="submit" className="min-h-12 flex-[2] text-[15px]" disabled={!canAdd || save.isPending}>
           {cents ? `Add ${money(cents, { cents: true })}` : "Add"}
         </Button>
       </div>
