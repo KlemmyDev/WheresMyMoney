@@ -22,6 +22,18 @@ import {
   Sheet,
   Stat,
 } from "~/features/common/ds";
+import {
+  EditPanel,
+  EntityHeader,
+  EntityHero,
+  Legend,
+  LikelyCard,
+  MONTH_RANGES,
+  MonthBars,
+  Timeframe,
+  type MonthRange,
+} from "~/features/common/entity";
+import { money } from "~/features/common/format";
 import { Chip, I, type Tone } from "~/features/common/icons";
 import { useToast } from "~/features/common/overlay";
 import { useTheme, type ThemeChoice } from "~/features/common/theme";
@@ -269,6 +281,8 @@ export function DesignPage() {
         Enter each bill once with its amount and how often.
       </EmptyState>
 
+      <EntityDemo />
+
       <Section
         title="Merchant marks"
         note={`${CATALOGUE.length} businesses (businesses.json), then kinds of place for merchants without one`}
@@ -316,5 +330,128 @@ export function DesignPage() {
         </p>
       </Sheet>
     </>
+  );
+}
+
+/** Sample months for the entity page demo, in cents, oldest first (November is this month, so far). */
+const DEMO_MONTHS = [
+  ["2025-12", 224000],
+  ["2026-01", 171500],
+  ["2026-02", 168200],
+  ["2026-03", 189000],
+  ["2026-04", 176400],
+  ["2026-05", 192300],
+  ["2026-06", 181000],
+  ["2026-07", 187600],
+  ["2026-08", 179900],
+  ["2026-09", 194100],
+  ["2026-10", 183200],
+  ["2026-11", 41230],
+] as const;
+
+/** The entity page pieces (common/entity.tsx) with sample numbers, in the order a page uses them. */
+function EntityDemo() {
+  const [range, setRange] = useState<MonthRange>("3");
+  const [editing, setEditing] = useState(false);
+  const [budget, setBudget] = useState("2000");
+  const toast = useToast();
+  const months = DEMO_MONTHS.map(([key, value]) => ({
+    key,
+    label: new Date(`${key}-01T00:00`).toLocaleDateString("en-AU", { month: "short", year: "2-digit" }),
+    value,
+  }));
+  const litFrom = DEMO_MONTHS[DEMO_MONTHS.length - Number(range)][0];
+  return (
+    <Section title="Entity page" note="common/entity.tsx: header, hero, month bars, what's likely, edit panel">
+      <div className="flex flex-col gap-4">
+        <EntityHeader
+          back={{ to: "/design", label: "Spending" }}
+          mark={<Chip g={I.spending} tone="spending" size="xl" />}
+          title="Groceries"
+          sub="A spending category · $2,000 a month budget"
+          timeframe={<Timeframe options={MONTH_RANGES} value={range} onChange={setRange} />}
+          actions={<Button onClick={() => setEditing(true)}>Change</Button>}
+        />
+        <EditPanel
+          open={editing}
+          onClose={() => setEditing(false)}
+          title="Change Groceries"
+          canSave={budget !== "2000"}
+          onSave={() => {
+            setEditing(false);
+            toast(`Groceries: $${budget} a month`, () => setBudget("2000"));
+          }}
+          remove={{
+            label: "Remove the budget",
+            onClick: () => {
+              setEditing(false);
+              toast("Groceries has no budget now", () => setBudget("2000"));
+            },
+          }}
+        >
+          <label className="flex flex-col gap-1.5 text-[14px] font-semibold">
+            Budget each month
+            <Input inputMode="decimal" value={budget} onChange={(e) => setBudget(e.target.value)} />
+          </label>
+        </EditPanel>
+        <EntityHero
+          tint="spending"
+          label="Groceries in a sentence"
+          numbers={[
+            { label: "This month", value: money(41230), note: "day 8 of 30" },
+            { label: "Usual month", value: money(186000), note: "last 6 months" },
+            { label: "Most in a month", value: money(224000), note: "Dec 2025" },
+            { label: "Last 12 months", value: money(2232000), note: "since Dec 2025" },
+          ]}
+        >
+          <p className="m-0 text-[17px] leading-relaxed text-ink">
+            Groceries is running about <b>$60 under</b> a usual month.
+          </p>
+        </EntityHero>
+        <div className="grid gap-4 md:grid-cols-12 [&>*]:min-w-0">
+          <Card className="md:col-span-8">
+            <CardHead
+              title="Month by month"
+              right={
+                <Legend
+                  items={[
+                    { label: "Spent", kind: "solid", role: "spending" },
+                    { label: "Likely", kind: "likely", role: "spending" },
+                    { label: "Budget", kind: "line", role: "ink" },
+                  ]}
+                />
+              }
+            />
+            <MonthBars
+              name="What went on Groceries"
+              months={months}
+              rest={152770}
+              line={{ value: 200000, label: "Budget" }}
+              litFrom={litFrom}
+              format={money}
+            />
+          </Card>
+          <LikelyCard
+            id="demo-likely"
+            className="md:col-span-4"
+            now={{
+              label: "This month",
+              total: money(194000),
+              bar: {
+                label: "Spent $412.30, likely $1,527.70 more, against a $2,000 budget",
+                max: 200000,
+                marker: 200000,
+                segments: [
+                  { value: 41230, role: "spending" },
+                  { value: 152770, role: "spending", likely: true },
+                ],
+              },
+              text: "$412.30 so far, likely $1,850 to $2,030 by the end of the month. That leaves about $60 of the budget.",
+            }}
+            next={{ label: "December", total: money(218000), text: "Likely $2,050 to $2,310." }}
+          />
+        </div>
+      </div>
+    </Section>
   );
 }
