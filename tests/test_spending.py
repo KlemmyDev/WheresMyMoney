@@ -119,7 +119,7 @@ def test_sorting_a_merchant_remembers_its_brand_and_resorts_suggestions_but_not_
     groups = {g["pattern"]: g for g in ok(client.get("/api/merchants"))}
     assert groups["KMART"]["count"] == 3 and groups["KMART"]["unsorted"] == 2
     done = ok(client.post("/api/merchants/sort", json={"transaction_id": made[0]["id"], "category_id": shopping}))
-    assert done == {"changed": 2, "pattern": "KMART"}
+    assert done["changed"] == 2 and done["pattern"] == "KMART"
     cats = {t["id"]: t["category_id"] for t in ok(client.get("/api/transactions"))}
     txs = ok(client.get("/api/transactions"))
     assert {t["remember_as"] for t in txs if t["description"].startswith("KMART")} == {"KMART"}
@@ -197,3 +197,32 @@ def test_budgets_are_suggested_from_what_was_spent(client: TestClient, household
     assert rows["Coffee"]["budget"] is None and rows["Coffee"]["suggested"] == dollars(40)
     assert rows["Coffee"]["note"] is None
     assert next(iter(rows)) == "Groceries"  # biggest first
+
+
+def test_sorting_a_merchant_can_be_undone(client: TestClient, household: dict) -> None:
+    ids = household
+    made = [
+        ok(
+            client.post(
+                "/api/transactions",
+                json={"account_id": ids["Spending"], "amount": -900, "description": "ZEPHYR NOODLES CITY", "date": d},
+            )
+        )
+        for d in ("2026-11-02", "2026-11-03")
+    ]
+    sorted_ = ok(
+        client.post(
+            "/api/merchants/sort", json={"transaction_id": made[0]["id"], "category_id": cat(client, "Eating out")}
+        )
+    )
+    assert sorted_["changed"] == 2
+    ok(client.post("/api/merchants/sort/undo", json={"undo": sorted_["undo"]}))
+    rows = {t["id"]: t for t in ok(client.get(f"/api/transactions?account_id={ids['Spending']}"))}
+    assert all(rows[m["id"]]["category"] is None for m in made)
+    later = ok(
+        client.post(
+            "/api/transactions",
+            json={"account_id": ids["Spending"], "amount": -900, "description": "ZEPHYR NOODLES CITY"},
+        )
+    )
+    assert later["category"] is None  # nothing remembered any more
