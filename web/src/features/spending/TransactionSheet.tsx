@@ -547,11 +547,14 @@ export function TxRow({
   tx,
   onOpen,
   sub,
+  picked,
 }: {
   tx: Transaction;
   onOpen: (t: Transaction) => void;
   /** The second line before the category (the date, or the account). */
   sub: string;
+  /** When picking several: whether this one is picked (the row becomes a checkbox; tapping it calls onOpen). */
+  picked?: boolean;
 }) {
   const how = tx.merged ? (["Matched", "good"] as const) : ROW_HOW[tx.kind];
   const category = tx.splits?.length
@@ -561,8 +564,25 @@ export function TxRow({
     <button
       type="button"
       onClick={() => onOpen(tx)}
+      role={picked === undefined ? undefined : "checkbox"}
+      aria-checked={picked}
       className="chip-host press flex min-h-16 w-full cursor-pointer items-center gap-3 rounded-2xl border-0 bg-transparent px-1.5 text-left text-ink hover:bg-tile-2"
     >
+      {picked !== undefined && (
+        <span
+          aria-hidden
+          className={
+            "flex size-5 flex-none items-center justify-center rounded-md border-2 " +
+            (picked ? "border-teal bg-teal text-page" : "border-line-2")
+          }
+        >
+          {picked && (
+            <svg viewBox="0 0 24 24" className="size-3.5" fill="none" stroke="currentColor" strokeWidth={3.4}>
+              <path d="M5 12.5l4.5 4.5L19 7.5" />
+            </svg>
+          )}
+        </span>
+      )}
       <MerchantIcon tx={tx} />
       <span className="min-w-0 flex-1">
         <span className="block truncate">{shownName(tx)}</span>
