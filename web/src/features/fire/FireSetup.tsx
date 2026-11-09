@@ -1,104 +1,34 @@
 /**
- * Early retirement: Set your goal (the uplift canvas's FiSetup). Four questions, most already answered from the
- * accounts: how much a year once stopped, what each person earns, anything out of date, then the freedom date.
- * The dates update as you answer (POST /api/fire/goal); Save my goal keeps the spending and any balances fixed.
+ * Early retirement: Set the goal (the FIRE on track canvas's goal flow). When to stop work and how long the money
+ * should last; what a year of retirement costs; then what has to be true for each part of the plan, before saving.
+ * A panel beside the questions shows ahead or behind as you choose (POST /api/fire/track, nothing saved until "Make
+ * it our goal", PUT /api/fire/goal, which has an undo).
  */
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { FireNav } from "~/features/fire/FireNav";
-import type { FireSummary } from "~/features/fire/api";
+import { useState } from "react";
+import { FlowHead, Option, StepNav } from "~/features/fire/flow";
+import type { Track, TrackReady } from "~/features/fire/api";
+import { COLOUR, LifeTimeline, Status, TONE, k, statusOf, useTrack, verdictOf } from "~/features/fire/track";
 import { apiSend, errorMessage } from "~/features/common/api";
 import { Loading } from "~/features/common/brand";
-import { Card, CardHead, ChoiceChip, ROLE, Stat } from "~/features/common/ds";
-import { money, parseMoney } from "~/features/common/format";
+import { Card } from "~/features/common/ds";
+import { money } from "~/features/common/format";
 import { useToast } from "~/features/common/overlay";
-import { accountsQuery, investmentsQuery, refresh, retirementQuery } from "~/features/common/queries";
-import { Button, Empty, Input, Label, PageHead, Pill } from "~/features/common/ui";
+import { refresh, retirementQuery } from "~/features/common/queries";
+import { Empty, ErrorText, SuccessTick } from "~/features/common/ui";
 
-type Goal = {
-  spend: number;
-  essentials: number;
-  today: FireSummary | null;
-  plan: FireSummary | null;
-  lean: FireSummary | null;
-  lasts: number | null;
-};
-
-const STEPS = ["How much a year", "What you each earn", "Anything we don't know", "Your freedom date"];
-const SPEND = [
-  [5500000, "Essentials only", "Home, food, bills, health"],
-  [7000000, "Comfortable", "A bit under now"],
-  [8000000, "Suggested", "A little more than now"],
-  [10000000, "Generous", "More travel, more help for family"],
-] as const;
-const PAY = { weekly: "weekly", fortnightly: "fortnightly", monthly: "monthly" } as const;
-const age = (s: FireSummary | null) => (s ? String(s.retire_age) : "70+");
+const STEPS = ["When", "How much", "Check"];
 
 export function FireSetup() {
-  const qc = useQueryClient();
-  const toast = useToast();
+  const first = useTrack();
   const ret = useQuery(retirementQuery);
-  const inv = useQuery(investmentsQuery);
-  const acc = useQuery(accountsQuery);
-  const [step, setStep] = useState(0);
-  const [spend, setSpend] = useState<number | null>(null);
-  const [own, setOwn] = useState("");
-  const [supers, setSupers] = useState<Record<string, string>>({});
-  const [saved, setSaved] = useState(false);
-  useEffect(() => {
-    document.title = "Set your goal · Early retirement · WheresMyMoney";
-  }, []);
-  const r = ret.data;
-  const people = r?.people ?? [];
-  const goalSpend = spend ?? r?.settings.spending ?? 8000000;
-  const fixes: Record<string, number> = {};
-  for (const p of people) {
-    const v = supers[p.person];
-    const c = v == null ? null : parseMoney(v);
-    if (c != null && c !== p.balance) fixes[p.person] = c;
-  }
-  const q = useQuery({
-    queryKey: ["fire", "goal", goalSpend, fixes],
-    queryFn: () => apiSend<Goal>("POST", "fire/goal", { spend: goalSpend, supers: fixes }),
-    placeholderData: keepPreviousData,
-    enabled: people.length > 0,
-  });
-  const save = useMutation({
-    mutationFn: async () => {
-      const today = new Date().toISOString().slice(0, 10);
-      await apiSend("PUT", "retirement/settings", { spending: goalSpend });
-      for (const p of people)
-        if (fixes[p.person] != null)
-          await apiSend("PUT", `retirement/people/${p.id}`, { balance: fixes[p.person], as_of: today });
-    },
-    onSuccess: () => {
-      const was = { spending: r?.settings.spending, people: people.map((p) => [p.id, p.balance, p.as_of] as const) };
-      refresh(qc);
-      setSaved(true);
-      toast("Goal saved", () =>
-        apiSend("PUT", "retirement/settings", { spending: was.spending })
-          .then(() =>
-            Promise.all(
-              was.people.map(([id, balance, as_of]) => apiSend("PUT", `retirement/people/${id}`, { balance, as_of })),
-            ),
-          )
-          .then(() => {
-            refresh(qc);
-            setSaved(false);
-          })
-          .catch((e) => toast(errorMessage(e))),
-      );
-    },
-    onError: (e) => toast(errorMessage(e)),
-  });
-
-  if (!r) return <Loading />;
-  if (people.length === 0)
+  if (first.isError) return <ErrorText>{errorMessage(first.error)}</ErrorText>;
+  if (!first.data || !ret.data) return <Loading />;
+  if (!first.data.ready)
     return (
       <>
-        <PageHead over="Future · Early retirement" title="Set your goal" />
-        <FireNav />
+        <FlowHead over="Early retirement" title="Set the goal" steps={[]} step={0} />
         <Empty
           title="Add your super first"
           action={
@@ -107,310 +37,328 @@ export function FireSetup() {
             </Link>
           }
         >
-          Each person&apos;s super balance, salary and the year they were born. The rest comes from your accounts.
+          {first.data.needs}
         </Empty>
       </>
     );
-  const g = q.data;
-  const etfs = (inv.data?.funds ?? [])
-    .filter((f) => f.kind !== "crypto" || r.settings.count_crypto)
-    .reduce((t, f) => t + f.value, 0);
-  const loan = acc.data?.loan ?? null;
-  const offsetting = acc.data?.offsetting ?? 0;
-  const lead = people[0];
-  const go = (n: number) => {
-    setStep(n);
-    setSaved(false);
-  };
-  const width = (a: FireSummary | null) => `${(((a?.retire_age ?? 70) - lead.age) / (70 - lead.age)) * 100}%`;
-  const gain = g?.today && g.plan ? g.today.retire_age - g.plan.retire_age : 0;
+  return <Setup start={first.data} spendingNow={ret.data.spending_now} />;
+}
+
+function Setup({ start, spendingNow }: { start: TrackReady; spendingNow: number }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const lead = start.people[0];
+  const [step, setStep] = useState(0);
+  const [goal, setGoal] = useState(start.goal.age);
+  const [planTo, setPlanTo] = useState(start.goal.plan_to);
+  const [spend, setSpend] = useState(start.goal.spend);
+  const [done, setDone] = useState<TrackReady | null>(null);
+  const q = useTrack({ goal, spend, plan_to: planTo });
+  const t = q.data && q.data.ready ? q.data : start;
+  const v = verdictOf(t);
+  const save = useMutation({
+    mutationFn: () => apiSend<Track>("PUT", "fire/goal", { age: goal, spend, plan_to: planTo }),
+    onSuccess: (r) => {
+      const was = start.goal;
+      refresh(qc);
+      if (r.ready) setDone(r);
+      toast("Goal saved", () =>
+        apiSend("PUT", "fire/goal", { age: was.age, spend: was.spend, plan_to: was.plan_to })
+          .then(() => {
+            refresh(qc);
+            setDone(null);
+            setStep(2);
+          })
+          .catch((e) => toast(errorMessage(e))),
+      );
+    },
+    onError: (e) => toast(errorMessage(e)),
+  });
+  const likeNow = Math.max(4_000_000, Math.round(spendingNow / 100_000) * 100_000);
+  const presets = [
+    { name: "Like now", value: likeNow, detail: "What you've spent in the last year, without the loan." },
+    {
+      name: "Comfortable",
+      value: likeNow + 1_600_000,
+      detail: "Like now, plus about $16,000 a year for travel and helping family.",
+    },
+    {
+      name: "Generous",
+      value: likeNow + 3_400_000,
+      detail: "Bigger trips, a newer car every few years, more eating out.",
+    },
+  ];
+  const ages = Array.from({ length: 13 }, (_, i) => 50 + i).filter((a) => a > lead.age);
+  const others = start.people.slice(1);
+  const goalI = Math.min(goal - lead.age, t.years.length - 1);
+  const opensI = Math.min(t.opens - lead.age, t.years.length - 1);
+
+  if (done) {
+    const dv = verdictOf(done);
+    return (
+      <>
+        <FlowHead over="Early retirement" title="Set the goal" steps={STEPS} step={3} />
+        <Card className="max-w-[860px] items-start gap-4 p-8">
+          <SuccessTick size={56} />
+          <h2 className="m-0 text-[28px] leading-[34px] font-semibold">
+            Goal saved: stop at {done.goal.age}, {money(done.goal.spend)} a year
+          </h2>
+          <p className="m-0 max-w-[600px] text-ink-2">{dv.sentence}</p>
+          <div className="flex flex-wrap gap-2.5">
+            <Link
+              to="/early-retirement"
+              className="btn-primary inline-flex min-h-11 items-center rounded-xl px-5 font-semibold no-underline"
+            >
+              See where we stand
+            </Link>
+            {!done.at_goal.ok && (
+              <Link
+                to="/early-retirement/close"
+                className="press inline-flex min-h-11 items-center rounded-xl border border-line-2 px-5 font-semibold text-ink no-underline"
+              >
+                Close the gap
+              </Link>
+            )}
+          </div>
+        </Card>
+      </>
+    );
+  }
 
   return (
     <>
-      <PageHead over="Future · Early retirement" title="Set your goal" />
-      <p className="-mt-2 mb-0 text-[14px] text-ink-3">
-        Four questions, most of them already answered from your accounts.
-      </p>
-      <FireNav />
-
-      <ol className="m-0 flex list-none flex-wrap gap-2 p-0" aria-label="Steps">
-        {STEPS.map((label, i) => (
-          <li key={label}>
-            <ChoiceChip pressed={step === i} onClick={() => go(i)} aria-current={step === i ? "step" : undefined}>
-              {i + 1}. {label}
-            </ChoiceChip>
-          </li>
-        ))}
-      </ol>
-
-      <div className="grid gap-4 md:grid-cols-12 [&>*]:min-w-0">
-        <Card lit tint="accent" aria-labelledby="fset-step" className="flex flex-col gap-4 md:col-span-8">
-          <span className="text-[12px] font-semibold tracking-wide text-ink-3 uppercase">
-            Step {step + 1} of 4{step === 3 ? " · Your freedom date" : ""}
-          </span>
-
+      <FlowHead over="Early retirement" title="Set the goal" steps={STEPS} step={step} />
+      <div className="flex flex-wrap items-start gap-6">
+        <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-5">
           {step === 0 && (
-            <>
-              <CardHead id="fset-step" title="How much a year once you stop?" />
-              <p className="m-0 text-[15px] text-ink-2">
-                You spend about <b className="text-ink">{money(r.spending_now)}</b> a year now
-                {loan ? ", plus the loan" : ""}. Most people want a little more once work stops, so we suggest{" "}
-                {money(8000000)}.
-              </p>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {SPEND.map(([v, label, sub]) => (
-                  <button
-                    key={v}
-                    type="button"
-                    aria-pressed={goalSpend === v}
-                    onClick={() => {
-                      setSpend(v);
-                      setOwn("");
-                    }}
-                    className={`flex cursor-pointer flex-col items-start gap-0.5 rounded-2xl border p-3 text-left ${
-                      goalSpend === v ? "border-accent bg-accent/10" : "border-line-2 bg-transparent"
-                    }`}
-                  >
-                    <span className="text-[13px] text-ink-3">{label}</span>
-                    <span className="num text-[18px] font-semibold text-ink">{money(v)}</span>
-                    <span className="text-[12px] text-ink-3">{sub}</span>
-                  </button>
-                ))}
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="fset-own">Or type your own, a year</Label>
-                <Input
-                  id="fset-own"
-                  inputMode="decimal"
-                  placeholder="$"
-                  value={own}
-                  onChange={(e) => {
-                    setOwn(e.target.value);
-                    const c = parseMoney(e.target.value);
-                    if (c != null && c >= 2000000 && c <= 30000000) setSpend(Math.round(c / 100000) * 100000);
-                  }}
-                  className="max-w-[220px]"
-                />
-              </div>
-              {g && (
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-[13px] font-semibold">What it&apos;s made of</span>
-                  <div
-                    className="flex h-3 overflow-hidden rounded-full"
-                    role="img"
-                    aria-label={`Essentials ${money(g.essentials)}, extras ${money(g.spend - g.essentials)}`}
-                  >
-                    <i style={{ width: `${(g.essentials / g.spend) * 100}%`, background: ROLE.savings }} />
-                    <i className="flex-1" style={{ background: ROLE.spending }} />
-                  </div>
-                  <span className="text-[12px] text-ink-3">
-                    Essentials {money(g.essentials)}: home, food, bills, health. Extras {money(g.spend - g.essentials)}:
-                    travel, eating out, gifts. Essentials set your Lean goal.
-                  </span>
-                </div>
-              )}
-              <div className="flex items-center gap-3">
-                <Button primary onClick={() => go(1)}>
-                  Next
-                </Button>
-                <span className="text-[12px] text-ink-3">You can change this any time.</span>
-              </div>
-            </>
-          )}
-
-          {step === 1 && (
-            <>
-              <CardHead
-                id="fset-step"
-                title="What you each earn"
-                right={
-                  <Link to="/settings" search={{ section: "household" }} className="text-[13px] text-teal">
-                    Change
-                  </Link>
-                }
-              />
-              <p className="m-0 text-[14px] text-ink-2">
-                From Settings › Household. The plan uses these for tax, employer super and how much room the caps leave.
-              </p>
-              <div className="grid gap-2.5 sm:grid-cols-2">
-                {people.map((p) => (
-                  <Stat
-                    key={p.id}
-                    label={p.person}
-                    value={money(p.salary)}
-                    note={`Before tax · paid ${PAY[p.pay_every] ?? "fortnightly"} · employer super ${Math.round(p.rate * 100)}%${
-                      p.sacrifice ? ` · sacrificing ${money(p.sacrifice)} a year` : " · no salary sacrifice"
-                    }`}
-                    role="accent"
-                  />
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <Button primary onClick={() => go(2)}>
-                  Next
-                </Button>
-                <Button onClick={() => go(0)}>Back</Button>
-              </div>
-            </>
-          )}
-
-          {step === 2 && (
-            <>
-              <CardHead id="fset-step" title="Anything we don't know?" />
-              <p className="m-0 text-[14px] text-ink-2">
-                We filled these in from your accounts and super statements. Fix anything that&apos;s out of date.
-              </p>
-              {people.map((p) => (
-                <div key={p.id} className="flex flex-wrap items-end justify-between gap-3 border-b border-line pb-3">
-                  <span>
-                    <b className="block text-[14px]">
-                      {p.person}, {p.age}
-                    </b>
-                    <span className="block text-[12px] text-ink-3">
-                      Super opens at {r.preservation}, in {p.opens}
-                    </span>
-                  </span>
-                  <span className="flex flex-col gap-1">
-                    <Label htmlFor={`fset-sup-${p.id}`}>
-                      {p.person}&apos;s super{p.fund ? `, ${p.fund}` : ""}
-                    </Label>
-                    <Input
-                      id={`fset-sup-${p.id}`}
-                      inputMode="decimal"
-                      value={supers[p.person] ?? (p.balance / 100).toFixed(0)}
-                      onChange={(e) => setSupers((s) => ({ ...s, [p.person]: e.target.value }))}
-                      className="num w-[180px]"
-                    />
-                  </span>
-                </div>
-              ))}
-              <div className="grid gap-2.5 sm:grid-cols-3">
-                <Stat label="ETFs outside super" value={money(etfs)} note="From Investments" role="invest" />
-                <Stat
-                  label="Accounts offsetting the loan"
-                  value={money(offsetting)}
-                  note="From Accounts · reachable any time"
-                  role="offset"
-                />
-                {loan && (
-                  <Stat
-                    label="Home loan"
-                    value={money(loan.balance)}
-                    note={`From Loan and offset${loan.repayment ? ` · ${money(loan.repayment)} a month` : ""}`}
-                    role="offset"
-                  />
-                )}
-              </div>
-              <div className="flex gap-2">
-                <Button primary onClick={() => go(3)}>
-                  See your date
-                </Button>
-                <Button onClick={() => go(1)}>Back</Button>
-              </div>
-            </>
-          )}
-
-          {step === 3 && g && (
-            <>
-              <CardHead
-                id="fset-step"
-                title={g.plan ? `${g.plan.retire_age}, in ${g.plan.retire_year}` : "Not by 70"}
-              />
-              <div className="grid gap-2.5 sm:grid-cols-2">
-                <Stat
-                  label="As things are"
-                  value={g.today ? `${g.today.retire_age}, in ${g.today.retire_year}` : "Not by 70"}
-                  role="accent"
-                />
-                <Stat
-                  label="With the loan money kept working"
-                  value={g.plan ? `${g.plan.retire_age}, in ${g.plan.retire_year}` : "Not by 70"}
-                  note={g.lasts ? `lasts to ${Math.min(g.lasts, 100)}` : ""}
-                  role="savings"
-                />
-              </div>
-              {loan && (
-                <p className="m-0 text-[14px] text-ink-2">
-                  <b className="text-ink">Biggest lever: keep investing the loan money once it&apos;s gone.</b> What the
-                  loan frees, half to ETFs and half to super.{" "}
-                  {gain > 0 ? `${gain} year${gain > 1 ? "s" : ""} sooner.` : "The same date either way."}
-                </p>
-              )}
-              {saved ? (
-                <div className="flex flex-col gap-2" role="status">
-                  <Pill tone="good">Saved. Freedom now starts from here.</Pill>
-                  <span className="text-[13px] text-ink-3">
-                    To count the loan money, tap Make it the plan on Freedom.
-                  </span>
-                  <Link to="/early-retirement" className="text-[14px] font-semibold text-teal">
-                    Go to Freedom
-                  </Link>
-                </div>
-              ) : (
-                <div className="flex gap-2">
-                  <Button primary disabled={save.isPending} onClick={() => save.mutate()}>
-                    Save my goal
-                  </Button>
-                  <Button onClick={() => go(2)}>Back</Button>
-                </div>
-              )}
-            </>
-          )}
-        </Card>
-
-        <Card aria-labelledby="fset-live" className="flex flex-col gap-3 md:col-span-4">
-          <CardHead id="fset-live" title="As you answer" />
-          {g && (
-            <>
+            <Card className="gap-5">
               <div>
-                <span className="num block text-[40px] leading-none font-semibold text-savings">{age(g.plan)}</span>
-                <span className="text-[13px] text-ink-3">
-                  earliest stop{g.plan ? `, in ${g.plan.retire_year}` : ""}, with the loan money kept working
-                </span>
+                <h2 className="m-0 text-[26px] leading-8 font-semibold tracking-[-0.02em]">
+                  When do you want to stop work?
+                </h2>
+                <p className="mt-1.5 mb-0 text-ink-2">
+                  {others.length
+                    ? `You stop in the same year. Pick ${lead.name}'s age; ${others.map((o) => o.name).join(" and ")}'s follows.`
+                    : "Pick the age you'd like to stop."}
+                </p>
               </div>
-              {(
-                [
-                  ["As things are", g.today, ROLE.accent, false],
-                  ["Loan money kept", g.plan, ROLE.savings, false],
-                  ["Essentials only", g.lean, ROLE.savings, true],
-                ] as const
-              ).map(([label, s, colour, lean]) => (
-                <div key={label} className="flex flex-col gap-1">
-                  <span className="flex justify-between text-[13px]">
-                    <span>{label}</span>
-                    <b className="num">{age(s)}</b>
-                  </span>
-                  <span className="block h-2 rounded-full bg-line">
-                    <i
-                      className={`block h-full rounded-full ${lean ? "striped" : ""}`}
-                      style={{ width: width(s), background: colour }}
-                    />
-                  </span>
+              <div
+                role="group"
+                aria-label={`Stop when ${lead.name} is`}
+                className="grid grid-cols-[repeat(auto-fill,minmax(92px,1fr))] gap-2.5"
+              >
+                {ages.map((a) => (
+                  <Option key={a} on={a === goal} onClick={() => setGoal(a)}>
+                    <span className="num text-[22px] leading-7 font-semibold">{a}</span>
+                    <span className="text-[12px] leading-4 text-ink-2">
+                      {[
+                        ...others.map((o) => `${o.name} ${o.age + (a - lead.age)}`),
+                        String(start.goal.year + (a - start.goal.age)),
+                      ].join(" · ")}
+                    </span>
+                  </Option>
+                ))}
+              </div>
+              <div className="h-px bg-line" />
+              <div className="flex flex-col gap-2.5">
+                <div>
+                  <div className="font-semibold">How long should the money last?</div>
+                  <div className="text-[14px] text-ink-2">Until {lead.name} is this age. Longer is safer.</div>
                 </div>
-              ))}
-              <p className="m-0 text-[12px] text-ink-3">
-                Bars run from today ({lead.age}) to each stop age. Striped is the Lean goal: essentials only,{" "}
-                {money(g.essentials)} a year.
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                <Stat label="Spending" value={money(g.spend)} note="a year, today's dollars" role="accent" />
-                <Stat
-                  label="Super, all"
-                  value={money(people.reduce((t, p) => t + (fixes[p.person] ?? p.balance), 0))}
-                  role="savings"
-                />
+                <div role="group" aria-label="Plan to" className="flex flex-wrap gap-2.5">
+                  {(
+                    [
+                      [90, "a bit tighter"],
+                      [92, "the usual"],
+                      [95, "extra careful"],
+                    ] as const
+                  ).map(([a, sub]) => (
+                    <Option key={a} on={a === planTo} onClick={() => setPlanTo(a)} className="min-w-[140px]">
+                      <span>
+                        <span className="num font-semibold">{a}</span>
+                        <span className="text-[13px] text-ink-2"> · {sub}</span>
+                      </span>
+                    </Option>
+                  ))}
+                </div>
               </div>
-            </>
+            </Card>
           )}
+          {step === 1 && (
+            <Card className="gap-5">
+              <div>
+                <h2 className="m-0 text-[26px] leading-8 font-semibold tracking-[-0.02em]">
+                  What will a year of retirement cost?
+                </h2>
+                <p className="mt-1.5 mb-0 text-ink-2">
+                  In today&apos;s dollars, for the household. The loan will be gone, so leave its repayments out.
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                {presets.map((p) => (
+                  <Option key={p.name} on={p.value === spend} onClick={() => setSpend(p.value)} className="p-4">
+                    <span className="font-semibold">{p.name}</span>
+                    <span className="num text-[24px] leading-[30px]">{money(p.value)}</span>
+                    <span className="text-[13px] leading-[18px] text-ink-2">{p.detail}</span>
+                  </Option>
+                ))}
+              </div>
+              <label className="flex flex-col gap-1.5">
+                <span className="flex flex-wrap justify-between gap-2">
+                  <span className="text-[14px] text-ink-2">Or set your own</span>
+                  <span className="num font-semibold">
+                    {money(spend)} a year · {money(spend / 12)} a month
+                  </span>
+                </span>
+                <input
+                  type="range"
+                  min={3_000_000}
+                  max={20_000_000}
+                  step={100_000}
+                  value={spend}
+                  onChange={(e) => setSpend(Number(e.target.value))}
+                  className="h-7 w-full accent-[var(--color-teal)]"
+                />
+              </label>
+              <div className="flex flex-wrap justify-between gap-2 rounded-2xl border border-line bg-sunken px-4 py-3.5 text-[14px]">
+                <span>What you&apos;ve spent in the last year, without the loan or transfers</span>
+                <span className="num font-semibold">{money(spendingNow)}</span>
+              </div>
+            </Card>
+          )}
+          {step === 2 && (
+            <Card className="gap-5">
+              <div>
+                <h2 className="m-0 text-[26px] leading-8 font-semibold tracking-[-0.02em]">
+                  Here&apos;s where that leaves you
+                </h2>
+                <p className="mt-1.5 mb-0 text-ink-2">
+                  Saving it doesn&apos;t move any money. It sets the checkpoints the app holds you to.
+                </p>
+              </div>
+              <dl className="m-0 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <Summary
+                  label="Stop work"
+                  value={`${lead.name} ${goal} · ${t.goal.year}`}
+                  onChange={() => setStep(0)}
+                />
+                <Summary label="Spend a year" value={money(spend)} onChange={() => setStep(1)} />
+                <Summary label="Last until" value={`${lead.name} ${planTo}`} onChange={() => setStep(0)} />
+              </dl>
+              <div className="flex flex-col gap-2.5">
+                <div className="font-semibold">What has to be true</div>
+                <Rule
+                  colour={COLOUR.loan}
+                  name={`Home loan gone by ${t.goal.year}`}
+                  status={
+                    t.loan && t.parts.loan.have > 0 ? statusOf(t.parts.loan) : { label: "Nothing owed", tone: "good" }
+                  }
+                >
+                  {t.loan?.gone_year ? `On schedule it goes in ${t.loan.gone_year}. ` : ""}Owe at most{" "}
+                  {k(t.parts.loan.need)} today.
+                </Rule>
+                <Rule
+                  colour={COLOUR.outside}
+                  name={`Outside super reaches ${k(t.years[goalI].outside_need)} by ${t.goal.year}`}
+                  status={goal < t.opens ? statusOf(t.parts.outside) : { label: "Not needed", tone: "good" }}
+                >
+                  {goal < t.opens
+                    ? `Pays for ${t.opens - goal} years until super opens. Need ${k(t.parts.outside.need)} today.`
+                    : "Super opens the year you stop."}
+                </Rule>
+                <Rule
+                  colour={COLOUR.super}
+                  name={`Super reaches ${k(t.years[opensI].super_need)} when ${lead.name} turns ${t.opens}`}
+                  status={statusOf(t.parts.super)}
+                >
+                  Lasts from {t.years[opensI].year} to {planTo}. Need {k(t.parts.super.need)} today.
+                </Rule>
+              </div>
+            </Card>
+          )}
+          {save.isError && <ErrorText>{errorMessage(save.error)}</ErrorText>}
+          <StepNav
+            back={step > 0 ? () => setStep(step - 1) : undefined}
+            next={() => (step < 2 ? setStep(step + 1) : save.mutate())}
+            nextLabel={step === 2 ? "Make it our goal" : "Next"}
+            busy={save.isPending}
+          />
+        </div>
+        <Card lit className="sticky top-6 min-w-0 flex-[1_1_320px] gap-3.5" aria-live="polite">
+          <div className="text-[12px] text-ink-3">As you choose</div>
+          <span className="self-start">
+            <Status tone={v.tone}>{v.pill}</Status>
+          </span>
+          <div
+            className="font-brand text-[32px] leading-[38px] font-semibold tracking-[-0.02em]"
+            style={{ color: TONE[v.tone] }}
+          >
+            {v.title}
+          </div>
+          <p className="m-0 text-[14px] leading-5 text-ink-2">{v.sentence}</p>
+          <LifeTimeline t={t} compact />
+          <dl className="m-0 flex flex-col gap-2 text-[13px]">
+            {goal < t.opens && (
+              <Line label={`Outside super needed by ${t.goal.year}`} value={k(t.years[goalI].outside_need)} />
+            )}
+            <Line label={`Super needed at ${t.opens}`} value={k(t.years[opensI].super_need)} />
+            <Line
+              label="Earliest on today's pace"
+              value={t.pace ? `${lead.name} ${t.pace.retire_age} · ${t.pace.retire_year}` : "After 70"}
+            />
+          </dl>
         </Card>
       </div>
-      <p className="m-0 text-[12px] text-ink-3">
-        Estimates to plan with, not advice. They rest on a few guesses:{" "}
-        <Link to="/early-retirement/assumptions" className="text-teal">
-          see the assumptions
-        </Link>
-        .
-      </p>
     </>
+  );
+}
+
+function Summary({ label, value, onChange }: { label: string; value: string; onChange: () => void }) {
+  return (
+    <div className="rounded-2xl border border-line bg-sunken p-3.5">
+      <dt className="text-[12px] text-ink-3">{label}</dt>
+      <dd className="num m-0 mt-1 text-[18px]">{value}</dd>
+      <dd className="m-0">
+        <button
+          type="button"
+          onClick={onChange}
+          className="min-h-8 cursor-pointer border-0 bg-transparent p-0 text-[13px] font-semibold text-teal"
+        >
+          Change
+        </button>
+      </dd>
+    </div>
+  );
+}
+
+function Rule({
+  colour,
+  name,
+  status,
+  children,
+}: {
+  colour: string;
+  name: string;
+  status: { label: string; tone: "good" | "warn" | "bad" };
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-line bg-sunken px-3.5 py-3">
+      <span className="h-9 w-2.5 flex-none rounded-md" style={{ background: colour }} />
+      <div className="min-w-0 flex-1">
+        <div className="font-semibold">{name}</div>
+        <div className="text-[13px] leading-[18px] text-ink-2">{children}</div>
+      </div>
+      <Status tone={status.tone}>{status.label}</Status>
+    </div>
+  );
+}
+
+function Line({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between gap-2">
+      <dt className="text-ink-2">{label}</dt>
+      <dd className="num m-0">{value}</dd>
+    </div>
   );
 }

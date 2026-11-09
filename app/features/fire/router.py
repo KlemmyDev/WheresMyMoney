@@ -36,6 +36,25 @@ async def save_goal(svc: ServicesDep, body: JsonBody):
     return await run(svc.fire.save_goal, body)
 
 
+@router.put("/extras")
+async def save_extras(svc: ServicesDep, body: JsonBody):
+    """Make extra a month part of the plan (Close the gap): {"extra_super": cents, "extra_etfs": cents,
+    "extra_loan": cents}. Returns {"was": ..., "track": ...}; PUT "was" back to undo."""
+    return await run(svc.fire.save_extras, body)
+
+
+@router.get("/checkpoint")
+async def checkpoint(svc: ServicesDep):
+    """Today's checkpoint: where each part is against its need now, and against the last check-in."""
+    return await run(svc.fire.checkpoint)
+
+
+@router.post("/checkpoint")
+async def checkpoint_save(svc: ServicesDep, body: JsonBody):
+    """{"save": true}: record today's checkpoint for next time (after updating any balances)."""
+    return await run(svc.fire.checkpoint, body)
+
+
 @router.post("/plan")
 async def save_plan(svc: ServicesDep):
     """Make the suggested plan the household's. Returns the saved plan and the rule changes it implies (to offer)."""

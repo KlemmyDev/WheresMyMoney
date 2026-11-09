@@ -244,6 +244,11 @@ function Super({
             instead of {Math.round(mtr * 100)}%), so it moves the date more than a dollar anywhere else, as long as the
             years before {t.opens} are covered.
           </p>
+          {!t.at_goal.ok && (
+            <Link to="/early-retirement/close" className="text-[14px] font-semibold text-teal no-underline">
+              Make it the plan →
+            </Link>
+          )}
         </div>
       </Card>
       <p className="m-0 text-[13px] text-ink-3">

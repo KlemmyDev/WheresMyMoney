@@ -35,7 +35,9 @@ import { Route as AppBillsBillIdRouteImport } from './routes/_app/bills_.$billId
 import { Route as AppBillsSpottedRouteImport } from './routes/_app/bills_.spotted'
 import { Route as AppEarlyRetirementAssumptionsRouteImport } from './routes/_app/early-retirement_.assumptions'
 import { Route as AppEarlyRetirementBridgeRouteImport } from './routes/_app/early-retirement_.bridge'
+import { Route as AppEarlyRetirementCheckinRouteImport } from './routes/_app/early-retirement_.checkin'
 import { Route as AppEarlyRetirementCheckpointsRouteImport } from './routes/_app/early-retirement_.checkpoints'
+import { Route as AppEarlyRetirementCloseRouteImport } from './routes/_app/early-retirement_.close'
 import { Route as AppEarlyRetirementDebtRouteImport } from './routes/_app/early-retirement_.debt'
 import { Route as AppEarlyRetirementDrawdownRouteImport } from './routes/_app/early-retirement_.drawdown'
 import { Route as AppEarlyRetirementNextRouteImport } from './routes/_app/early-retirement_.next'
@@ -182,12 +184,23 @@ const AppEarlyRetirementBridgeRoute =
     path: '/early-retirement/bridge',
     getParentRoute: () => AppRoute,
   } as any)
+const AppEarlyRetirementCheckinRoute =
+  AppEarlyRetirementCheckinRouteImport.update({
+    id: '/early-retirement_/checkin',
+    path: '/early-retirement/checkin',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppEarlyRetirementCheckpointsRoute =
   AppEarlyRetirementCheckpointsRouteImport.update({
     id: '/early-retirement_/checkpoints',
     path: '/early-retirement/checkpoints',
     getParentRoute: () => AppRoute,
   } as any)
+const AppEarlyRetirementCloseRoute = AppEarlyRetirementCloseRouteImport.update({
+  id: '/early-retirement_/close',
+  path: '/early-retirement/close',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppEarlyRetirementDebtRoute = AppEarlyRetirementDebtRouteImport.update({
   id: '/early-retirement_/debt',
   path: '/early-retirement/debt',
@@ -289,7 +302,9 @@ export interface FileRoutesByFullPath {
   '/bills/spotted': typeof AppBillsSpottedRoute
   '/early-retirement/assumptions': typeof AppEarlyRetirementAssumptionsRoute
   '/early-retirement/bridge': typeof AppEarlyRetirementBridgeRoute
+  '/early-retirement/checkin': typeof AppEarlyRetirementCheckinRoute
   '/early-retirement/checkpoints': typeof AppEarlyRetirementCheckpointsRoute
+  '/early-retirement/close': typeof AppEarlyRetirementCloseRoute
   '/early-retirement/debt': typeof AppEarlyRetirementDebtRoute
   '/early-retirement/drawdown': typeof AppEarlyRetirementDrawdownRoute
   '/early-retirement/next': typeof AppEarlyRetirementNextRoute
@@ -331,7 +346,9 @@ export interface FileRoutesByTo {
   '/bills/spotted': typeof AppBillsSpottedRoute
   '/early-retirement/assumptions': typeof AppEarlyRetirementAssumptionsRoute
   '/early-retirement/bridge': typeof AppEarlyRetirementBridgeRoute
+  '/early-retirement/checkin': typeof AppEarlyRetirementCheckinRoute
   '/early-retirement/checkpoints': typeof AppEarlyRetirementCheckpointsRoute
+  '/early-retirement/close': typeof AppEarlyRetirementCloseRoute
   '/early-retirement/debt': typeof AppEarlyRetirementDebtRoute
   '/early-retirement/drawdown': typeof AppEarlyRetirementDrawdownRoute
   '/early-retirement/next': typeof AppEarlyRetirementNextRoute
@@ -375,7 +392,9 @@ export interface FileRoutesById {
   '/_app/bills_/spotted': typeof AppBillsSpottedRoute
   '/_app/early-retirement_/assumptions': typeof AppEarlyRetirementAssumptionsRoute
   '/_app/early-retirement_/bridge': typeof AppEarlyRetirementBridgeRoute
+  '/_app/early-retirement_/checkin': typeof AppEarlyRetirementCheckinRoute
   '/_app/early-retirement_/checkpoints': typeof AppEarlyRetirementCheckpointsRoute
+  '/_app/early-retirement_/close': typeof AppEarlyRetirementCloseRoute
   '/_app/early-retirement_/debt': typeof AppEarlyRetirementDebtRoute
   '/_app/early-retirement_/drawdown': typeof AppEarlyRetirementDrawdownRoute
   '/_app/early-retirement_/next': typeof AppEarlyRetirementNextRoute
@@ -419,7 +438,9 @@ export interface FileRouteTypes {
     | '/bills/spotted'
     | '/early-retirement/assumptions'
     | '/early-retirement/bridge'
+    | '/early-retirement/checkin'
     | '/early-retirement/checkpoints'
+    | '/early-retirement/close'
     | '/early-retirement/debt'
     | '/early-retirement/drawdown'
     | '/early-retirement/next'
@@ -461,7 +482,9 @@ export interface FileRouteTypes {
     | '/bills/spotted'
     | '/early-retirement/assumptions'
     | '/early-retirement/bridge'
+    | '/early-retirement/checkin'
     | '/early-retirement/checkpoints'
+    | '/early-retirement/close'
     | '/early-retirement/debt'
     | '/early-retirement/drawdown'
     | '/early-retirement/next'
@@ -504,7 +527,9 @@ export interface FileRouteTypes {
     | '/_app/bills_/spotted'
     | '/_app/early-retirement_/assumptions'
     | '/_app/early-retirement_/bridge'
+    | '/_app/early-retirement_/checkin'
     | '/_app/early-retirement_/checkpoints'
+    | '/_app/early-retirement_/close'
     | '/_app/early-retirement_/debt'
     | '/_app/early-retirement_/drawdown'
     | '/_app/early-retirement_/next'
@@ -711,11 +736,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppEarlyRetirementBridgeRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/early-retirement_/checkin': {
+      id: '/_app/early-retirement_/checkin'
+      path: '/early-retirement/checkin'
+      fullPath: '/early-retirement/checkin'
+      preLoaderRoute: typeof AppEarlyRetirementCheckinRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/early-retirement_/checkpoints': {
       id: '/_app/early-retirement_/checkpoints'
       path: '/early-retirement/checkpoints'
       fullPath: '/early-retirement/checkpoints'
       preLoaderRoute: typeof AppEarlyRetirementCheckpointsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/early-retirement_/close': {
+      id: '/_app/early-retirement_/close'
+      path: '/early-retirement/close'
+      fullPath: '/early-retirement/close'
+      preLoaderRoute: typeof AppEarlyRetirementCloseRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/early-retirement_/debt': {
@@ -843,7 +882,9 @@ interface AppRouteChildren {
   AppBillsSpottedRoute: typeof AppBillsSpottedRoute
   AppEarlyRetirementAssumptionsRoute: typeof AppEarlyRetirementAssumptionsRoute
   AppEarlyRetirementBridgeRoute: typeof AppEarlyRetirementBridgeRoute
+  AppEarlyRetirementCheckinRoute: typeof AppEarlyRetirementCheckinRoute
   AppEarlyRetirementCheckpointsRoute: typeof AppEarlyRetirementCheckpointsRoute
+  AppEarlyRetirementCloseRoute: typeof AppEarlyRetirementCloseRoute
   AppEarlyRetirementDebtRoute: typeof AppEarlyRetirementDebtRoute
   AppEarlyRetirementDrawdownRoute: typeof AppEarlyRetirementDrawdownRoute
   AppEarlyRetirementNextRoute: typeof AppEarlyRetirementNextRoute
@@ -884,7 +925,9 @@ const AppRouteChildren: AppRouteChildren = {
   AppBillsSpottedRoute: AppBillsSpottedRoute,
   AppEarlyRetirementAssumptionsRoute: AppEarlyRetirementAssumptionsRoute,
   AppEarlyRetirementBridgeRoute: AppEarlyRetirementBridgeRoute,
+  AppEarlyRetirementCheckinRoute: AppEarlyRetirementCheckinRoute,
   AppEarlyRetirementCheckpointsRoute: AppEarlyRetirementCheckpointsRoute,
+  AppEarlyRetirementCloseRoute: AppEarlyRetirementCloseRoute,
   AppEarlyRetirementDebtRoute: AppEarlyRetirementDebtRoute,
   AppEarlyRetirementDrawdownRoute: AppEarlyRetirementDrawdownRoute,
   AppEarlyRetirementNextRoute: AppEarlyRetirementNextRoute,

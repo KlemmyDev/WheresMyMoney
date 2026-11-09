@@ -10,6 +10,7 @@ import datetime as dt
 import pytest
 from fastapi.testclient import TestClient
 
+from app.core import dates
 from app.features.fire import debt, shocks, tax
 from app.features.fire.model import THE_PLAN, Plan, freedom, project, sample, with_fee
 from app.features.fire.rules import fy2027
@@ -307,3 +308,32 @@ def test_the_goal_is_saved_and_tried(client: TestClient, household: dict) -> Non
     lower = ok(client.post("/api/fire/track", json={"supers": {"Alex": 0}}))
     assert lower["parts"]["super"]["have"] < t["parts"]["super"]["have"]
     assert client.put("/api/fire/goal", json={"age": 30}).status_code == 422
+
+
+def test_extras_made_the_plan_count_in_todays_pace_and_undo(client: TestClient, household: dict) -> None:
+    for name, born, balance, salary in (("Alex", 1988, 112600, 120000), ("Sam", 1990, 73800, 85000)):
+        body = {"person": name, "born": born, "balance": dollars(balance), "salary": dollars(salary), "rate": 0.12}
+        ok(client.post("/api/retirement/people", json=body))
+    before = ok(client.get("/api/fire/track"))
+    out = ok(client.put("/api/fire/extras", json={"extra_super": dollars(900)}))
+    assert out["was"] == {} and out["track"]["extras"]["extra_super"] == dollars(900)
+    assert out["track"]["levers"]["extra_super"] == dollars(900)
+    assert out["track"]["pace"]["retire_age"] < before["pace"]["retire_age"]
+    tried = ok(client.post("/api/fire/track", json={"extra_super": 0}))  # trying none, on top of the saved plan
+    assert tried["pace"]["retire_age"] == before["pace"]["retire_age"]
+    ok(client.put("/api/fire/extras", json={"extra_super": 0}))
+    assert ok(client.get("/api/fire/track"))["extras"]["extra_super"] == 0
+    assert client.put("/api/fire/extras", json={"extra_etfs": -5}).status_code == 422
+
+
+def test_checkpoints_are_recorded_and_compared(client: TestClient, household: dict) -> None:
+    body = {"person": "Alex", "born": 1988, "balance": dollars(112600), "salary": dollars(120000), "rate": 0.12}
+    pid = ok(client.post("/api/retirement/people", json=body))["id"]
+    first = ok(client.get("/api/fire/checkpoint"))
+    assert first["last"] is None and first["now"]["super"] == dollars(112600)
+    ok(client.post("/api/fire/checkpoint", json={"save": True}))
+    dates.set_today(dt.date(2027, 6, 30))
+    ok(client.put(f"/api/retirement/people/{pid}", json={"balance": dollars(131000), "as_of": "2027-06-30"}))
+    later = ok(client.post("/api/fire/checkpoint", json={"save": True}))
+    assert later["last"]["date"] == first["now"]["date"] and later["now"]["super"] == dollars(131000)
+    assert later["now"]["super_need"] > 0 and later["track"]["ready"]

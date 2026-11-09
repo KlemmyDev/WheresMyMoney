@@ -56,6 +56,12 @@ export function FireTrack() {
               <Link to="/early-retirement/checkpoints" className={QUIET}>
                 Checkpoints
               </Link>
+              <Link
+                to="/early-retirement/checkin"
+                className="btn-primary inline-flex min-h-11 items-center rounded-xl px-4 text-[14px] font-semibold no-underline"
+              >
+                Check in
+              </Link>
             </>
           ) : undefined
         }
@@ -645,6 +651,14 @@ function Levers({
             ? "Nothing more is needed for this goal."
             : `Any one of these on its own gets you to ${t.goal.age}`}
         </div>
+        {!t.at_goal.ok && !trying && (
+          <Link
+            to="/early-retirement/close"
+            className="btn-primary order-last inline-flex min-h-11 items-center justify-center rounded-xl px-4 text-[14px] font-semibold no-underline"
+          >
+            Make one of these the plan
+          </Link>
+        )}
         {ideas.map((c) => (
           <button
             key={c.key}
