@@ -20,6 +20,7 @@ from app.features.backups.service import BackupService
 from app.features.bills.service import BillsService
 from app.features.checkins.service import CheckinService
 from app.features.dashboard.service import DashboardService
+from app.features.fire.service import FireService
 from app.features.imports.service import ImportService
 from app.features.investments.service import InvestmentsService
 from app.features.keys.service import ApiKeyService
@@ -50,6 +51,7 @@ class Services:
     investments: InvestmentsService
     retirement: RetirementService
     networth: NetWorthService
+    fire: FireService
     notifications: Notifier
     updates: UpdateService
     backups: BackupService
@@ -110,6 +112,7 @@ def build_services(config: Config) -> Services:
         investments=investments,
         retirement=retirement,
         networth=NetWorthService(db, accounts, investments, retirement),
+        fire=FireService(accounts, investments, retirement, dashboard),
         notifications=Notifier(db, facts),
         updates=UpdateService(settings, Path(config.db_path).parent / "update"),
         backups=BackupService(config.db_path),

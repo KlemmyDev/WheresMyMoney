@@ -28,6 +28,7 @@ from app.features.bills.router import router as bills_router
 from app.features.checkins.router import router as checkins_router
 from app.features.dashboard.router import router as dashboard_router
 from app.features.demo.seed import seed as seed_demo
+from app.features.fire.router import router as fire_router
 from app.features.imports.router import router as imports_router
 from app.features.investments.router import router as investments_router
 from app.features.keys.router import router as keys_router
@@ -68,6 +69,7 @@ ROUTERS = [
     spending_router,
     dashboard_router,
     investments_router,
+    fire_router,
     retirement_router,
     networth_router,
     updates_router,
