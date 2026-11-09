@@ -286,7 +286,6 @@ function Readout({ colour, label, value }: { colour: string; label: string; valu
 
 const HOW: Record<string, string> = {
   manual: "Pay by hand",
-  estimate: "Amount varies",
 };
 
 /**
@@ -356,10 +355,10 @@ export function ComingUp({
                     b.how === "manual" && !b.paid ? "text-warn" : "text-ink-3",
                   )}
                 >
-                  {dayDate(b.date)} · {HOW[b.how] ?? "Auto-pay"}
+                  {dayDate(b.date)} · {b.varies && b.how !== "manual" ? "Amount varies" : (HOW[b.how] ?? "Auto-pay")}
                 </span>
               </span>
-              {b.how === "estimate" ? (
+              {b.varies ? (
                 <span
                   className="hatched num shrink-0 rounded-lg px-2 py-0.5 whitespace-nowrap"
                   style={{ ["--c" as string]: "var(--color-bills-fill)" }}

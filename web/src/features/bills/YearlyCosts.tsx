@@ -82,7 +82,7 @@ export function YearlyCosts({ b }: { b: BillsOverview }) {
                     <span className="flex items-baseline justify-between gap-3">
                       <span className="min-w-0 truncate font-semibold">{x.name}</span>
                       <span className="flex-none">
-                        {x.how === "estimate" && <span className="text-[13px] text-ink-3">about </span>}
+                        {x.varies && <span className="text-[13px] text-ink-3">about </span>}
                         <span className="num">{money(x.amount)}</span>
                       </span>
                     </span>

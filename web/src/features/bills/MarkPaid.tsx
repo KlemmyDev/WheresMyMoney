@@ -16,7 +16,7 @@ type Paid = { transaction_id: number; amount: number };
 export function MarkPaid({ due, primary }: { due: Due; primary?: boolean }) {
   const qc = useQueryClient();
   const toast = useToast();
-  const varies = due.how === "estimate";
+  const varies = due.varies;
   const [asking, setAsking] = useState(false);
   const [text, setText] = useState(editable(due.amount));
   const undo = useMutation({

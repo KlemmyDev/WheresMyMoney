@@ -30,7 +30,7 @@ import { YearlyCosts } from "~/features/bills/YearlyCosts";
 import { CategoryPicker } from "~/features/common/CategoryPicker";
 import { Button, ErrorText, Input, Label, PageHead, Pill, Select, Tile, TileTitle, cn } from "~/features/common/ui";
 
-const HOW = { auto: ["AUTO", "info"], manual: ["BY HAND", "warn"], estimate: ["ESTIMATE", "good"] } as const;
+const HOW = { auto: ["AUTO", "info"], manual: ["BY HAND", "warn"] } as const;
 
 export function BillsPage() {
   const q = useQuery(billsQuery);
@@ -262,7 +262,9 @@ export function BillsPage() {
                     {bill.status && (
                       <Pill tone={STATUS[bill.status][1]}>
                         {STATUS[bill.status][0]}
-                        {bill.status === "late" && bill.status_date ? ` · ${shortDate(bill.status_date)}` : ""}
+                        {(bill.status === "late" || bill.status === "paused") && bill.status_date
+                          ? ` · ${bill.status === "paused" ? "until " : ""}${shortDate(bill.status_date)}`
+                          : ""}
                       </Pill>
                     )}
                   </td>
@@ -273,7 +275,10 @@ export function BillsPage() {
                     {money(bill.per_year, { cents: true })}
                   </td>
                   <td className="border-b border-line px-2.5 py-2.5">
-                    <Pill tone={HOW[bill.how][1]}>{HOW[bill.how][0]}</Pill>
+                    <span className="flex gap-1">
+                      <Pill tone={HOW[bill.how][1]}>{HOW[bill.how][0]}</Pill>
+                      {bill.varies && <Pill tone="good">VARIES</Pill>}
+                    </span>
                   </td>
                 </tr>
               ))}
@@ -301,12 +306,13 @@ export function BillsPage() {
   );
 }
 
-type Filter = "all" | "late" | "soon" | "paid" | "hand";
+type Filter = "all" | "late" | "soon" | "paid" | "paused" | "hand";
 const FILTERS: Record<Filter, { label: string; test: (b: Bill) => boolean }> = {
   all: { label: "All", test: () => true },
   late: { label: "Late", test: (b) => b.status === "late" },
   soon: { label: "Due soon", test: (b) => b.status === "soon" },
   paid: { label: "Paid", test: (b) => b.status === "paid" },
+  paused: { label: "Paused", test: (b) => b.status === "paused" },
   hand: { label: "By hand", test: (b) => b.how !== "auto" },
 };
 
@@ -394,6 +400,7 @@ function BillForm({
           next_due: nextFrom(fromTx.date, "monthly"),
           account_id: String(fromTx.account_id),
           how: "auto",
+          varies: false,
           category_id: fromTx.category_kind === "bills" && fromTx.category_id != null ? String(fromTx.category_id) : "",
           match: fromTx.remember_as || fromTx.merchant,
         }
@@ -404,7 +411,8 @@ function BillForm({
             every: spotted.every,
             next_due: spotted.next_due,
             account_id: String(spotted.account_id ?? ""),
-            how: spotted.how as string,
+            how: "auto",
+            varies: spotted.variable || spotted.how === "estimate",
             category_id: String(spotted.category_id ?? ""),
             match: spotted.match,
           }
@@ -415,7 +423,8 @@ function BillForm({
               every: (yearly ? "yearly" : "monthly") as Every,
               next_due: todayIso(),
               account_id: String(banks.find((a) => a.role === "bills")?.id ?? ""),
-              how: yearly ? "estimate" : "auto",
+              how: "auto",
+              varies: !!yearly,
               category_id: "",
               match: "",
             }
@@ -425,7 +434,8 @@ function BillForm({
               every: bill.every,
               next_due: bill.next_due,
               account_id: String(bill.account_id ?? ""),
-              how: bill.how as string,
+              how: bill.how,
+              varies: bill.varies,
               category_id: String(bill.category_id ?? ""),
               match: bill.match,
             },
@@ -518,6 +528,7 @@ export type BillDraft = {
   next_due: string;
   account_id: string;
   how: string;
+  varies: boolean;
   category_id: string;
   match: string;
 };
@@ -592,9 +603,22 @@ export function BillFields({
         <Select id="b-how" value={f.how} onChange={(e) => onChange({ ...f, how: e.target.value })}>
           <option value="auto">Comes out automatically</option>
           <option value="manual">Paid by hand</option>
-          <option value="estimate">An estimate (it varies)</option>
         </Select>
       </div>
+      <label className="flex min-h-11 cursor-pointer items-start gap-2.5 sm:col-span-2">
+        <input
+          type="checkbox"
+          checked={f.varies}
+          onChange={(e) => onChange({ ...f, varies: e.target.checked })}
+          className="mt-1 size-4"
+        />
+        <span>
+          <span className="block text-[14px] text-ink">The amount changes each time</span>
+          <span className="block text-[13px] text-ink-3">
+            Then it&apos;s an estimate, and What&apos;s likely does the guessing.
+          </span>
+        </span>
+      </label>
       <div>
         <Label>Category</Label>
         <CategoryPicker

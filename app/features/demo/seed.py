@@ -51,7 +51,7 @@ BILLS = [
     ("Car rego", 86500, "yearly", None, "manual"),
     ("Gym", 6400, "monthly", 5, "auto"),
     ("Water", 18600, "quarterly", 15, "manual"),
-    ("Electricity", 8300, "quarterly", 31, "estimate"),
+    ("Electricity", 8300, "quarterly", 31, "varies"),
     ("Streaming", 2599, "monthly", 2, "auto"),
 ]
 
@@ -139,15 +139,16 @@ def seed(db: Database, today: dt.date | None = None) -> bool:
             else:
                 anchor = today.replace(day=min(dom or 1, 28))
             cur = conn.execute(
-                "INSERT INTO bills (name, amount, every, next_due, account_id, how, match, category_id, created_at)"
-                " VALUES (?, ?, ?, ?, ?, ?, '', ?, ?)",
+                "INSERT INTO bills (name, amount, every, next_due, account_id, how, varies, match, category_id,"
+                " created_at) VALUES (?, ?, ?, ?, ?, ?, ?, '', ?, ?)",
                 (
                     name,
                     amount,
                     every,
                     anchor.isoformat(),
                     bills_acct,
-                    how,
+                    "auto" if how == "varies" else how,
+                    int(how == "varies"),
                     cat["Kids"] if name == "Kids activities" else cat["Bills"],
                     now,
                 ),

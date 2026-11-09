@@ -382,6 +382,14 @@ def _push_only(conn: sqlite3.Connection) -> None:
     conn.execute("DROP TABLE IF EXISTS notify_channels")
 
 
+def _bill_pause_and_varies(conn: sqlite3.Connection) -> None:
+    """A bill whose amount changes each time is said with `varies`, apart from how it's paid (it was a third way of
+    paying, "estimate", which then came out automatically). `paused_until`: no due dates before that day."""
+    conn.execute("ALTER TABLE bills ADD COLUMN varies INTEGER NOT NULL DEFAULT 0")
+    conn.execute("ALTER TABLE bills ADD COLUMN paused_until TEXT")
+    conn.execute("UPDATE bills SET varies = 1, how = 'auto' WHERE how = 'estimate'")
+
+
 MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _baseline,
     _money,
@@ -407,4 +415,5 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _celebrations,
     _names_stuck_to_numbers,
     _loan_rows_not_merchants,
+    _bill_pause_and_varies,
 ]
