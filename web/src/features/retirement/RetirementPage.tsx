@@ -35,6 +35,7 @@ import {
 } from "~/features/common/queries";
 import { ScrubChart } from "~/features/common/ScrubChart";
 import { Button, ErrorText, Input, PageHead, Pill, Switch } from "~/features/common/ui";
+import { FreedomDates } from "~/features/fire/FreedomDates";
 import { assumptionsOf, etfFeeOf } from "~/features/retirement/Assumptions";
 import { earliest, fundTerms, project, type Inputs } from "~/features/retirement/model";
 
@@ -79,18 +80,21 @@ export function RetirementPage() {
           for both of you.
         </EmptyState>
       ) : (
-        <Plan
-          r={r}
-          etfs={(inv.data?.funds ?? [])
-            .filter((f) => f.kind !== "crypto" || r.settings.count_crypto)
-            .reduce((t, f) => t + f.value, 0)}
-          etfPerYear={etfPace(inv.data?.trades ?? [])}
-          etfFee={etfFeeOf(inv.data?.funds, r.settings.etf_fee)}
-          loanEnds={loan.data ? Number((loan.data.recent.date ?? "").slice(0, 4)) || null : null}
-          loanRepayment={(loan.data?.loan.repayment ?? 0) * 12}
-          goals={accounts.data?.goals ?? []}
-          onEdit={setEditing}
-        />
+        <>
+          <FreedomDates />
+          <Plan
+            r={r}
+            etfs={(inv.data?.funds ?? [])
+              .filter((f) => f.kind !== "crypto" || r.settings.count_crypto)
+              .reduce((t, f) => t + f.value, 0)}
+            etfPerYear={etfPace(inv.data?.trades ?? [])}
+            etfFee={etfFeeOf(inv.data?.funds, r.settings.etf_fee)}
+            loanEnds={loan.data ? Number((loan.data.recent.date ?? "").slice(0, 4)) || null : null}
+            loanRepayment={(loan.data?.loan.repayment ?? 0) * 12}
+            goals={accounts.data?.goals ?? []}
+            onEdit={setEditing}
+          />
+        </>
       )}
       <PersonSheet person={editing} onClose={() => setEditing(null)} />
     </>

@@ -52,6 +52,9 @@ class Facts:
     price_changes: list[dict[str, Any]] = field(default_factory=list)
     # Repeating payments that look like bills and haven't been added, waved away or put off ({"key", "name"}).
     spotted: list[dict[str, Any]] = field(default_factory=list)
+    # The freedom date against the saved plan's: {"age", "year", "saved_age", "saved_year", "saved_at"}; None with
+    # no saved plan (FireService.freedom_now).
+    freedom: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -227,6 +230,26 @@ def _spotted(f: Facts, v: dict[str, float]) -> Say | None:
     return Say("spotted:" + ",".join(sorted(s["key"] for s in f.spotted)), title, body, "/bills/spotted")
 
 
+def _freedom(f: Facts, v: dict[str, float]) -> Say | None:
+    """The freedom date moved away from the saved plan's, by at least a year: said once for each new date."""
+    x = f.freedom
+    if not x or x.get("saved_age") is None:
+        return None
+    age, was = x.get("age"), x["saved_age"]
+    if age is not None and abs(age - was) < v["years"]:
+        return None
+    if age is None:
+        title, body = "Your freedom date has slipped past 70", f"The plan had you stopping at {was}. See what changed."
+    else:
+        gap = abs(age - was)
+        years = "a year" if gap == 1 else f"{gap} years"
+        title = f"Your freedom date moved to {age}"
+        body = (
+            f"That's {x['year']}, {years} {'sooner' if age < was else 'later'} than the plan's {was}. See what changed."
+        )
+    return Say(f"freedom:{x.get('saved_at')}:{age}", title, body, "/early-retirement")
+
+
 RULES: list[Rule] = [
     Rule(
         "checkin",
@@ -276,6 +299,14 @@ RULES: list[Rule] = [
         _prices,
         {"percent": 3, "days": 21},
         units={"percent": "% more", "days": "days to tell"},
+    ),
+    Rule(
+        "freedom",
+        "Your freedom date moved",
+        "When the date you could stop work moves from the saved plan's by at least this much.",
+        _freedom,
+        {"years": 1},
+        units={"years": "years"},
     ),
     Rule("spotted", "New bills spotted", "When an import finds repeating payments that look like bills.", _spotted),
     Rule(

@@ -8,6 +8,7 @@ feature can be built, replaced or tested on its own.
 from __future__ import annotations
 
 import datetime as dt
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -32,6 +33,8 @@ from app.features.rules.service import RulesService
 from app.features.settings.store import SettingsStore
 from app.features.spending.service import SpendingService
 from app.features.updates.service import UpdateService
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -68,6 +71,7 @@ def build_services(config: Config) -> Services:
     dashboard = DashboardService(db, accounts, bills, rules, spending, checkins)
     investments = InvestmentsService(db)
     retirement = RetirementService(db)
+    fire = FireService(db, accounts, investments, retirement, dashboard)
 
     def last_statement() -> str | None:
         with db.reading() as conn:
@@ -82,6 +86,11 @@ def build_services(config: Config) -> Services:
             acct = accounts.get(bills_acct["account_id"])
             bills_acct = {**bills_acct, "alert": bool(acct and acct["alert_below"])}
         today = dates.today()
+        try:
+            freedom_now = fire.freedom_now()
+        except Exception:  # an engine hiccup mustn't stop the other notifications
+            log.exception("Couldn't work out the freedom date for notifications")
+            freedom_now = None
         return Facts(
             today=dates.today().isoformat(),
             hour=now.hour,
@@ -94,6 +103,7 @@ def build_services(config: Config) -> Services:
             last_statement=last_statement(),
             price_changes=spending.price_changes(),
             spotted=[{"key": x["key"], "name": x["name"]} for x in bills.spotted()["suggestions"]],
+            freedom=freedom_now,
         )
 
     return Services(
@@ -112,7 +122,7 @@ def build_services(config: Config) -> Services:
         investments=investments,
         retirement=retirement,
         networth=NetWorthService(db, accounts, investments, retirement),
-        fire=FireService(db, accounts, investments, retirement, dashboard),
+        fire=fire,
         notifications=Notifier(db, facts),
         updates=UpdateService(settings, Path(config.db_path).parent / "update"),
         backups=BackupService(config.db_path),
