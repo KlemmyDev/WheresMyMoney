@@ -2,7 +2,8 @@
  * Every signed-in page's frame (Nightfall, from the uplift canvas).
  *
  * Desktop: one top bar in a card. Overview is a tab; Money, Future and Manage are tabs that open a compact card of
- * their pages (icon chip and name) on hover or click. Check in and Add transaction sit on the right.
+ * their pages (icon chip and name) on hover or click. Add transaction sits on the right; Check in is the Overview's
+ * own action.
  *
  * Phone: the same four tabs move to a floating bar at the bottom (thumb reach) with + in the middle. A tab opens its
  * card as a sheet; + opens the things you record. Every target is at least 44px.
@@ -70,7 +71,7 @@ export const SECTIONS: readonly Section[] = [
   {
     // Set up once and looked after by whoever runs the household's money; not needed day to day.
     id: "manage",
-    label: "Setup",
+    label: "Manage",
     g: I.settings,
     pages: [
       { to: "/rules", label: "Rules", sub: "The transfers set up in uBank", g: I.rules, tone: "neutral" },
@@ -126,9 +127,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             </Link>
             <TopTabs section={section} path={path} />
             <div className="ml-auto flex flex-none items-center gap-2">
-              <Button className="whitespace-nowrap" onClick={() => setCheckin(true)}>
-                Check in
-              </Button>
               <Button primary className="whitespace-nowrap" onClick={() => setAdding(true)}>
                 Add transaction
               </Button>
@@ -137,7 +135,13 @@ export function AppShell({ children }: { children: ReactNode }) {
         </header>
 
         {/* Phone: the page's name, with Check in where a thumb can still reach it. */}
-        <header className="flex items-center gap-3 px-4 pt-[max(env(safe-area-inset-top),14px)] pb-2 sm:hidden">
+        <header
+          className={cn(
+            "flex items-center gap-3 px-4 pt-[max(env(safe-area-inset-top),14px)] pb-2 sm:hidden",
+            // The Overview opens with its own greeting and Check in, so it needs no header.
+            path === "/" && "hidden",
+          )}
+        >
           <div className="min-w-0 flex-1">
             <div className="text-[13px] text-ink-3">{section >= 0 ? SECTIONS[section].label : ""}</div>
             <div className="truncate text-[22px] leading-7 font-semibold tracking-[-0.02em]">{page?.label ?? ""}</div>

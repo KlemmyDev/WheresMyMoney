@@ -754,6 +754,7 @@ class SpendingService:
         daily = [0] * days
         by_category: dict[int | None, int] = {}
         by_person: dict[int | None, int] = {}
+        unsorted_count = 0
         spent = 0
         # Spent on someone's behalf (less what they've paid back): it's coming back, so it counts as still there.
         owed_back = 0
@@ -794,6 +795,8 @@ class SpendingService:
                 if 0 <= i < days:
                     daily[i] += out
                 by_category[cat] = by_category.get(cat, 0) + out
+                if cat is None:
+                    unsorted_count += 1
                 by_person[user_id] = by_person.get(user_id, 0) + out
         left += max(owed_back, 0)
         pace = elapsed / days
@@ -841,6 +844,7 @@ class SpendingService:
             "daily": daily,
             "categories": budgets,
             "unsorted": unsorted,
+            "unsorted_count": unsorted_count,
             "unbudgeted": max(allowance - budgeted, 0),
             "by_person": [{"user_id": k, "spent": v} for k, v in by_person.items()],
             "owed_back": max(owed_back, 0),

@@ -38,6 +38,24 @@ def test_pace_and_safe_to_spend(client: TestClient, household: dict) -> None:
     assert groceries["spent"] == dollars(500) and groceries["budget"] == dollars(1200)
 
 
+def test_the_month_counts_spends_still_to_sort(client: TestClient, household: dict) -> None:
+    """The Overview says how many spends need a category, not just what they add up to."""
+    for amount, what in ((dollars(30), "Corner store"), (dollars(12), "Market stall")):
+        ok(
+            client.post(
+                "/api/transactions",
+                json={
+                    "account_id": household["Spending"],
+                    "amount": -amount,
+                    "description": what,
+                    "date": "2026-11-02",
+                },
+            )
+        )
+    m = ok(client.get("/api/spending"))["month"]
+    assert m["unsorted_count"] == 2 and m["unsorted"] == dollars(42)
+
+
 def test_transfers_arent_spending(client: TestClient, household: dict) -> None:
     ids = household
     ok(
