@@ -24,6 +24,8 @@ export type Account = {
   repayment: number | null;
   repay_from: number | null;
   goal_date: string | null;
+  /** The mark the household picked (null: its job's mark). */
+  icon?: string | null;
   balance: number;
   ledger: number;
   gap: number;

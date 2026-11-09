@@ -32,7 +32,24 @@ MAX_ACCOUNTS = 20
 
 _COLUMNS = (
     "id, name, kind, role, last4, colour, offsets_loan, target_months, allowance, alert_below, rate_bp, repayment,"
-    " repay_from, goal_date, sort"
+    " repay_from, goal_date, sort, icon"
+)
+# The marks an account can wear (the web app's glyph names).
+ACCOUNT_ICONS = (
+    "accounts",
+    "offset",
+    "bills",
+    "spending",
+    "savings",
+    "shield",
+    "plane",
+    "car",
+    "shop",
+    "kids",
+    "play",
+    "invest",
+    "pay",
+    "list",
 )
 
 
@@ -53,6 +70,7 @@ def _row(r: tuple[Any, ...]) -> dict[str, Any]:
         "repay_from": r[12],
         "goal_date": r[13],
         "sort": r[14],
+        "icon": r[15],
     }
 
 
@@ -71,7 +89,10 @@ def _clean(body: dict[str, Any], kind: str) -> dict[str, Any]:
     if not name or len(name) > MAX_NAME:
         raise ValueError("Give the account a name, like the one in your banking app.")
     last4 = "".join(c for c in str(body.get("last4") or "") if c.isdigit())[-4:] or None
-    out: dict[str, Any] = {"name": name, "kind": kind, "last4": last4}
+    icon = body.get("icon") or None
+    if icon is not None and icon not in ACCOUNT_ICONS:
+        raise ValueError("Choose one of the account icons.")
+    out: dict[str, Any] = {"name": name, "kind": kind, "last4": last4, "icon": icon}
     if kind == "loan":
         rate = body.get("rate_bp")
         try:
@@ -176,9 +197,9 @@ class AccountsService:
             sort = conn.execute("SELECT COALESCE(MAX(sort), 0) + 1 FROM accounts").fetchone()[0]
             cur = conn.execute(
                 "INSERT INTO accounts (name, kind, role, last4, colour, offsets_loan, target_months, allowance,"
-                " alert_below, rate_bp, repayment, repay_from, goal_date, sort, created_at) VALUES (:name, :kind,"
-                " :role, :last4, :colour, :offsets_loan, :target_months, :allowance, :alert_below, :rate_bp,"
-                " :repayment, :repay_from, :goal_date, :sort, :now)",
+                " alert_below, rate_bp, repayment, repay_from, goal_date, icon, sort, created_at) VALUES (:name,"
+                " :kind, :role, :last4, :colour, :offsets_loan, :target_months, :allowance, :alert_below, :rate_bp,"
+                " :repayment, :repay_from, :goal_date, :icon, :sort, :now)",
                 {**f, "sort": sort, "now": now},
             )
             account_id = int(cur.lastrowid or 0)
@@ -199,7 +220,7 @@ class AccountsService:
                 "UPDATE accounts SET name = :name, role = :role, last4 = :last4, colour = :colour,"
                 " offsets_loan = :offsets_loan, target_months = :target_months, allowance = :allowance,"
                 " alert_below = :alert_below, rate_bp = :rate_bp, repayment = :repayment, repay_from = :repay_from,"
-                " goal_date = :goal_date WHERE id = :id",
+                " goal_date = :goal_date, icon = :icon WHERE id = :id",
                 {**f, "id": account_id},
             )
         account = self.get(account_id)
