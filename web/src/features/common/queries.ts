@@ -125,7 +125,14 @@ export const spendingQuery = queryOptions({
 export const spottedBillsQuery = queryOptions({
   queryKey: ["bills", "spotted"],
   queryFn: ({ signal }) =>
-    apiGet<{ suggestions: SpottedBill[]; updates: BillUpdate[] }>("bills/spotted", undefined, { signal }),
+    apiGet<{
+      suggestions: SpottedBill[];
+      updates: BillUpdate[];
+      /** Names of suggestions put off until the next import. */
+      later: string[];
+      /** The latest import (its files within the hour), for "From the latest import". */
+      from_import: { files: number; rows: number; at: number } | null;
+    }>("bills/spotted", undefined, { signal }),
 });
 
 export const merchantsQuery = (all: boolean) =>

@@ -36,7 +36,6 @@ export function BillsPage() {
   const q = useQuery(billsQuery);
   const navigate = useNavigate();
   const [editing, setEditing] = useState<Bill | "new" | null>(null);
-  const [spotted, setSpotted] = useState<SpottedBill | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const b = q.data;
   const acct = b?.account;
@@ -206,7 +205,7 @@ export function BillsPage() {
           <div className="text-xs text-ink-3">The bills account is there to cover the heaviest months.</div>
         </Tile>
       </div>
-      <SpottedBills i={6} onEdit={setSpotted} />
+      <SpottedBills i={6} />
       <Tile i={8} aria-labelledby="bl-all">
         <TileTitle id="bl-all" right={<span className="mono">{b.bills.length} BILLS</span>}>
           All bills{acct ? ` · paid from ${acct.name}` : ""}
@@ -301,7 +300,6 @@ export function BillsPage() {
         </div>
       </Tile>
       <BillDialog bill={editing} onClose={() => setEditing(null)} />
-      <BillDialog bill={spotted ? "new" : null} spotted={spotted} onClose={() => setSpotted(null)} />
     </>
   );
 }

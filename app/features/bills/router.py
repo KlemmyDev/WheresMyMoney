@@ -74,9 +74,28 @@ async def spotted(svc: ServicesDep):
 
 @router.post("/spotted/accept")
 async def accept(svc: ServicesDep, body: JsonBody):
-    """Add a spotted bill: {"key": "NETFLIX|monthly|3", "changes": {"name": "Netflix"}}."""
-    await run(svc.bills.accept, str(body.get("key") or ""), body.get("changes") or {})
-    return await _overview(svc)
+    """Add a spotted bill: {"key": "NETFLIX|monthly|3", "changes": {"name": "Netflix"}}. The overview comes back
+    with the new bill as "added" and the payments linked to it as "transaction_ids" (for Undo)."""
+    bill, ids = await run(svc.bills.accept, str(body.get("key") or ""), body.get("changes") or {})
+    return {**(await _overview(svc)), "added": bill.view(), "transaction_ids": ids}
+
+
+@router.post("/spotted/later")
+async def later(svc: ServicesDep, body: JsonBody):
+    """Remind me later: {"key": ...} is asked about again after the next import."""
+    await run(svc.bills.later, str(body.get("key") or ""))
+    return await run(svc.bills.spotted)
+
+
+@router.post("/spotted/undo")
+async def undo_spotted(svc: ServicesDep, body: JsonBody):
+    """Undo a choice about a suggestion: {"key": ...} after Not a bill or Remind me later, or
+    {"bill_id": 9, "transaction_ids": [...]} after adding it."""
+    if body.get("bill_id") not in (None, ""):
+        await run(svc.bills.unaccept, int(body["bill_id"]), [int(i) for i in body.get("transaction_ids") or []])
+    else:
+        await run(svc.bills.undismiss, str(body.get("key") or ""))
+    return await run(svc.bills.spotted)
 
 
 @router.post("/spotted/dismiss")

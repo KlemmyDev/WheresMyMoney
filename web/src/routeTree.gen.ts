@@ -30,6 +30,7 @@ import { Route as AppSpendingRouteImport } from './routes/_app/spending'
 import { Route as AppTransactionsRouteImport } from './routes/_app/transactions'
 import { Route as AppAccountsAccountIdRouteImport } from './routes/_app/accounts_.$accountId'
 import { Route as AppBillsBillIdRouteImport } from './routes/_app/bills_.$billId'
+import { Route as AppBillsSpottedRouteImport } from './routes/_app/bills_.spotted'
 import { Route as AppGoalsGoalIdRouteImport } from './routes/_app/goals_.$goalId'
 import { Route as AppMerchantsKeyRouteImport } from './routes/_app/merchants_.$key'
 import { Route as AppSpendingCategoryIdRouteImport } from './routes/_app/spending_.$categoryId'
@@ -138,6 +139,11 @@ const AppBillsBillIdRoute = AppBillsBillIdRouteImport.update({
   path: '/bills/$billId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppBillsSpottedRoute = AppBillsSpottedRouteImport.update({
+  id: '/bills_/spotted',
+  path: '/bills/spotted',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppGoalsGoalIdRoute = AppGoalsGoalIdRouteImport.update({
   id: '/goals_/$goalId',
   path: '/goals/$goalId',
@@ -175,6 +181,7 @@ export interface FileRoutesByFullPath {
   '/transactions': typeof AppTransactionsRoute
   '/accounts/$accountId': typeof AppAccountsAccountIdRoute
   '/bills/$billId': typeof AppBillsBillIdRoute
+  '/bills/spotted': typeof AppBillsSpottedRoute
   '/goals/$goalId': typeof AppGoalsGoalIdRoute
   '/merchants/$key': typeof AppMerchantsKeyRoute
   '/spending/$categoryId': typeof AppSpendingCategoryIdRoute
@@ -200,6 +207,7 @@ export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
   '/accounts/$accountId': typeof AppAccountsAccountIdRoute
   '/bills/$billId': typeof AppBillsBillIdRoute
+  '/bills/spotted': typeof AppBillsSpottedRoute
   '/goals/$goalId': typeof AppGoalsGoalIdRoute
   '/merchants/$key': typeof AppMerchantsKeyRoute
   '/spending/$categoryId': typeof AppSpendingCategoryIdRoute
@@ -227,6 +235,7 @@ export interface FileRoutesById {
   '/_app/': typeof AppIndexRoute
   '/_app/accounts_/$accountId': typeof AppAccountsAccountIdRoute
   '/_app/bills_/$billId': typeof AppBillsBillIdRoute
+  '/_app/bills_/spotted': typeof AppBillsSpottedRoute
   '/_app/goals_/$goalId': typeof AppGoalsGoalIdRoute
   '/_app/merchants_/$key': typeof AppMerchantsKeyRoute
   '/_app/spending_/$categoryId': typeof AppSpendingCategoryIdRoute
@@ -254,6 +263,7 @@ export interface FileRouteTypes {
     | '/transactions'
     | '/accounts/$accountId'
     | '/bills/$billId'
+    | '/bills/spotted'
     | '/goals/$goalId'
     | '/merchants/$key'
     | '/spending/$categoryId'
@@ -279,6 +289,7 @@ export interface FileRouteTypes {
     | '/'
     | '/accounts/$accountId'
     | '/bills/$billId'
+    | '/bills/spotted'
     | '/goals/$goalId'
     | '/merchants/$key'
     | '/spending/$categoryId'
@@ -305,6 +316,7 @@ export interface FileRouteTypes {
     | '/_app/'
     | '/_app/accounts_/$accountId'
     | '/_app/bills_/$billId'
+    | '/_app/bills_/spotted'
     | '/_app/goals_/$goalId'
     | '/_app/merchants_/$key'
     | '/_app/spending_/$categoryId'
@@ -465,6 +477,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppBillsBillIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/bills_/spotted': {
+      id: '/_app/bills_/spotted'
+      path: '/bills/spotted'
+      fullPath: '/bills/spotted'
+      preLoaderRoute: typeof AppBillsSpottedRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/goals_/$goalId': {
       id: '/_app/goals_/$goalId'
       path: '/goals/$goalId'
@@ -508,6 +527,7 @@ interface AppRouteChildren {
   AppIndexRoute: typeof AppIndexRoute
   AppAccountsAccountIdRoute: typeof AppAccountsAccountIdRoute
   AppBillsBillIdRoute: typeof AppBillsBillIdRoute
+  AppBillsSpottedRoute: typeof AppBillsSpottedRoute
   AppGoalsGoalIdRoute: typeof AppGoalsGoalIdRoute
   AppMerchantsKeyRoute: typeof AppMerchantsKeyRoute
   AppSpendingCategoryIdRoute: typeof AppSpendingCategoryIdRoute
@@ -532,6 +552,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppIndexRoute: AppIndexRoute,
   AppAccountsAccountIdRoute: AppAccountsAccountIdRoute,
   AppBillsBillIdRoute: AppBillsBillIdRoute,
+  AppBillsSpottedRoute: AppBillsSpottedRoute,
   AppGoalsGoalIdRoute: AppGoalsGoalIdRoute,
   AppMerchantsKeyRoute: AppMerchantsKeyRoute,
   AppSpendingCategoryIdRoute: AppSpendingCategoryIdRoute,
