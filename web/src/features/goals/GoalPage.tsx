@@ -7,11 +7,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { apiSend, errorMessage } from "~/features/common/api";
+import { apiGet, apiSend, errorMessage } from "~/features/common/api";
 import { Loading } from "~/features/common/brand";
-import { Card, CardHead, ChoiceChip } from "~/features/common/ds";
-import { EditPanel, EntityHeader, EntityHero } from "~/features/common/entity";
-import { editable, money, monthYear, parseMoney, pct, todayIso } from "~/features/common/format";
+import { Card, CardHead, ChoiceChip, ROLE } from "~/features/common/ds";
+import { ScrubChart } from "~/features/common/ScrubChart";
+import { EditPanel, EntityHeader, EntityHero, LikelyCard } from "~/features/common/entity";
+import { dayDate, editable, money, monthYear, parseMoney, pct, todayIso } from "~/features/common/format";
 import { Chip } from "~/features/common/icons";
 import { useToast } from "~/features/common/overlay";
 import { accountsQuery, refresh, rulesQuery } from "~/features/common/queries";
@@ -181,6 +182,61 @@ export function GoalPage({ id }: { id: number }) {
         )}
       </EntityHero>
 
+      {!goal.reached_at && (
+        <div className="grid gap-4 md:grid-cols-12 [&>*]:min-w-0">
+          <SavedOverTime goal={goal} />
+          <LikelyCard
+            id="gp-likely"
+            className="md:col-span-4"
+            notReady={
+              perPay || full
+                ? undefined
+                : "Nothing goes in each pay yet, so there's no finish to see. Change it to add an amount."
+            }
+            now={
+              perPay || full
+                ? {
+                    label: "Reached",
+                    total: likely ? monthYear(likely) : "Not yet",
+                    bar: {
+                      label: `${money(goal.saved)} saved of ${money(goal.target)}`,
+                      max: goal.target || 1,
+                      segments: [
+                        { value: Math.min(goal.saved, goal.target), role: "savings" },
+                        { value: Math.max(goal.target - goal.saved, 0), role: "savings", likely: true },
+                      ],
+                    },
+                    text: full
+                      ? "It's fully saved."
+                      : `At ${money(perPay)} each pay, about ${Math.ceil(left / perPay)} more pays.`,
+                  }
+                : undefined
+            }
+            next={
+              perPay && !full
+                ? {
+                    label: "Next top-up",
+                    total: money(perPay),
+                    text: `${dayDate(pay.next)}, from the offset by your pay-day rule.`,
+                  }
+                : undefined
+            }
+          />
+          {!full && <BringForward left={left} perPay={perPay} every={pay.every} wanted={wanted} />}
+          <TopUps goalId={goal.id} />
+          <Card aria-labelledby="gp-plan" className="flex flex-col gap-1 md:col-span-6">
+            <CardHead id="gp-plan" title="The plan" />
+            <PlanRow label="Target" value={money(goal.target)} />
+            <PlanRow label="By" value={wanted ? `End of ${monthYear(wanted)}` : "Any time"} />
+            <PlanRow label="Pay-day move" value={perPay ? `${money(perPay)} each pay` : "None yet"} />
+            <PlanRow
+              label={`Held in ${account?.name ?? "Savings"}`}
+              value={account?.offsets_loan ? "Still offsetting the loan" : "Not offsetting the loan"}
+            />
+          </Card>
+        </div>
+      )}
+
       <Card aria-labelledby="gp-others" className="flex flex-col gap-2">
         <CardHead
           id="gp-others"
@@ -219,6 +275,126 @@ export function GoalPage({ id }: { id: number }) {
     </>
   );
 }
+
+/** Saved over time: the top-ups added up, month by month, ending at what's saved now. */
+function SavedOverTime({ goal }: { goal: Goal }) {
+  const q = useQuery({
+    queryKey: ["goals", goal.id],
+    queryFn: ({ signal }) => apiGet<GoalDetail>(`goals/${goal.id}`, undefined, { signal }),
+  });
+  const moves = (q.data?.moves ?? []).filter((m) => m.status !== "planned");
+  // Twelve months back from now: saved at the end of each, working back from today's total.
+  const months = Array.from({ length: 12 }, (_, i) => monthOn(i - 11));
+  const after = (m: string) => moves.filter((x) => x.date.slice(0, 7) > m).reduce((t, x) => t + x.amount, 0);
+  const values = months.map((m) => Math.max(goal.saved - after(m), 0));
+  return (
+    <Card aria-labelledby="gp-saved" className="flex flex-col gap-3 md:col-span-8">
+      <CardHead
+        id="gp-saved"
+        title="Saved over time"
+        right={<span className="text-[13px] text-ink-3">target {money(goal.target)}</span>}
+      />
+      <ScrubChart
+        label={`${goal.name} saved each month, now ${money(goal.saved)} of ${money(goal.target)}`}
+        lines={[{ name: "Saved", values, colour: ROLE.savings, fill: true }]}
+        at={(i) => (i === months.length - 1 ? "Now" : monthYear(months[i]))}
+        format={(v) => money(v)}
+        floor={0}
+        height={180}
+        axis={[0, 6, 11]}
+      />
+      <p className="m-0 text-[12px] text-ink-3">
+        From the top-ups below; changes made by hand show as the starting amount.
+      </p>
+    </Card>
+  );
+}
+
+/** What a little more each pay would do to the finish. */
+function BringForward({
+  left,
+  perPay,
+  every,
+  wanted,
+}: {
+  left: number;
+  perPay: number;
+  every: keyof typeof PER_YEAR;
+  wanted: string | null;
+}) {
+  const steps = [0, 2500, 5000, 10000].map((x) => perPay + x).filter((x) => x > 0);
+  return (
+    <Card aria-labelledby="gp-forward" className="flex flex-col gap-1 md:col-span-6">
+      <CardHead id="gp-forward" title="What would bring it forward" />
+      {steps.map((x) => {
+        const when = finish(left, x, every);
+        return (
+          <div
+            key={x}
+            className="flex min-h-11 items-center justify-between gap-3 border-b border-line text-[14px] last:border-b-0"
+          >
+            <span className="text-ink-2">
+              {money(x)} each pay{x === perPay ? " (now)" : ` (+${money(x - perPay)})`}
+            </span>
+            <span className={`num ${wanted && when && when <= wanted ? "text-savings" : ""}`}>
+              {when ? `Reached ${monthYear(when)}` : "—"}
+            </span>
+          </div>
+        );
+      })}
+      <p className="m-0 text-[12px] text-ink-3">Change it to pick a new amount; the pay-day rule follows.</p>
+    </Card>
+  );
+}
+
+function TopUps({ goalId }: { goalId: number }) {
+  const q = useQuery({
+    queryKey: ["goals", goalId],
+    queryFn: ({ signal }) => apiGet<GoalDetail>(`goals/${goalId}`, undefined, { signal }),
+  });
+  const moves = q.data?.moves ?? [];
+  return (
+    <Card aria-labelledby="gp-tops" className="flex flex-col gap-1 md:col-span-6">
+      <CardHead
+        id="gp-tops"
+        title="Top-ups"
+        right={<span className="text-[13px] text-ink-3">matched on import</span>}
+      />
+      {moves.slice(0, 8).map((m) => (
+        <div
+          key={m.id}
+          className="flex min-h-11 items-center justify-between gap-3 border-b border-line text-[14px] last:border-b-0"
+        >
+          <span>
+            {dayDate(m.date)}
+            <span className="block text-[12px] text-ink-3">
+              {m.status === "matched"
+                ? "From a statement"
+                : m.status === "planned"
+                  ? "Planned, not moved yet"
+                  : "Moved"}
+            </span>
+          </span>
+          <span className="num">+{money(m.amount)}</span>
+        </div>
+      ))}
+      {!moves.length && <p className="m-0 text-[13px] text-ink-3">None yet.</p>}
+    </Card>
+  );
+}
+
+function PlanRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex min-h-10 items-center justify-between gap-3 border-b border-line text-[14px] last:border-b-0">
+      <span className="text-ink-2">{label}</span>
+      <span>{value}</span>
+    </div>
+  );
+}
+
+type GoalDetail = Goal & {
+  moves: { id: number; date: string; amount: number; status: "moved" | "matched" | "planned" }[];
+};
 
 /**
  * Change the goal in the entity edit panel: name, target, the month it's wanted by and what goes in each pay. The

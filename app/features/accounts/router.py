@@ -107,6 +107,12 @@ async def add_goal(svc: ServicesDep, body: JsonBody):
     return await run(svc.accounts.save_goal, body)
 
 
+@router.get("/goals/{goal_id}")
+async def goal_detail(svc: ServicesDep, goal_id: int):
+    """One goal and its top-ups, newest first."""
+    return await run(svc.accounts.goal_detail, goal_id)
+
+
 @router.put("/goals/{goal_id}")
 async def update_goal(svc: ServicesDep, goal_id: int, body: JsonBody):
     return await run(svc.accounts.save_goal, body, goal_id)

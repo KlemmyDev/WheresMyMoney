@@ -170,3 +170,13 @@ def test_a_new_repayment_is_kept_in_the_loans_history(client: TestClient, househ
     assert done["loan"]["repayment"] == dollars(4000)
     change = next(c for c in ok(client.get("/api/loan"))["changes"] if c["field"] == "repayment")
     assert change["value"] == dollars(4000) and change["was"] == dollars(3770)
+
+
+def test_a_goal_comes_with_its_top_ups(client: TestClient, household: dict) -> None:
+    goal = _goal(client, household)
+    ok(client.post(f"/api/goals/{goal['id']}/top_up", json={"amount": dollars(200)}))
+    ok(client.post(f"/api/goals/{goal['id']}/top_up", json={"amount": dollars(300), "moved": False}))
+    d = ok(client.get(f"/api/goals/{goal['id']}"))
+    assert d["saved"] == dollars(200)
+    assert [(m["amount"], m["status"]) for m in d["moves"]] == [(dollars(300), "planned"), (dollars(200), "moved")]
+    assert client.get("/api/goals/999").status_code == 404
