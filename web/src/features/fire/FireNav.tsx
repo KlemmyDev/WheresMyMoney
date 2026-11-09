@@ -6,13 +6,13 @@ import { cn } from "~/features/common/ui";
 export const FIRE_PAGES = [
   { to: "/early-retirement", label: "On track?" },
   { to: "/early-retirement/checkpoints", label: "Checkpoints" },
+  { to: "/early-retirement/drawdown", label: "Who pays each year" },
   { to: "/early-retirement/setup", label: "Set your goal" },
   { to: "/early-retirement/scenarios", label: "Scenarios" },
   { to: "/early-retirement/bridge", label: "Before super opens" },
   { to: "/early-retirement/next", label: "Where the extra goes" },
   { to: "/early-retirement/debt", label: "Loan or invest" },
   { to: "/early-retirement/stress", label: "What could go wrong" },
-  { to: "/early-retirement/drawdown", label: "Spending it" },
   { to: "/early-retirement/assumptions", label: "Assumptions" },
 ] as const;
 
