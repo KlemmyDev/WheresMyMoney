@@ -95,3 +95,9 @@ async def drawdown(svc: ServicesDep, body: JsonBody):
 async def assume(svc: ServicesDep, body: JsonBody):
     """{"super_return": 0.07, "super_fee": 0.006, "inflation": 0.03, "plan_to": 92}: the dates with these guesses."""
     return await run(svc.fire.assume, body)
+
+
+@router.post("/goal")
+async def goal(svc: ServicesDep, body: JsonBody):
+    """{"spend": 8000000, "supers": {"Alex": 18640000}}: Set your goal's dates as you answer, before saving."""
+    return await run(svc.fire.goal, body)

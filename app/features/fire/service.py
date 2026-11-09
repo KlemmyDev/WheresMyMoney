@@ -364,6 +364,42 @@ class FireService:
             "funds_fee": fund_fee(self.retirement.people())[0],
         }
 
+    def goal(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Set your goal, as you answer: the dates with this spending a year and any super balances corrected
+        ({"spend": cents, "supers": {name: cents}}), as things are, with the plan, and on essentials only."""
+        built = self.household()
+        if built is None:
+            raise ValueError("Add each person's super first, on Retirement.")
+        h, _ = built
+        try:
+            spend = float(body["spend"]) / 100 if body.get("spend") is not None else h.spend
+            fixes = {str(k): float(v) / 100 for k, v in (body.get("supers") or {}).items()}
+        except (TypeError, ValueError, AttributeError):
+            raise ValueError("Those amounts aren't numbers we can use.") from None
+        if not 20_000 <= spend <= 300_000:
+            raise ValueError("Spending once stopped should be between $20,000 and $300,000 a year.")
+        if any(v < 0 for v in fixes.values()):
+            raise ValueError("A super balance can't be below $0.")
+        people = [replace(p, super_balance=fixes.get(p.name, p.super_balance)) for p in h.people]
+        h = replace(h, people=people, spend=spend)
+        if fixes and self.retirement.settings().get("super_fee") is None:
+            # Each fund's fees are weighted by balance, so a corrected balance moves the fee too.
+            rows = [
+                {**p, "balance": round(fixes[p["person"]] * 100)} if p["person"] in fixes else p
+                for p in self.retirement.people()
+            ]
+            h = replace(h, super_fee=fund_fee(rows)[0])
+        today_plan = freedom(h, Plan())
+        with_plan = freedom(h, THE_PLAN)
+        return {
+            "spend": round(spend * 100),
+            "essentials": round(spend * LEAN * 100),
+            "today": _summary(today_plan),
+            "plan": _summary(with_plan),
+            "lean": _summary(freedom(h, replace(THE_PLAN, spend=spend * LEAN))),
+            "lasts": with_plan["lasts"] if with_plan else None,
+        }
+
     def track(self, saved: dict[str, Any]) -> list[dict[str, Any]]:
         """Each check-in (from a year before the plan was saved) and today: what was put away then (super, ETFs and
         the offset, as the plan counts it) against where the saved plan has it by then. In cents."""
