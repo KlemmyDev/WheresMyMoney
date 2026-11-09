@@ -70,7 +70,7 @@ def test_part_time_and_the_age_pension_help() -> None:
 
 def test_this_financial_year_has_a_rules_file() -> None:
     today = dt.date.today()
-    assert rules_for(today).YEAR == financial_year(today)
+    assert financial_year(today) == rules_for(today).YEAR
     assert financial_year(dt.date(2026, 11, 9)) == 2027 and financial_year(dt.date(2027, 6, 30)) == 2027
     with pytest.raises(LookupError):
         rules_for(dt.date(2040, 1, 1))
