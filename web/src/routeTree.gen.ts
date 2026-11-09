@@ -18,6 +18,7 @@ import { Route as AppBillsRouteImport } from './routes/_app/bills'
 import { Route as AppBudgetsRouteImport } from './routes/_app/budgets'
 import { Route as AppCryptoRouteImport } from './routes/_app/crypto'
 import { Route as AppDesignRouteImport } from './routes/_app/design'
+import { Route as AppEarlyRetirementRouteImport } from './routes/_app/early-retirement'
 import { Route as AppImportRouteImport } from './routes/_app/import'
 import { Route as AppInvestmentsRouteImport } from './routes/_app/investments'
 import { Route as AppLoanRouteImport } from './routes/_app/loan'
@@ -81,6 +82,11 @@ const AppCryptoRoute = AppCryptoRouteImport.update({
 const AppDesignRoute = AppDesignRouteImport.update({
   id: '/design',
   path: '/design',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppEarlyRetirementRoute = AppEarlyRetirementRouteImport.update({
+  id: '/early-retirement',
+  path: '/early-retirement',
   getParentRoute: () => AppRoute,
 } as any)
 const AppImportRoute = AppImportRouteImport.update({
@@ -194,6 +200,7 @@ export interface FileRoutesByFullPath {
   '/budgets': typeof AppBudgetsRoute
   '/crypto': typeof AppCryptoRoute
   '/design': typeof AppDesignRoute
+  '/early-retirement': typeof AppEarlyRetirementRoute
   '/import': typeof AppImportRoute
   '/investments': typeof AppInvestmentsRoute
   '/loan': typeof AppLoanRoute
@@ -223,6 +230,7 @@ export interface FileRoutesByTo {
   '/budgets': typeof AppBudgetsRoute
   '/crypto': typeof AppCryptoRoute
   '/design': typeof AppDesignRoute
+  '/early-retirement': typeof AppEarlyRetirementRoute
   '/import': typeof AppImportRoute
   '/investments': typeof AppInvestmentsRoute
   '/loan': typeof AppLoanRoute
@@ -255,6 +263,7 @@ export interface FileRoutesById {
   '/_app/budgets': typeof AppBudgetsRoute
   '/_app/crypto': typeof AppCryptoRoute
   '/_app/design': typeof AppDesignRoute
+  '/_app/early-retirement': typeof AppEarlyRetirementRoute
   '/_app/import': typeof AppImportRoute
   '/_app/investments': typeof AppInvestmentsRoute
   '/_app/loan': typeof AppLoanRoute
@@ -288,6 +297,7 @@ export interface FileRouteTypes {
     | '/budgets'
     | '/crypto'
     | '/design'
+    | '/early-retirement'
     | '/import'
     | '/investments'
     | '/loan'
@@ -317,6 +327,7 @@ export interface FileRouteTypes {
     | '/budgets'
     | '/crypto'
     | '/design'
+    | '/early-retirement'
     | '/import'
     | '/investments'
     | '/loan'
@@ -348,6 +359,7 @@ export interface FileRouteTypes {
     | '/_app/budgets'
     | '/_app/crypto'
     | '/_app/design'
+    | '/_app/early-retirement'
     | '/_app/import'
     | '/_app/investments'
     | '/_app/loan'
@@ -440,6 +452,13 @@ declare module '@tanstack/react-router' {
       path: '/design'
       fullPath: '/design'
       preLoaderRoute: typeof AppDesignRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/early-retirement': {
+      id: '/_app/early-retirement'
+      path: '/early-retirement'
+      fullPath: '/early-retirement'
+      preLoaderRoute: typeof AppEarlyRetirementRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/import': {
@@ -591,6 +610,7 @@ interface AppRouteChildren {
   AppBudgetsRoute: typeof AppBudgetsRoute
   AppCryptoRoute: typeof AppCryptoRoute
   AppDesignRoute: typeof AppDesignRoute
+  AppEarlyRetirementRoute: typeof AppEarlyRetirementRoute
   AppImportRoute: typeof AppImportRoute
   AppInvestmentsRoute: typeof AppInvestmentsRoute
   AppLoanRoute: typeof AppLoanRoute
@@ -620,6 +640,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppBudgetsRoute: AppBudgetsRoute,
   AppCryptoRoute: AppCryptoRoute,
   AppDesignRoute: AppDesignRoute,
+  AppEarlyRetirementRoute: AppEarlyRetirementRoute,
   AppImportRoute: AppImportRoute,
   AppInvestmentsRoute: AppInvestmentsRoute,
   AppLoanRoute: AppLoanRoute,

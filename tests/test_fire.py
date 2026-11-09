@@ -90,3 +90,27 @@ def test_the_api_answers_for_the_households_own_numbers(client: TestClient, hous
     assert f["rows"][0]["age"] == 38 and f["debt"] and f["debt"][0]["extra"] == dollars(250)
     assert {s["key"] for s in f["shocks"]} == {"rough", "inflation", "spend", "income"}
     assert f["bridge"]["years"] >= 0
+
+
+def test_the_hub_has_milestones_scenarios_and_a_plan_to_make_yours(client: TestClient, household: dict) -> None:
+    for name, born, balance, salary in (("Alex", 1988, 112600, 120000), ("Sam", 1990, 73800, 85000)):
+        body = {"person": name, "born": born, "balance": dollars(balance), "salary": dollars(salary), "rate": 0.12}
+        ok(client.post("/api/retirement/people", json=body))
+    f = ok(client.get("/api/fire"))
+    assert {s["key"] for s in f["scenarios"]} == {"today", "keep", "kill", "part"}
+    assert f["milestones"]["full"]["age"] == f["plan"]["retire_age"]
+    assert [p["opens"] for p in f["people"]] == [2048, 2050]
+    assert 0 < f["progress"]["share"] < 1 and f["saved"] is None
+    saved = ok(client.post("/api/fire/plan"))
+    assert saved["saved"]["retire_age"] == f["plan"]["retire_age"] and saved["rules"]["now"] == []
+    again = ok(client.get("/api/fire"))
+    assert again["saved"]["retire_age"] == f["plan"]["retire_age"] and again["vs_plan"]["year"] == 2026
+    ok(client.delete("/api/fire/plan"))
+    assert ok(client.get("/api/fire"))["saved"] is None
+
+
+def test_coast_is_when_saving_could_stop() -> None:
+    from app.features.fire.model import coast
+
+    h = sample()
+    assert coast(h, THE_PLAN, 60) == 54

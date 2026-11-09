@@ -112,7 +112,7 @@ def build_services(config: Config) -> Services:
         investments=investments,
         retirement=retirement,
         networth=NetWorthService(db, accounts, investments, retirement),
-        fire=FireService(accounts, investments, retirement, dashboard),
+        fire=FireService(db, accounts, investments, retirement, dashboard),
         notifications=Notifier(db, facts),
         updates=UpdateService(settings, Path(config.db_path).parent / "update"),
         backups=BackupService(config.db_path),
