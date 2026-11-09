@@ -141,3 +141,16 @@ def test_what_each_person_earns_gives_their_room_in_super(client: TestClient) ->
     assert p["room"] == 0
     bad = client.put(f"/api/retirement/people/{p['id']}", json={"pay_every": "daily"})
     assert bad.status_code == 422
+
+
+def test_crypto_stays_out_of_the_plan_until_turned_on_and_has_a_cap(client: TestClient) -> None:
+    s = ok(client.get("/api/retirement"))["settings"]
+    assert s["count_crypto"] is False and s["crypto_cap"] == 0.05 and s["crypto_cap_of"] == "investments"
+    s = ok(
+        client.put(
+            "/api/retirement/settings", json={"count_crypto": True, "crypto_cap": 0.1, "crypto_cap_of": "networth"}
+        )
+    )
+    assert s["count_crypto"] is True and s["crypto_cap"] == 0.1 and s["crypto_cap_of"] == "networth"
+    assert client.put("/api/retirement/settings", json={"crypto_cap": 0.9}).status_code == 422
+    assert client.put("/api/retirement/settings", json={"crypto_cap_of": "moon"}).status_code == 422

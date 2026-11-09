@@ -299,6 +299,11 @@ function Holdings({ p, onFund }: { p: Portfolio; onFund: (f: Fund | "new") => vo
         title="Holdings"
         right={
           <span className="flex gap-2">
+            {p.funds.some((f) => f.kind === "crypto") && (
+              <Button small onClick={() => navigate({ to: "/crypto" })}>
+                Crypto
+              </Button>
+            )}
             <Button small onClick={() => onFund("new")}>
               Add a fund
             </Button>

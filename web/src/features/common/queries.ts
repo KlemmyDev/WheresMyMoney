@@ -376,6 +376,10 @@ export type RetirementSettings = {
   spending: number;
   extra: number;
   count_etfs: boolean;
+  /** Crypto in the plan (it's always in net worth), and the household's cap on it. */
+  count_crypto: boolean;
+  crypto_cap: number;
+  crypto_cap_of: "investments" | "networth";
   plan_to: number;
   super_return: number;
   etf_return: number;

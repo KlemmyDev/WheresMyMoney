@@ -30,6 +30,11 @@ DEFAULTS: dict[str, Any] = {
     "spending": 8000000,  # cents a year
     "extra": 0,  # cents a month, shared between everyone
     "count_etfs": True,
+    # Crypto counts in net worth, but in the plan only when this is on: it can halve in a year.
+    "count_crypto": False,
+    # The household's own cap, so a small bet stays small: crypto under this share of the investments or net worth.
+    "crypto_cap": 0.05,
+    "crypto_cap_of": "investments",
     "plan_to": 92,
     # Assumptions, a year, as fractions (0.07 is 7%).
     "super_return": 0.07,  # before fees
@@ -143,6 +148,12 @@ class RetirementService:
                 out["extra"] = int(body["extra"])
             if "count_etfs" in body:
                 out["count_etfs"] = bool(body["count_etfs"])
+            if "count_crypto" in body:
+                out["count_crypto"] = bool(body["count_crypto"])
+            if "crypto_cap" in body:
+                out["crypto_cap"] = float(body["crypto_cap"])
+            if "crypto_cap_of" in body:
+                out["crypto_cap_of"] = str(body["crypto_cap_of"])
             for key in RANGES:
                 if key in body:
                     out[key] = float(body[key])
@@ -158,6 +169,10 @@ class RetirementService:
             if not lo <= out[key] <= hi:
                 name = key.replace("_", " ").replace("etf", "ETF").replace("contrib", "contributions")
                 raise ValueError(f"The {name} should be between {lo:.0%} and {hi:.0%} a year.")
+        if not 0 <= out["crypto_cap"] <= 0.5:
+            raise ValueError("Keep the crypto cap between 0% and 50%.")
+        if out["crypto_cap_of"] not in ("investments", "networth"):
+            raise ValueError("The cap is a share of the investments or of net worth.")
         if not 70 <= out["plan_to"] <= 110:
             raise ValueError("Plan to an age between 70 and 110.")
         with self.db.writing() as conn:

@@ -21,9 +21,10 @@ async def overview(svc: ServicesDep):
 
 
 @router.get("/history")
-async def history(svc: ServicesDep, range: str = "1y", fund: int | None = None):
-    """The portfolio's value and cost over 1m, 6m, 1y or 5y: [{"date", "value", "cost"}]; with ?fund=, one holding's."""
-    return await run(svc.investments.history, range, fund)
+async def history(svc: ServicesDep, range: str = "1y", fund: int | None = None, crypto: bool | None = None):
+    """The portfolio's value and cost over 1m, 6m, 1y or 5y: [{"date", "value", "cost"}]; with ?fund=, one holding's;
+    with ?crypto=true, the crypto's (or false, everything else)."""
+    return await run(svc.investments.history, range, fund, crypto)
 
 
 @router.get("/tax")

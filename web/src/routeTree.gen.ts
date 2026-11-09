@@ -16,6 +16,7 @@ import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppAccountsRouteImport } from './routes/_app/accounts'
 import { Route as AppBillsRouteImport } from './routes/_app/bills'
 import { Route as AppBudgetsRouteImport } from './routes/_app/budgets'
+import { Route as AppCryptoRouteImport } from './routes/_app/crypto'
 import { Route as AppDesignRouteImport } from './routes/_app/design'
 import { Route as AppImportRouteImport } from './routes/_app/import'
 import { Route as AppInvestmentsRouteImport } from './routes/_app/investments'
@@ -69,6 +70,11 @@ const AppBillsRoute = AppBillsRouteImport.update({
 const AppBudgetsRoute = AppBudgetsRouteImport.update({
   id: '/budgets',
   path: '/budgets',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCryptoRoute = AppCryptoRouteImport.update({
+  id: '/crypto',
+  path: '/crypto',
   getParentRoute: () => AppRoute,
 } as any)
 const AppDesignRoute = AppDesignRouteImport.update({
@@ -179,6 +185,7 @@ export interface FileRoutesByFullPath {
   '/accounts': typeof AppAccountsRoute
   '/bills': typeof AppBillsRoute
   '/budgets': typeof AppBudgetsRoute
+  '/crypto': typeof AppCryptoRoute
   '/design': typeof AppDesignRoute
   '/import': typeof AppImportRoute
   '/investments': typeof AppInvestmentsRoute
@@ -206,6 +213,7 @@ export interface FileRoutesByTo {
   '/accounts': typeof AppAccountsRoute
   '/bills': typeof AppBillsRoute
   '/budgets': typeof AppBudgetsRoute
+  '/crypto': typeof AppCryptoRoute
   '/design': typeof AppDesignRoute
   '/import': typeof AppImportRoute
   '/investments': typeof AppInvestmentsRoute
@@ -236,6 +244,7 @@ export interface FileRoutesById {
   '/_app/accounts': typeof AppAccountsRoute
   '/_app/bills': typeof AppBillsRoute
   '/_app/budgets': typeof AppBudgetsRoute
+  '/_app/crypto': typeof AppCryptoRoute
   '/_app/design': typeof AppDesignRoute
   '/_app/import': typeof AppImportRoute
   '/_app/investments': typeof AppInvestmentsRoute
@@ -267,6 +276,7 @@ export interface FileRouteTypes {
     | '/accounts'
     | '/bills'
     | '/budgets'
+    | '/crypto'
     | '/design'
     | '/import'
     | '/investments'
@@ -294,6 +304,7 @@ export interface FileRouteTypes {
     | '/accounts'
     | '/bills'
     | '/budgets'
+    | '/crypto'
     | '/design'
     | '/import'
     | '/investments'
@@ -323,6 +334,7 @@ export interface FileRouteTypes {
     | '/_app/accounts'
     | '/_app/bills'
     | '/_app/budgets'
+    | '/_app/crypto'
     | '/_app/design'
     | '/_app/import'
     | '/_app/investments'
@@ -401,6 +413,13 @@ declare module '@tanstack/react-router' {
       path: '/budgets'
       fullPath: '/budgets'
       preLoaderRoute: typeof AppBudgetsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/crypto': {
+      id: '/_app/crypto'
+      path: '/crypto'
+      fullPath: '/crypto'
+      preLoaderRoute: typeof AppCryptoRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/design': {
@@ -550,6 +569,7 @@ interface AppRouteChildren {
   AppAccountsRoute: typeof AppAccountsRoute
   AppBillsRoute: typeof AppBillsRoute
   AppBudgetsRoute: typeof AppBudgetsRoute
+  AppCryptoRoute: typeof AppCryptoRoute
   AppDesignRoute: typeof AppDesignRoute
   AppImportRoute: typeof AppImportRoute
   AppInvestmentsRoute: typeof AppInvestmentsRoute
@@ -577,6 +597,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAccountsRoute: AppAccountsRoute,
   AppBillsRoute: AppBillsRoute,
   AppBudgetsRoute: AppBudgetsRoute,
+  AppCryptoRoute: AppCryptoRoute,
   AppDesignRoute: AppDesignRoute,
   AppImportRoute: AppImportRoute,
   AppInvestmentsRoute: AppInvestmentsRoute,
