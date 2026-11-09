@@ -262,7 +262,28 @@ export type MerchantDetail = {
   price_change: MerchantPriceChange | null;
   /** Each payment (cents out), oldest first, when it's a regular one. */
   history: { date: string; amount: number }[];
+  /** What's likely to go there this calendar month and next (money out only), from its own history. */
+  likely: MerchantLikely | null;
+  /** What went there on each day of the week over the last 12 months, Monday first. */
+  weekdays: number[];
   transactions: Transaction[];
+};
+
+export type MerchantLikely = {
+  ready: boolean;
+  history_days: number;
+  needs_days: number;
+  accuracy?: number | null;
+  spent?: number;
+  rest?: number;
+  month_total?: number;
+  low?: number;
+  high?: number;
+  next_month?: string;
+  next?: number;
+  next_low?: number;
+  next_high?: number;
+  habit?: { every_days: number; amount: number; next: string | null } | null;
 };
 
 export type MerchantGroup = {

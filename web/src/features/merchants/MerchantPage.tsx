@@ -13,6 +13,8 @@ import {
   EntityHeader,
   EntityHero,
   Legend,
+  LikelyCard,
+  WeekdaysCard,
   MONTH_RANGES,
   MonthBars,
   Timeframe,
@@ -25,12 +27,13 @@ import { businessesQuery, merchantDirectoryQuery, merchantQuery, refresh } from 
 import { useToast } from "~/features/common/overlay";
 import { sameName } from "~/features/merchants/names";
 import type { MerchantDetail } from "~/features/common/types";
-import { Button, Empty, ErrorText, Input, Pill } from "~/features/common/ui";
+import { Button, Empty, ErrorText, Input, Pill, cn } from "~/features/common/ui";
 import { MerchantPicker } from "~/features/merchants/MerchantPicker";
 import { MerchantSettings } from "~/features/merchants/MerchantSettings";
 import { RegularCard } from "~/features/merchants/RegularCard";
 import { MerchantMark } from "~/features/spending/MerchantIcon";
 import { TransactionSheet, TxRow } from "~/features/spending/TransactionSheet";
+import { thisMonth } from "~/features/spending/TransactionsPage";
 
 /** How many transactions show before "Show all". */
 const FIRST = 12;
@@ -74,6 +77,8 @@ export function MerchantPage({ merchantKey }: { merchantKey: string }) {
   const lit = shown.slice(-Number(range));
   const litFrom = lit[0]?.month;
   const litTotal = lit.reduce((t, m) => t + amountOf(m), 0);
+  // This month's likely rest, hatched on its bar (only for this calendar month's bar, the last one).
+  const likelyRest = !inbound && d.likely?.ready && shown.at(-1)?.month === thisMonth() ? (d.likely.rest ?? 0) : 0;
   return (
     <>
       <Title d={d} timeframe={<Timeframe options={MONTH_RANGES} value={range} onChange={setRange} />} />
@@ -152,6 +157,7 @@ export function MerchantPage({ merchantKey }: { merchantKey: string }) {
               <Legend
                 items={[
                   { label: inbound ? "In" : "Spent", kind: "solid", role: inbound ? "savings" : "spending" },
+                  ...(likelyRest > 0 ? [{ label: "Likely", kind: "likely" as const, role: "spending" as const }] : []),
                   { label: `${money(perMonth)} ${inbound ? "a payment" : "a usual month"}`, kind: "line", role: "ink" },
                 ]}
               />
@@ -161,6 +167,7 @@ export function MerchantPage({ merchantKey }: { merchantKey: string }) {
             <MonthBars
               name={inbound ? `What came in from ${d.name}` : `What went at ${d.name}`}
               months={shown.map((m) => ({ key: m.month, label: monthYear(m.month), value: amountOf(m) }))}
+              rest={likelyRest}
               line={{ value: perMonth, label: inbound ? "a usual payment" : "a usual month" }}
               role={inbound ? "savings" : "spending"}
               litFrom={litFrom}
@@ -170,6 +177,7 @@ export function MerchantPage({ merchantKey }: { merchantKey: string }) {
                 <>
                   <b className="text-ink">{m.label}</b>: {money(m.value, { cents: true })}
                   {isNow ? " so far" : ""}
+                  {isNow && likelyRest > 0 ? `, likely about ${money(m.value + likelyRest)} by the end` : ""}
                   {perMonth > 0 && !isNow
                     ? m.value > perMonth * 1.15
                       ? `, more than ${inbound ? "usual" : "a usual month"}`
@@ -191,8 +199,16 @@ export function MerchantPage({ merchantKey }: { merchantKey: string }) {
             </p>
           )}
         </Card>
-        <Names d={d} />
+        {!inbound && <MerchantLikelyCard d={d} />}
+        {inbound && <Names d={d} />}
       </div>
+
+      {!inbound && (
+        <div className="grid gap-4 md:grid-cols-12 [&>*]:min-w-0">
+          <Names d={d} className="md:col-span-7" />
+          <WeekdaysCard id="mp-week" values={d.weekdays} over="the last 12 months" className="md:col-span-5" />
+        </div>
+      )}
 
       <MerchantSettings key={JSON.stringify(d.settings)} d={d} />
 
@@ -221,6 +237,74 @@ export function MerchantPage({ merchantKey }: { merchantKey: string }) {
       </Card>
       <TransactionSheet tx={openTx} onClose={() => setOpen(null)} />
     </>
+  );
+}
+
+/** What's likely to go here: the rest of this month and next month, with when it's next expected if it's regular. */
+function MerchantLikelyCard({ d }: { d: MerchantDetail }) {
+  const l = d.likely;
+  if (!l || !l.ready)
+    return (
+      <LikelyCard
+        id="mp-likely"
+        className="md:col-span-4"
+        notReady={
+          l && l.history_days > 0
+            ? `After ${l.needs_days - l.history_days} more days of ${d.name} we can say what's likely to go there.`
+            : `Nothing's gone at ${d.name} lately, so there's nothing to learn from.`
+        }
+      />
+    );
+  const spent = l.spent ?? 0;
+  const total = l.month_total ?? spent;
+  const usual = d.per_month;
+  const vsUsual =
+    usual > 0
+      ? total > usual * 1.15
+        ? `More than a usual month (${money(usual)}).`
+        : total < usual * 0.85
+          ? `Less than a usual month (${money(usual)}).`
+          : "About a usual month."
+      : "";
+  return (
+    <LikelyCard
+      id="mp-likely"
+      className="md:col-span-4"
+      now={{
+        label: "This month",
+        total: money(total),
+        bar: {
+          label: `Spent ${money(spent)}, likely ${money(l.rest ?? 0)} more, against a usual month of ${money(usual)}`,
+          max: Math.max(total, l.high ?? 0, usual, 1),
+          marker: usual || undefined,
+          segments: [
+            { value: spent, role: "spending" },
+            { value: l.rest ?? 0, role: "spending", likely: true },
+          ],
+        },
+        text: (
+          <>
+            {money(spent)} so far, likely {money(l.low)} to {money(l.high)} by the end of the month. {vsUsual}
+          </>
+        ),
+      }}
+      next={
+        l.next_month
+          ? {
+              label: monthYear(l.next_month),
+              total: money(l.next ?? 0),
+              text: l.habit?.next
+                ? `Likely ${money(l.next_low)} to ${money(l.next_high)}. Every ${l.habit.every_days === 7 ? "week" : `${l.habit.every_days} days`}, about ${money(l.habit.amount, { cents: true })}; next around ${dayDate(l.habit.next)}.`
+                : `Likely ${money(l.next_low)} to ${money(l.next_high)}.`,
+            }
+          : undefined
+      }
+      note={
+        l.accuracy != null
+          ? `Over the last four weeks this guess was ${Math.round(l.accuracy * 100)}% right for ${d.name}, so the range is as wide as it was off.`
+          : "Learned from what's gone here before, by the day of the week."
+      }
+    />
   );
 }
 
@@ -425,7 +509,7 @@ function NamePicker({ d, onDone }: { d: MerchantDetail; onDone: (key?: string) =
 }
 
 /** The statement names that belong here: move one to another merchant, or undo a mapping. */
-function Names({ d }: { d: MerchantDetail }) {
+function Names({ d, className }: { d: MerchantDetail; className?: string }) {
   const qc = useQueryClient();
   const [moving, setMoving] = useState<string | null>(null);
   const forget = useMutation({
@@ -433,7 +517,7 @@ function Names({ d }: { d: MerchantDetail }) {
     onSuccess: () => refresh(qc),
   });
   return (
-    <Card aria-labelledby="mp-names" className="flex flex-col gap-2 md:col-span-4">
+    <Card aria-labelledby="mp-names" className={cn("flex flex-col gap-2", className ?? "md:col-span-4")}>
       <CardHead
         id="mp-names"
         title="Statement names"

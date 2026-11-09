@@ -146,3 +146,30 @@ def test_catalogue_search_names_unmerge(client: TestClient, household: dict) -> 
     assert ok(client.post("/api/merchants/unmerge", json={"key": "CHEESECAKE SHOP"}))["moved"] == 1
     back = next(t for t in ok(client.get("/api/transactions")) if t["id"] == tx["id"])
     assert back["merchant_key"] == tx["merchant_key"]
+
+
+def test_a_weekly_shop_is_likely_on_its_days_this_month_and_next() -> None:
+    from app.features.spending.directory import likely, weekdays
+    from app.features.spending.forecast import Spend
+
+    # Every Sunday since May, $160; today is Sunday 8 November and this week's shop is done.
+    day = dt.date(2026, 5, 3)
+    spends = []
+    while day <= TODAY:
+        spends.append(Spend(day, 16000, "Groceries", "WOOLWORTHS"))
+        day += dt.timedelta(days=7)
+    lk = likely(spends, TODAY)
+    assert lk["ready"] and lk["habit"]["every_days"] == 7 and lk["habit"]["next"] == "2026-11-15"
+    # 1 and 8 Nov are paid; 15, 22 and 29 Nov are to come. December has four Sundays.
+    assert lk["spent"] == 32000 and lk["rest"] == 48000 and lk["month_total"] == 80000
+    assert lk["low"] <= 80000 <= lk["high"]
+    assert lk["next_month"] == "2026-12" and lk["next"] == 64000
+    assert weekdays(spends, TODAY)[6] == sum(s.amount for s in spends) and sum(weekdays(spends, TODAY)[:6]) == 0
+
+
+def test_a_merchant_with_too_little_history_isnt_likely_yet() -> None:
+    from app.features.spending.directory import likely
+    from app.features.spending.forecast import Spend
+
+    lk = likely([Spend(TODAY - dt.timedelta(days=3), 900, "Coffee", "CAFE")], TODAY)
+    assert lk["ready"] is False and lk["needs_days"] == 14
