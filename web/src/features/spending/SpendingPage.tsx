@@ -6,32 +6,20 @@
 import { Loading } from "~/features/common/brand";
 import { Banner, Bar, BigNumber, Card, Eyebrow, Stat, Details } from "~/features/common/ds";
 import { I } from "~/features/common/icons";
-import type { BudgetSuggestions } from "~/features/common/types";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { SpendingCategories } from "~/features/spending/SpendingCategories";
-import { apiSend, errorMessage } from "~/features/common/api";
+import { errorMessage } from "~/features/common/api";
 import { Count, DayBars } from "~/features/common/charts";
-import {
-  amount,
-  capsDate,
-  editable,
-  longDate,
-  money,
-  monthYear,
-  parseMoney,
-  shortDate,
-} from "~/features/common/format";
+import { amount, capsDate, money, shortDate } from "~/features/common/format";
 import { useActions } from "~/features/common/layout";
-import { Dialog } from "~/features/common/overlay";
-import { budgetSuggestionsQuery, categoriesQuery, refresh, spendingQuery } from "~/features/common/queries";
-import { Button, Empty, ErrorText, Input, PageHead, Pill, Tile, TileTitle, cn } from "~/features/common/ui";
+import { budgetSuggestionsQuery, spendingQuery } from "~/features/common/queries";
+import { Button, Empty, ErrorText, PageHead, Pill, Tile, TileTitle } from "~/features/common/ui";
 
 export function SpendingPage() {
   const q = useQuery(spendingQuery);
   const actions = useActions();
-  const [budgets, setBudgets] = useState(false);
+  const navigate = useNavigate();
   const sug = useQuery(budgetSuggestionsQuery);
   const offBudgets = (sug.data?.categories ?? []).filter((r) => r.note && r.suggested != null);
   if (q.isError) return <ErrorText>{errorMessage(q.error)}</ErrorText>;
@@ -58,7 +46,12 @@ export function SpendingPage() {
         title="Spending"
         actions={
           <>
-            <Button onClick={() => setBudgets(true)}>Budgets</Button>
+            <Link
+              to="/budgets"
+              className="press inline-flex min-h-[42px] items-center rounded-xl border border-line bg-tile-2 px-4 text-[14px] font-semibold text-ink no-underline hover:border-line-2"
+            >
+              Budgets
+            </Link>
             <Button primary onClick={actions.addSpending}>
               Add spending
             </Button>
@@ -75,9 +68,12 @@ export function SpendingPage() {
               : `${offBudgets.length} budgets don't match what we usually spend`
           }
           action={
-            <Button primary onClick={() => setBudgets(true)}>
-              Review budgets
-            </Button>
+            <Link
+              to="/budgets"
+              className="press inline-flex min-h-11 items-center px-2 text-[14px] font-semibold text-teal no-underline"
+            >
+              Look at budgets
+            </Link>
           }
         >
           {offBudgets
@@ -175,7 +171,7 @@ export function SpendingPage() {
           <span>{shortDate(m.end).toUpperCase()}</span>
         </div>
       </Tile>
-      <SpendingCategories m={m} onBudgets={() => setBudgets(true)} />
+      <SpendingCategories m={m} onBudgets={() => navigate({ to: "/budgets" })} />
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,440px),1fr))] gap-4">
         <Tile i={6} aria-labelledby="s-tx">
           {m.by_person.some((p) => p.user_id != null) && (
@@ -247,7 +243,6 @@ export function SpendingPage() {
           </div>
         </Tile>
       </div>
-      <Budgets open={budgets} onClose={() => setBudgets(false)} since={longDate(m.start)} allowance={m.allowance} />
     </>
   );
 }
@@ -256,170 +251,4 @@ function nextDay(iso: string): string {
   const d = new Date(`${iso}T12:00:00`);
   d.setDate(d.getDate() + 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-/** "Groceries went over in 5 of the last 6 months. Usually $1,405; $1,410 would fit." */
-function mismatchText(r: BudgetSuggestions["categories"][number], months: number): string {
-  return r.note === "over"
-    ? `${r.name} went over its ${money(r.budget)} in ${r.over} of the last ${months} months. Usually ${money(r.average)}, so ${money(r.suggested)} would fit.`
-    : `${r.name} stayed well under its ${money(r.budget)} every month. Usually ${money(r.average)}, so ${money(r.suggested)} would free up ${money((r.budget ?? 0) - (r.suggested ?? 0))}.`;
-}
-
-function Budgets({
-  open,
-  onClose,
-  since,
-  allowance,
-}: {
-  open: boolean;
-  onClose: () => void;
-  since: string;
-  allowance?: number;
-}) {
-  const qc = useQueryClient();
-  const cats = useQuery({ ...categoriesQuery, enabled: open });
-  const sug = useQuery({ ...budgetSuggestionsQuery, enabled: open });
-  const usual = Object.fromEntries((sug.data?.categories ?? []).map((r) => [r.id, r]));
-  // From the categories as they are now, so a suggestion just used drops off the list.
-  const budgetNow = Object.fromEntries((cats.data?.categories ?? []).map((c) => [c.id, c.budget]));
-  const mismatched = (sug.data?.categories ?? []).filter(
-    (r) => r.note && r.suggested != null && budgetNow[r.id] === r.budget,
-  );
-  const budgeted = (cats.data?.categories ?? [])
-    .filter((c) => c.kind === "spending")
-    .reduce((t, c) => t + (c.budget ?? 0), 0);
-  const [name, setName] = useState("");
-  const save = useMutation({
-    mutationFn: ({ id, ...body }: { id?: number; name: string; kind: string; budget: number | null }) =>
-      id ? apiSend("PUT", `categories/${id}`, body) : apiSend("POST", "categories", body),
-    onSuccess: () => (refresh(qc), setName("")),
-  });
-  const removeRule = useMutation({
-    mutationFn: (id: number) => apiSend("DELETE", `merchant-rules/${id}`),
-    onSuccess: () => refresh(qc),
-  });
-  return (
-    <Dialog open={open} onClose={onClose} labelledBy="bud-h">
-      <div className="flex flex-col gap-3 overflow-y-auto p-6">
-        <h2 id="bud-h" className="m-0 text-xl font-semibold">
-          Budgets and categories
-        </h2>
-        <div className="text-[13px] text-ink-2">
-          A month&apos;s budget for each spending category. This month started {since}.
-          {sug.data?.months
-            ? ` "Usually" is the average month from ${monthYear(sug.data.from?.slice(0, 7))} to last month.`
-            : ""}
-        </div>
-        {mismatched.length > 0 && (
-          <div className="flex flex-col gap-2 rounded-2xl border border-line bg-tile-2 p-3.5">
-            <span className="text-[14px] font-semibold">
-              {mismatched.length === 1
-                ? "One budget doesn't match what we usually spend"
-                : `${mismatched.length} budgets don't match what we usually spend`}
-            </span>
-            <ul className="m-0 flex list-disc flex-col gap-1 pl-5 text-[13px] text-ink-2">
-              {mismatched.map((r) => (
-                <li key={r.id}>{mismatchText(r, sug.data?.months ?? 0)}</li>
-              ))}
-            </ul>
-            <Button
-              small
-              primary
-              className="self-start"
-              disabled={save.isPending}
-              onClick={() =>
-                mismatched.forEach((r) =>
-                  save.mutate({ id: r.id, name: r.name, kind: "spending", budget: r.suggested }),
-                )
-              }
-            >
-              {mismatched.length === 1 ? "Use the suggestion" : "Use these suggestions"}
-            </Button>
-          </div>
-        )}
-        {(cats.data?.categories ?? [])
-          .filter((c) => c.kind === "spending")
-          .sort((a, b) => (usual[b.id]?.average ?? -1) - (usual[a.id]?.average ?? -1))
-          .map((c) => {
-            const u = usual[c.id];
-            return (
-              <div key={c.id} className="grid grid-cols-[1fr_130px] items-center gap-x-3 gap-y-1 text-[13px]">
-                <span className="min-w-0">
-                  <span className="block">{c.name}</span>
-                  {u && (
-                    <span className={cn("block text-[12px]", u.note ? "text-warn" : "text-ink-3")}>
-                      Usually {money(u.average)} a month
-                      {u.suggested != null && u.suggested !== c.budget && (
-                        <>
-                          {" · "}
-                          <button
-                            type="button"
-                            className="cursor-pointer border-0 bg-transparent p-0 font-semibold text-teal"
-                            onClick={() => save.mutate({ id: c.id, name: c.name, kind: c.kind, budget: u.suggested })}
-                          >
-                            Use {money(u.suggested)}
-                          </button>
-                        </>
-                      )}
-                    </span>
-                  )}
-                </span>
-                <Input
-                  key={`${c.id}:${c.budget}`}
-                  aria-label={`${c.name} budget`}
-                  inputMode="decimal"
-                  className="text-right"
-                  placeholder="No budget"
-                  defaultValue={editable(c.budget)}
-                  onBlur={(e) => {
-                    const v = e.target.value.trim() ? parseMoney(e.target.value) : null;
-                    if (v !== c.budget) save.mutate({ id: c.id, name: c.name, kind: c.kind, budget: v });
-                  }}
-                />
-              </div>
-            );
-          })}
-        {allowance != null && (
-          <div className="border-t border-line pt-2 text-[13px] text-ink-2">
-            Budgets add up to <b className="text-ink">{money(budgeted)}</b> of the {money(allowance)} a month
-            {budgeted <= allowance
-              ? `, leaving ${money(allowance - budgeted)} for everything else.`
-              : `, ${money(budgeted - allowance)} more than the spending money.`}
-          </div>
-        )}
-        <div className="grid grid-cols-[1fr_auto] gap-2">
-          <Input
-            className="font-sans"
-            placeholder="A new category"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-          <Button disabled={!name} onClick={() => save.mutate({ name, kind: "spending", budget: null })}>
-            Add
-          </Button>
-        </div>
-        {save.isError && <ErrorText>{errorMessage(save.error)}</ErrorText>}
-        <div className="tt mt-2">Merchants remembered</div>
-        {(cats.data?.merchant_rules ?? []).map((r) => (
-          <div key={r.id} className="flex items-center justify-between gap-2 border-t border-line py-1.5 text-[13px]">
-            <span className="mono">{r.pattern}</span>
-            <span className="flex items-center gap-2 text-ink-2">
-              {r.category}
-              <Button small aria-label={`Forget ${r.pattern}`} onClick={() => removeRule.mutate(r.id)}>
-                ✕
-              </Button>
-            </span>
-          </div>
-        ))}
-        {!cats.data?.merchant_rules.length && (
-          <div className="text-ink-3">None yet: choose "Always use" when sorting an import.</div>
-        )}
-        <div className="flex justify-end">
-          <Button primary onClick={onClose}>
-            Done
-          </Button>
-        </div>
-      </div>
-    </Dialog>
-  );
 }
