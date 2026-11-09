@@ -204,6 +204,7 @@ export function MonthBars({
 }) {
   const n = months.length;
   const [picked, setPicked] = useState<number | null>(null);
+  const [hovering, setHovering] = useState(false);
   if (!n) return null;
   const at = Math.min(picked ?? n - 1, n - 1);
   const hi = Math.max(1, line?.value ?? 0, ...months.map((m, i) => m.value + (i === n - 1 ? rest : 0)));
@@ -237,6 +238,8 @@ export function MonthBars({
             style={{ height }}
             role="group"
             aria-label={`${name} each month, oldest first`}
+            onMouseEnter={() => setHovering(true)}
+            onMouseLeave={() => setHovering(false)}
             onKeyDown={(e) => {
               if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
                 e.preventDefault();
@@ -291,6 +294,29 @@ export function MonthBars({
                 className="pointer-events-none absolute inset-x-0 border-t-[1.5px] border-dashed border-ink"
                 style={{ bottom: `${(line.value / top) * 100}%` }}
               />
+            )}
+            {hovering && (
+              // While a pointer is over the chart, the bar it's on reads out beside it.
+              <span
+                aria-hidden
+                className="pointer-events-none absolute top-1 z-10 -translate-x-1/2 rounded-xl border border-line-2 bg-raised px-2.5 py-1.5 whitespace-nowrap shadow-[var(--shadow-float)]"
+                style={{ left: `clamp(72px, ${((at + 0.5) / n) * 100}%, calc(100% - 72px))` }}
+              >
+                <span className="block text-[11px] text-ink-3">
+                  {m.label}
+                  {isNow ? " · so far" : ""}
+                </span>
+                <span className="num block text-[14px] text-ink">{format(m.value)}</span>
+                {isNow && rest > 0 && (
+                  <span className="block text-[11px] text-ink-3">likely {format(m.value + rest)} by the end</span>
+                )}
+                {line != null && (
+                  <span className={cn("block text-[11px]", m.value > line.value ? "text-bad" : "text-good")}>
+                    {format(Math.abs(m.value - line.value))} {m.value > line.value ? "over" : "under"} the{" "}
+                    {line.label.toLowerCase()}
+                  </span>
+                )}
+              </span>
             )}
           </div>
           <div className="mono mt-1.5 flex justify-between text-xs text-ink-3">
