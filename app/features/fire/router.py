@@ -58,3 +58,22 @@ async def save_scenario(svc: ServicesDep, body: JsonBody):
 @router.delete("/scenarios/{scenario_id}")
 async def remove_scenario(svc: ServicesDep, scenario_id: int):
     return await run(svc.fire.remove_scenario, scenario_id)
+
+
+@router.post("/debt")
+async def debt_race(svc: ServicesDep, body: JsonBody):
+    """{"extra": 50000, "into": "off" | "inv", "rate_change": 0.005}: the race (money in cents)."""
+    try:
+        extra = float(body.get("extra") or 0) / 100
+        rate_change = float(body.get("rate_change") or 0)
+    except (TypeError, ValueError):
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=422, detail="Enter an amount.") from None
+    return await run(svc.fire.debt_race, extra, str(body.get("into") or "off"), rate_change)
+
+
+@router.post("/stress")
+async def stress(svc: ServicesDep, body: JsonBody):
+    """{"shock": "rough" | "inflation" | "spend" | "income" | null}: the plan against bad luck, and the fixes."""
+    return await run(svc.fire.stress, body.get("shock") or None)
