@@ -233,7 +233,16 @@ export const settingsQuery = queryOptions({
 export type SetupState = {
   done: boolean;
   show: boolean;
-  steps: { accounts: boolean; loan: boolean; bills: boolean; pay: boolean; current: boolean };
+  steps: {
+    accounts: boolean;
+    loan: boolean;
+    bills: boolean;
+    pay: boolean;
+    current: boolean;
+    checkin: boolean;
+    import: boolean;
+    reminders: boolean;
+  };
 };
 
 export const setupQuery = queryOptions({
