@@ -661,6 +661,10 @@ export const GLOSSARY = {
     "Super",
     "Money your employer pays into a retirement fund for you, invested until you can use it, from age 60 once you've stopped work.",
   ],
+  cgt: [
+    "The CGT discount",
+    "Sell something you've held for more than 12 months (counting from the day after you bought it) and only half the gain is added to your taxable income. Sell sooner and all of it is.",
+  ],
 } as const;
 
 /** A term with a dotted underline: tap it to see what it means. */
