@@ -101,6 +101,7 @@ class Plan:
     one_off: tuple[int, float] | None = None  # (age, amount into or out of the ETFs)
     returns: dict[int, float] = field(default_factory=dict)  # real growth by age, where it differs
     growth_change: float = 0.0  # added to the real growth every year (a high-inflation shock is -0.01)
+    save_until: int | None = None  # stop putting money away from this age (still working, pay covering today)
 
 
 def project(h: Household, plan: Plan, retire_age: int) -> dict[str, Any]:
@@ -136,7 +137,8 @@ def project(h: Household, plan: Plan, retire_age: int) -> dict[str, Any]:
             }
         )
         working = age < retire_age
-        surplus = spare if loan else spare + loan_year
+        saving = working and (plan.save_until is None or age < plan.save_until)
+        surplus = (spare if loan else spare + loan_year) if saving else 0.0
         share = plan.split if loan else after
         # Salary sacrifice: before-tax dollars, up to the room under the caps; what doesn't fit goes to the ETFs.
         sacrifice = min(surplus * share[2] / (1 - mtr), h.room)
@@ -160,8 +162,9 @@ def project(h: Household, plan: Plan, retire_age: int) -> dict[str, Any]:
         if plan.one_off and plan.one_off[0] == age:
             etf = max(0.0, etf + plan.one_off[1])
         if working:
-            sup += h.super_in + sacrifice * (1 - rules.CONTRIBUTIONS_TAX)
-            etf += h.etf_saving + to_etfs
+            if saving:
+                sup += h.super_in + sacrifice * (1 - rules.CONTRIBUTIONS_TAX)
+                etf += h.etf_saving + to_etfs
             continue
         part = plan.part_time
         in_part = part is not None and part[0] <= age < part[1]
@@ -206,6 +209,15 @@ def freedom(h: Household, plan: Plan) -> dict[str, Any] | None:
         result = project(h, plan, age)
         if result["ok"]:
             return result
+    return None
+
+
+def coast(h: Household, plan: Plan, full_age: int) -> int | None:
+    """Coast: the first age from which, putting nothing more away (work just pays for today), what's there still
+    grows enough to stop at the plan's age. None if not before then."""
+    for age in range(h.lead.age, full_age + 1):
+        if project(h, replace(plan, save_until=age), full_age)["ok"]:
+            return age
     return None
 
 
