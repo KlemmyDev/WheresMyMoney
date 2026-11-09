@@ -33,6 +33,7 @@ import { Route as AppTransactionsRouteImport } from './routes/_app/transactions'
 import { Route as AppAccountsAccountIdRouteImport } from './routes/_app/accounts_.$accountId'
 import { Route as AppBillsBillIdRouteImport } from './routes/_app/bills_.$billId'
 import { Route as AppBillsSpottedRouteImport } from './routes/_app/bills_.spotted'
+import { Route as AppEarlyRetirementScenariosRouteImport } from './routes/_app/early-retirement_.scenarios'
 import { Route as AppGoalsGoalIdRouteImport } from './routes/_app/goals_.$goalId'
 import { Route as AppInvestmentsFundIdRouteImport } from './routes/_app/investments_.$fundId'
 import { Route as AppMerchantsKeyRouteImport } from './routes/_app/merchants_.$key'
@@ -159,6 +160,12 @@ const AppBillsSpottedRoute = AppBillsSpottedRouteImport.update({
   path: '/bills/spotted',
   getParentRoute: () => AppRoute,
 } as any)
+const AppEarlyRetirementScenariosRoute =
+  AppEarlyRetirementScenariosRouteImport.update({
+    id: '/early-retirement_/scenarios',
+    path: '/early-retirement/scenarios',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppGoalsGoalIdRoute = AppGoalsGoalIdRouteImport.update({
   id: '/goals_/$goalId',
   path: '/goals/$goalId',
@@ -215,6 +222,7 @@ export interface FileRoutesByFullPath {
   '/accounts/$accountId': typeof AppAccountsAccountIdRoute
   '/bills/$billId': typeof AppBillsBillIdRoute
   '/bills/spotted': typeof AppBillsSpottedRoute
+  '/early-retirement/scenarios': typeof AppEarlyRetirementScenariosRoute
   '/goals/$goalId': typeof AppGoalsGoalIdRoute
   '/investments/$fundId': typeof AppInvestmentsFundIdRoute
   '/merchants/$key': typeof AppMerchantsKeyRoute
@@ -246,6 +254,7 @@ export interface FileRoutesByTo {
   '/accounts/$accountId': typeof AppAccountsAccountIdRoute
   '/bills/$billId': typeof AppBillsBillIdRoute
   '/bills/spotted': typeof AppBillsSpottedRoute
+  '/early-retirement/scenarios': typeof AppEarlyRetirementScenariosRoute
   '/goals/$goalId': typeof AppGoalsGoalIdRoute
   '/investments/$fundId': typeof AppInvestmentsFundIdRoute
   '/merchants/$key': typeof AppMerchantsKeyRoute
@@ -279,6 +288,7 @@ export interface FileRoutesById {
   '/_app/accounts_/$accountId': typeof AppAccountsAccountIdRoute
   '/_app/bills_/$billId': typeof AppBillsBillIdRoute
   '/_app/bills_/spotted': typeof AppBillsSpottedRoute
+  '/_app/early-retirement_/scenarios': typeof AppEarlyRetirementScenariosRoute
   '/_app/goals_/$goalId': typeof AppGoalsGoalIdRoute
   '/_app/investments_/$fundId': typeof AppInvestmentsFundIdRoute
   '/_app/merchants_/$key': typeof AppMerchantsKeyRoute
@@ -312,6 +322,7 @@ export interface FileRouteTypes {
     | '/accounts/$accountId'
     | '/bills/$billId'
     | '/bills/spotted'
+    | '/early-retirement/scenarios'
     | '/goals/$goalId'
     | '/investments/$fundId'
     | '/merchants/$key'
@@ -343,6 +354,7 @@ export interface FileRouteTypes {
     | '/accounts/$accountId'
     | '/bills/$billId'
     | '/bills/spotted'
+    | '/early-retirement/scenarios'
     | '/goals/$goalId'
     | '/investments/$fundId'
     | '/merchants/$key'
@@ -375,6 +387,7 @@ export interface FileRouteTypes {
     | '/_app/accounts_/$accountId'
     | '/_app/bills_/$billId'
     | '/_app/bills_/spotted'
+    | '/_app/early-retirement_/scenarios'
     | '/_app/goals_/$goalId'
     | '/_app/investments_/$fundId'
     | '/_app/merchants_/$key'
@@ -559,6 +572,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppBillsSpottedRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/early-retirement_/scenarios': {
+      id: '/_app/early-retirement_/scenarios'
+      path: '/early-retirement/scenarios'
+      fullPath: '/early-retirement/scenarios'
+      preLoaderRoute: typeof AppEarlyRetirementScenariosRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/goals_/$goalId': {
       id: '/_app/goals_/$goalId'
       path: '/goals/$goalId'
@@ -626,6 +646,7 @@ interface AppRouteChildren {
   AppAccountsAccountIdRoute: typeof AppAccountsAccountIdRoute
   AppBillsBillIdRoute: typeof AppBillsBillIdRoute
   AppBillsSpottedRoute: typeof AppBillsSpottedRoute
+  AppEarlyRetirementScenariosRoute: typeof AppEarlyRetirementScenariosRoute
   AppGoalsGoalIdRoute: typeof AppGoalsGoalIdRoute
   AppInvestmentsFundIdRoute: typeof AppInvestmentsFundIdRoute
   AppMerchantsKeyRoute: typeof AppMerchantsKeyRoute
@@ -656,6 +677,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAccountsAccountIdRoute: AppAccountsAccountIdRoute,
   AppBillsBillIdRoute: AppBillsBillIdRoute,
   AppBillsSpottedRoute: AppBillsSpottedRoute,
+  AppEarlyRetirementScenariosRoute: AppEarlyRetirementScenariosRoute,
   AppGoalsGoalIdRoute: AppGoalsGoalIdRoute,
   AppInvestmentsFundIdRoute: AppInvestmentsFundIdRoute,
   AppMerchantsKeyRoute: AppMerchantsKeyRoute,

@@ -3,7 +3,10 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { cn } from "~/features/common/ui";
 
 /** The pages built so far, in the canvas's order. */
-export const FIRE_PAGES = [{ to: "/early-retirement", label: "Freedom" }] as const;
+export const FIRE_PAGES = [
+  { to: "/early-retirement", label: "Freedom" },
+  { to: "/early-retirement/scenarios", label: "Scenarios" },
+] as const;
 
 export function FireNav() {
   const path = useRouterState({ select: (s) => s.location.pathname });

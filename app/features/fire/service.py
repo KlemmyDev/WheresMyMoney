@@ -17,7 +17,7 @@ from app.core import dates
 from app.core.database import Database
 from app.features.accounts.service import AccountsService
 from app.features.dashboard.service import DashboardService
-from app.features.fire import debt, shocks, tax
+from app.features.fire import debt, shocks, tax, whatif
 from app.features.fire.model import FEE_GUESS, THE_PLAN, Household, Person, Plan, coast, freedom, project
 from app.features.fire.rules.load import rules_for
 from app.features.investments.service import InvestmentsService
@@ -188,6 +188,64 @@ class FireService:
         out.append({"key": "part", "name": f"Part-time from {part_from}", **(_summary(part) or {})})
         return out
 
+    def what_if(self, body: dict[str, Any]) -> dict[str, Any]:
+        """The scenario page's levers: the result at their age to stop, the earliest they'd work from, and (with
+        "target") what it would take to stop then."""
+        built = self.household()
+        if built is None:
+            raise ValueError("Add each person's super first, on Retirement.")
+        h, _ = built
+        lv = whatif.levers_of(body.get("levers") or {}, h)
+        r = whatif.run(h, lv)
+        out: dict[str, Any] = {
+            "levers": _lv_out(lv),
+            "result": {**(_summary(r["result"]) or {}), "gap": r["result"]["gap"]},
+            "soonest": r["soonest"],
+            "rows": [_row(x) for x in r["result"]["rows"] if x["age"] <= max(h.plan_to, 92)],
+        }
+        if body.get("target") is not None:
+            target = int(body["target"])
+            out["seek"] = {"target": target, "ideas": [_idea(i) for i in whatif.seek(h, lv, target)]}
+        return out
+
+    def scenarios_saved(self) -> list[dict[str, Any]]:
+        built = self.household()
+        with self.db.reading() as conn:
+            rows = conn.execute("SELECT id, name, levers FROM fire_scenarios ORDER BY id").fetchall()
+        out = []
+        for scenario_id, name, levers in rows:
+            item: dict[str, Any] = {"id": scenario_id, "name": name, "levers": json.loads(levers)}
+            if built:
+                h, _ = built
+                lv = whatif.levers_of(_lv_in(item["levers"]), h)
+                r = whatif.run(h, lv)
+                item["result"] = _summary(r["result"])
+                item["rows"] = [_row(x) for x in r["result"]["rows"] if x["age"] <= max(h.plan_to, 92)]
+            out.append(item)
+        return out
+
+    def save_scenario(self, body: dict[str, Any]) -> list[dict[str, Any]]:
+        name = " ".join(str(body.get("name") or "").split())[:40]
+        if not name:
+            raise ValueError("Give the scenario a name.")
+        built = self.household()
+        if built is None:
+            raise ValueError("Add each person's super first, on Retirement.")
+        h, _ = built
+        lv = _lv_out(whatif.levers_of(body.get("levers") or {}, h))
+        with self.db.writing() as conn:
+            conn.execute(
+                "INSERT INTO fire_scenarios (name, levers, created_at) VALUES (?, ?, ?)",
+                (name, json.dumps(lv), int(time.time())),
+            )
+        return self.scenarios_saved()
+
+    def remove_scenario(self, scenario_id: int) -> list[dict[str, Any]]:
+        with self.db.writing() as conn:
+            if not conn.execute("DELETE FROM fire_scenarios WHERE id = ?", (scenario_id,)).rowcount:
+                raise LookupError("That scenario has gone.")
+        return self.scenarios_saved()
+
     def saved(self) -> dict[str, Any] | None:
         with self.db.reading() as conn:
             row = conn.execute("SELECT value FROM kv WHERE key = ?", (SAVED,)).fetchone()
@@ -236,6 +294,25 @@ class FireService:
     def unsave_plan(self) -> None:
         with self.db.writing() as conn:
             conn.execute("DELETE FROM kv WHERE key = ?", (SAVED,))
+
+
+def _lv_out(lv: dict[str, Any]) -> dict[str, Any]:
+    """Levers for the page: money in cents."""
+    return {**lv, "spend": round(lv["spend"] * 100), "spare": round(lv["spare"] * 100)}
+
+
+def _lv_in(lv: dict[str, Any]) -> dict[str, Any]:
+    return {**lv, "spend": lv["spend"] / 100, "spare": lv["spare"] / 100}
+
+
+def _idea(i: dict[str, Any]) -> dict[str, Any]:
+    out = dict(i)
+    for key in ("spare", "more", "spend", "less"):
+        if out.get(key) is not None:
+            out[key] = round(out[key] * 100)
+    if out.get("levers"):
+        out["levers"] = _lv_out(out["levers"])
+    return out
 
 
 def _mile(h: Household, age: int | None, spend: int | None = None) -> dict[str, Any] | None:
