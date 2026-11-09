@@ -41,3 +41,11 @@ def test_a_second_loan_cant_be_brought_back(client: TestClient, household: dict)
     ok(client.delete(f"/api/accounts/{household['Loan']}"))
     ok(client.post("/api/accounts", json={"name": "New loan", "kind": "loan", "rate_bp": 600}))
     assert client.post(f"/api/accounts/{household['Loan']}/restore").status_code == 422
+
+
+def test_an_account_keeps_the_icon_picked_for_it(client: TestClient, household: dict) -> None:
+    acct = ok(client.put(f"/api/accounts/{household['Savings']}", json={"icon": "plane"}))
+    assert acct["icon"] == "plane" and acct["role"] == "savings"
+    assert ok(client.put(f"/api/accounts/{household['Savings']}", json={"name": "Holidays"}))["icon"] == "plane"
+    assert client.put(f"/api/accounts/{household['Savings']}", json={"icon": "rocket"}).status_code == 422
+    assert ok(client.put(f"/api/accounts/{household['Savings']}", json={"icon": None}))["icon"] is None

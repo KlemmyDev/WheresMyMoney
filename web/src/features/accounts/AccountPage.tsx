@@ -5,9 +5,10 @@
  * its transactions; and its job and settings beside them.
  */
 import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useState } from "react";
 import { AccountTransactions, ActivityChart, type Bucket, type Range } from "~/features/accounts/Activity";
+import { ACCOUNT_ICONS, EditAccountPanel } from "~/features/accounts/EditAccountPanel";
 import {
   Detail,
   EditButton,
@@ -52,6 +53,15 @@ export function AccountPage({ accountId }: { accountId: number }) {
   const q = useQuery(accountsQuery);
   const navigate = useNavigate();
   const { checkin } = useActions();
+  const search = useSearch({ from: "/_app/accounts_/$accountId" });
+  const editing = !!search.edit;
+  const setEditing = (on: boolean) =>
+    navigate({
+      to: "/accounts/$accountId",
+      params: { accountId: String(accountId) },
+      search: on ? { edit: 1 } : {},
+      replace: true,
+    });
   const [range, setRange] = useState<Range>("1m");
   const [picked, setPicked] = useState<Bucket | null>(null);
   if (q.isError) return <ErrorText>{errorMessage(q.error)}</ErrorText>;
@@ -79,12 +89,12 @@ export function AccountPage({ accountId }: { accountId: number }) {
     <>
       <EntityHeader
         back={{ to: "/accounts", label: "Accounts" }}
-        mark={<Chip g={ROLE_GLYPH[role]} tone={ROLE_TONE[role]} size="xl" />}
+        mark={<Chip g={(a.icon && ACCOUNT_ICONS[a.icon]) || ROLE_GLYPH[role]} tone={ROLE_TONE[role]} size="xl" />}
         title={a.name}
         sub={`${roleBadge(a, data.goals)}${a.last4 ? ` · •• ${a.last4}` : ""}${a.offsets_loan && !loan ? " · offsets the loan" : ""}`}
         actions={
           <>
-            <EditButton account={a} />
+            <EditButton account={a} onClick={() => setEditing(!editing)} />
             {!loan && (
               <Button primary onClick={checkin}>
                 Check in
@@ -92,6 +102,12 @@ export function AccountPage({ accountId }: { accountId: number }) {
             )}
           </>
         }
+      />
+      <EditAccountPanel
+        key={`${a.id}-${String(editing)}`}
+        account={a}
+        open={editing}
+        onClose={() => setEditing(false)}
       />
       <div role="group" aria-label="Other accounts" className="no-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1">
         {all.map((x) => (

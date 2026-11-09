@@ -577,172 +577,24 @@ export function Detail({ account, goals }: { account: Account; goals: Goal[] }) 
 }
 
 /** The pencil by an account's name: opens Edit account. */
-export function EditButton({ account }: { account: Account }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <Button small aria-label={`Edit ${account.name}`} title="Rename or remove" onClick={() => setOpen(true)}>
-        <svg
-          viewBox="0 0 24 24"
-          width="14"
-          height="14"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden
-        >
-          <path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4" />
-        </svg>
-        Edit
-      </Button>
-      <Dialog open={open} onClose={() => setOpen(false)} labelledBy="edit-acct-h">
-        <EditAccount key={String(open)} account={account} onClose={() => setOpen(false)} />
-      </Dialog>
-    </>
-  );
-}
-
-const SWATCHES = ["offset", "bills", "spending", "savings", "track", "teal", "rose", "sky"];
-
-/** Rename an account, change its number or colour, or remove it (its history is kept, and it can come back). */
-function EditAccount({ account, onClose }: { account: Account; onClose: () => void }) {
-  const qc = useQueryClient();
-  const toast = useToast();
+export function EditButton({ account, onClick }: { account: Account; onClick?: () => void }) {
   const navigate = useNavigate();
-  const loan = account.kind === "loan";
-  const [name, setName] = useState(account.name);
-  const [last4, setLast4] = useState(account.last4 ?? "");
-  const [tone, setTone] = useState(account.colour);
-  const [removing, setRemoving] = useState(false);
-  const save = useMutation({
-    mutationFn: () =>
-      apiSend<Account>("PUT", `accounts/${account.id}`, { name, last4, ...(loan ? {} : { colour: tone }) }),
-    onSuccess: () => (refresh(qc), toast("Account saved"), onClose()),
-  });
-  const restore = useMutation({
-    mutationFn: () => apiSend<Account>("POST", `accounts/${account.id}/restore`),
-    onSuccess: () => (
-      refresh(qc),
-      navigate({ to: "/accounts/$accountId", params: { accountId: String(account.id) }, replace: true })
-    ),
-    onError: (e) => toast(errorMessage(e)),
-  });
-  const remove = useMutation({
-    mutationFn: () => apiSend("DELETE", `accounts/${account.id}`),
-    onSuccess: () => {
-      onClose();
-      navigate({ to: "/accounts", replace: true });
-      refresh(qc);
-      toast(`${account.name} removed`, () => restore.mutate());
-    },
-  });
-  const what = loan ? "the loan" : "this account";
   return (
-    <form
-      className="flex flex-col gap-5 overflow-y-auto p-6"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (!removing && name.trim()) save.mutate();
-      }}
+    <Button
+      small={!onClick}
+      aria-label={onClick ? undefined : `Change ${account.name}`}
+      onClick={
+        onClick ??
+        (() =>
+          navigate(
+            account.kind === "loan"
+              ? { to: "/loan", search: { edit: 1 } }
+              : { to: "/accounts/$accountId", params: { accountId: String(account.id) }, search: { edit: 1 } },
+          ))
+      }
     >
-      <h2 id="edit-acct-h" key={String(removing)} className="fade-in m-0 text-xl font-semibold">
-        {removing ? `Remove ${account.name}?` : loan ? "Edit the loan" : "Edit account"}
-      </h2>
-      {removing ? (
-        <div className="fade-in flex flex-col gap-3 text-[14px] text-ink-2">
-          <p className="m-0">
-            It'll go from your accounts{loan ? ", and the dashboard won't show the loan" : " and totals"}
-            {account.offsets_loan && !loan ? ", and stop counting against the loan" : ""}.
-          </p>
-          <p className="m-0">
-            {account.transactions > 0
-              ? `Its ${account.transactions} transactions are kept, so past spending still adds up.`
-              : "Nothing's been imported into it."}{" "}
-            You can bring it back under Removed accounts.
-          </p>
-          {remove.isError && <ErrorText>{errorMessage(remove.error)}</ErrorText>}
-        </div>
-      ) : (
-        <div className="flex flex-col gap-4">
-          <div className="grid gap-3 sm:grid-cols-[1fr_120px]">
-            <div>
-              <Label htmlFor="ea-name">Name, as in your banking app</Label>
-              <Input
-                id="ea-name"
-                className="font-sans"
-                autoComplete="off"
-                maxLength={40}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </div>
-            <div>
-              <Label htmlFor="ea-last4">Last four digits</Label>
-              <Input
-                id="ea-last4"
-                inputMode="numeric"
-                maxLength={4}
-                value={last4}
-                onChange={(e) => setLast4(e.target.value.replace(/\D/g, ""))}
-                placeholder="2210"
-              />
-            </div>
-          </div>
-          {!loan && (
-            <div>
-              <Label>Colour</Label>
-              <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Colour">
-                {SWATCHES.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    role="radio"
-                    aria-checked={tone === c}
-                    aria-label={c}
-                    onClick={() => setTone(c)}
-                    className={cn(
-                      "press size-8 cursor-pointer rounded-full border-2",
-                      tone === c ? "border-ink" : "border-transparent",
-                    )}
-                    style={{ background: colour(c) }}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-          <p className="m-0 text-xs text-ink-3">Imports match statements to {what} by its last four digits.</p>
-          {save.isError && <ErrorText>{errorMessage(save.error)}</ErrorText>}
-        </div>
-      )}
-      <div className="flex flex-wrap justify-between gap-2">
-        {removing ? (
-          <>
-            <Button onClick={() => setRemoving(false)}>Keep it</Button>
-            <Button
-              className="border-warn bg-warn font-semibold text-page enabled:hover:bg-warn/85"
-              disabled={remove.isPending}
-              onClick={() => remove.mutate()}
-            >
-              {remove.isPending ? "Removing…" : `Remove ${account.name}`}
-            </Button>
-          </>
-        ) : (
-          <>
-            <Button className="text-warn" onClick={() => setRemoving(true)}>
-              Remove {loan ? "the loan" : "account"}
-            </Button>
-            <span className="flex gap-2">
-              <Button onClick={onClose}>Cancel</Button>
-              <Button primary type="submit" disabled={!name.trim() || save.isPending}>
-                {save.isPending ? "Saving…" : "Save"}
-              </Button>
-            </span>
-          </>
-        )}
-      </div>
-    </form>
+      Change
+    </Button>
   );
 }
 

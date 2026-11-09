@@ -398,6 +398,11 @@ def _goal_reached_and_removed(conn: sqlite3.Connection) -> None:
     conn.execute("ALTER TABLE goals ADD COLUMN removed_at TEXT")
 
 
+def _account_icon(conn: sqlite3.Connection) -> None:
+    """accounts.icon: the mark the household picked for it (none: the mark of its job)."""
+    conn.execute("ALTER TABLE accounts ADD COLUMN icon TEXT")
+
+
 MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _baseline,
     _money,
@@ -425,4 +430,5 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _loan_rows_not_merchants,
     _bill_pause_and_varies,
     _goal_reached_and_removed,
+    _account_icon,
 ]

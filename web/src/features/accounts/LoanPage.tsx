@@ -14,6 +14,7 @@ import { loanQuery, type LoanView } from "~/features/common/queries";
 import { Dot, Empty, ErrorText, Segmented, Tile, TileTitle } from "~/features/common/ui";
 import { EntityHeader, EntityHero, Legend, MonthBars } from "~/features/common/entity";
 import { EditButton, ROLE_GLYPH, ROLE_TONE } from "~/features/accounts/AccountsPage";
+import { EditAccountPanel } from "~/features/accounts/EditAccountPanel";
 import { LoanSimulator } from "~/features/accounts/LoanSimulator";
 import { RateChangeSheet, type Spotted } from "~/features/accounts/RateChange";
 import { Banner, Card, CardHead, Details, Term } from "~/features/common/ds";
@@ -72,10 +73,19 @@ export function LoanPage() {
           .join(" · ")}
         actions={
           <>
-            <EditButton account={lo} />
+            <EditButton
+              account={lo}
+              onClick={() => navigate({ to: "/loan", search: search.edit ? {} : { edit: 1 }, replace: true })}
+            />
             {!spotted && <Button onClick={() => setRateOpen(true)}>Rate changed?</Button>}
           </>
         }
+      />
+      <EditAccountPanel
+        key={String(!!search.edit)}
+        account={lo}
+        open={!!search.edit}
+        onClose={() => navigate({ to: "/loan", search: {}, replace: true })}
       />
       {spotted && (
         <Banner
@@ -103,7 +113,7 @@ export function LoanPage() {
         onClose={() => {
           setRateOpen(false);
           if (spotted) setSeen(true);
-          if (search.rate) navigate({ to: "/loan", search: {}, replace: true });
+          if (search.rate) navigate({ to: "/loan", search: { ...search, rate: undefined }, replace: true });
         }}
         v={v}
         spotted={spotted}
