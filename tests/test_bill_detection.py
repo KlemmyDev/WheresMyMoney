@@ -146,3 +146,30 @@ def test_a_bills_page_has_its_payments_totals_and_price_changes(client: TestClie
     assert 0 < d["share"] < 1
 
     assert client.get("/api/bills/9999").status_code == 404
+
+
+def test_a_spotted_bill_can_wait_for_the_next_import_and_every_choice_undoes(
+    client: TestClient, household: dict
+) -> None:
+    dates.set_today(TODAY)
+    for d, a in monthly(dt.date(2025, 11, 14), 12, 9.99):
+        tx = {"amount": round(-a * 100), "description": "Netflix.com Melbourne", "account_id": household["Spending"]}
+        ok(client.post("/api/transactions", json={**tx, "date": d}))
+    key = next(s for s in ok(client.get("/api/bills/spotted"))["suggestions"] if s["name"] == "Netflix")["key"]
+
+    later = ok(client.post("/api/bills/spotted/later", json={"key": key}))
+    assert all(s["key"] != key for s in later["suggestions"]) and later["later"] == ["Netflix"]
+    back = ok(client.post("/api/bills/spotted/undo", json={"key": key}))
+    assert any(s["key"] == key for s in back["suggestions"]) and back["later"] == []
+
+    added = ok(client.post("/api/bills/spotted/accept", json={"key": key}))
+    assert added["added"]["name"] == "Netflix" and len(added["transaction_ids"]) == 12
+    undone = ok(
+        client.post(
+            "/api/bills/spotted/undo",
+            json={"bill_id": added["added"]["id"], "transaction_ids": added["transaction_ids"]},
+        )
+    )
+    assert any(s["key"] == key for s in undone["suggestions"])
+    assert all(b["name"] != "Netflix" for b in ok(client.get("/api/bills"))["bills"])
+    assert all(t["bill_id"] is None for t in ok(client.get("/api/transactions", params={"q": "Netflix"})))

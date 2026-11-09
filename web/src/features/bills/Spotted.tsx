@@ -1,30 +1,26 @@
 /**
- * Bills spotted in the imported statements (regular payments to one merchant), each to add as it is, edit first, or
- * wave away; and bills whose latest payment was a different price, to update.
+ * On the Bills page: a banner for bills spotted in the imported statements (reviewed on their own page), and bills
+ * whose latest payment was a different price, to update.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
+import { Banner } from "~/features/common/ds";
+import { I } from "~/features/common/icons";
 import { apiSend, errorMessage } from "~/features/common/api";
 import { Spark } from "~/features/common/charts";
-import { EVERY_LABEL, money, monthYear, shortDate } from "~/features/common/format";
+import { money, shortDate } from "~/features/common/format";
 import { useToast } from "~/features/common/overlay";
-import { accountsQuery, refresh, spottedBillsQuery } from "~/features/common/queries";
-import type { BillUpdate, SpottedBill } from "~/features/common/types";
-import { Button, Dot, ErrorText, Pill, Tile, TileTitle } from "~/features/common/ui";
+import { refresh, spottedBillsQuery } from "~/features/common/queries";
+import type { BillUpdate } from "~/features/common/types";
+import { Button, ErrorText, Pill, Tile, TileTitle } from "~/features/common/ui";
 
-const month = (iso: string) => monthYear(iso.slice(0, 7));
 /** The spark's bottom: 15% under the highest, so a few cents' wobble stays flat and a real rise still shows. */
 const floorOf = (h: { amount: number }[]) => Math.max(...h.map((x) => x.amount)) * 0.85;
 
-export function SpottedBills({ onEdit, i }: { onEdit: (s: SpottedBill) => void; i: number }) {
+export function SpottedBills({ i }: { i: number }) {
   const q = useQuery(spottedBillsQuery);
-  const accounts = useQuery(accountsQuery);
   const qc = useQueryClient();
   const toast = useToast();
-  const byId = Object.fromEntries((accounts.data?.accounts ?? []).map((a) => [a.id, a]));
-  const accept = useMutation({
-    mutationFn: (s: SpottedBill) => apiSend("POST", "bills/spotted/accept", { key: s.key }),
-    onSuccess: (_, s) => (refresh(qc), toast(`${s.name} added`)),
-  });
   const dismiss = useMutation({
     mutationFn: (key: string) => apiSend("POST", "bills/spotted/dismiss", { key }),
     onSuccess: () => refresh(qc),
@@ -37,7 +33,7 @@ export function SpottedBills({ onEdit, i }: { onEdit: (s: SpottedBill) => void; 
   const u = q.data?.updates ?? [];
   if (q.isError) return <ErrorText>{errorMessage(q.error)}</ErrorText>;
   if (!s.length && !u.length) return null;
-  const error = accept.error ?? dismiss.error ?? update.error;
+  const error = dismiss.error ?? update.error;
   return (
     <>
       {u.length > 0 && (
@@ -81,66 +77,21 @@ export function SpottedBills({ onEdit, i }: { onEdit: (s: SpottedBill) => void; 
         </Tile>
       )}
       {s.length > 0 && (
-        <Tile i={i + 1} aria-labelledby="bl-spot">
-          <TileTitle id="bl-spot" right={<span className="mono">{s.length} TO REVIEW</span>}>
-            Spotted in your statements
-          </TileTitle>
-          <div className="text-[13px] text-ink-2">
-            Payments that come regularly to the same place. Add the ones that are bills: they&apos;re matched on every
-            import from then on, and a change in price shows up here.
-          </div>
-          <div className="overflow-x-auto">
-            <div className="min-w-[680px]">
-              {s.map((x) => (
-                <div
-                  key={x.key}
-                  className="grid grid-cols-[minmax(0,1fr)_110px_110px_90px_auto] items-center gap-3 border-t border-line py-2.5 text-[13px]"
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 font-medium">
-                      {x.name}
-                      {x.rise && (
-                        <Pill tone={x.rise.now > x.rise.was ? "warn" : "good"}>
-                          {x.rise.now > x.rise.was ? "UP" : "DOWN"} {Math.abs(x.rise.pct).toFixed(1)}% ·{" "}
-                          {shortDate(x.changes[x.changes.length - 1].date).toUpperCase()}
-                        </Pill>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1.5 truncate text-xs text-ink-3">
-                      <Dot c={byId[x.account_id]?.colour} />
-                      {x.seen} payments since {month(x.first)} · {x.category ?? "Bills"}
-                      {x.rise ? ` · was ${money(x.rise.was, { cents: true })}` : ""}
-                    </div>
-                  </div>
-                  <div className="text-ink-2">{EVERY_LABEL[x.every]}</div>
-                  <div className="mono text-right">
-                    {x.variable ? "~" : ""}
-                    {money(x.amount, { cents: true })}
-                    <div className="text-xs text-ink-3">next {shortDate(x.next_due)}</div>
-                  </div>
-                  <Spark
-                    values={x.history.map((h) => h.amount)}
-                    colour="var(--color-bills)"
-                    floor={floorOf(x.history)}
-                  />
-                  <div className="flex gap-1.5">
-                    <Button small primary onClick={() => accept.mutate(x)} disabled={accept.isPending}>
-                      Add
-                    </Button>
-                    <Button small onClick={() => onEdit(x)}>
-                      Edit
-                    </Button>
-                    <Button small aria-label={`${x.name} isn't a bill`} onClick={() => dismiss.mutate(x.key)}>
-                      Not a bill
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          {error && <ErrorText>{errorMessage(error)}</ErrorText>}
-        </Tile>
+        <Banner
+          g={I.bills}
+          tone="bills"
+          title={`We spotted ${s.length} repeating ${s.length === 1 ? "payment that looks like a bill" : "payments that look like bills"}`}
+          action={
+            <Link to="/bills/spotted" className="font-semibold text-teal">
+              Review them
+            </Link>
+          }
+        >
+          About {money(s.reduce((t, x) => t + (x.per_year ?? 0), 0) / 12)} a month together. Nothing is added until you
+          say.
+        </Banner>
       )}
+      {error && <ErrorText>{errorMessage(error)}</ErrorText>}
     </>
   );
 }

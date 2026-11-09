@@ -24,6 +24,7 @@ from app.features.spending import merchants
 
 HOW = ("auto", "manual")
 DISMISSED = "bill_dismissed:"  # kv: a suggestion (or update) the household said no to
+LATER = "bill_later:"  # kv: a suggestion to ask about again after the next import (the latest import id then)
 LOOK_BACK_MONTHS = 25
 OCCASIONAL = ("quarterly", "term", "half-yearly", "yearly")  # a few times a year or less: worth setting aside for
 MAX_NAME = 60
@@ -633,15 +634,62 @@ class BillsService:
             rows = conn.execute("SELECT key FROM kv WHERE key LIKE ?", (DISMISSED + "%",)).fetchall()
         return {r[0][len(DISMISSED) :] for r in rows}
 
+    def _later(self) -> tuple[set[str], list[str]]:
+        """Suggestions put off until the next import: (still put off, put off and due again now)."""
+        with self.db.reading() as conn:
+            latest = conn.execute("SELECT COALESCE(MAX(id), 0) FROM imports").fetchone()[0]
+            rows = conn.execute("SELECT key, value FROM kv WHERE key LIKE ?", (LATER + "%",)).fetchall()
+        waiting = {r[0][len(LATER) :] for r in rows if int(r[1]) >= latest}
+        return waiting, [r[0][len(LATER) :] for r in rows if int(r[1]) < latest]
+
     def spotted(self) -> dict[str, Any]:
-        """Bills the ledger suggests (not added yet, not dismissed), and bills whose price has moved."""
+        """Bills the ledger suggests (not added yet, not dismissed, not put off until the next import), and bills
+        whose price has moved. `later` names the ones put off."""
         payments, ends, bill_cats, names = self._payments()
         found = detect.find(payments, self.all(), bill_cats, names, ends, dates.today())
         no = self._dismissed()
+        waiting, _ = self._later()
         return {
-            "suggestions": [s for s in found["suggestions"] if s["key"] not in no],
+            "suggestions": [s for s in found["suggestions"] if s["key"] not in no and s["key"] not in waiting],
             "updates": [u for u in found["updates"] if u["key"] not in no],
+            "later": [s["name"] for s in found["suggestions"] if s["key"] in waiting and s["key"] not in no],
+            "from_import": self._latest_import(),
         }
+
+    def _latest_import(self) -> dict[str, Any] | None:
+        with self.db.reading() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*), COALESCE(SUM(rows), 0), MAX(created_at) FROM imports"
+                " WHERE created_at >= (SELECT COALESCE(MAX(created_at), 0) - 3600 FROM imports)"
+            ).fetchone()
+        if not row or not row[0]:
+            return None
+        return {"files": row[0], "rows": row[1], "at": row[2]}
+
+    def later(self, key: str) -> None:
+        """Ask about a suggestion again after the next import."""
+        key = str(key or "")[:200]
+        if not key:
+            raise ValueError("Say which suggestion.")
+        with self.db.writing() as conn:
+            latest = conn.execute("SELECT COALESCE(MAX(id), 0) FROM imports").fetchone()[0]
+            conn.execute("INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)", (LATER + key, str(latest)))
+
+    def undismiss(self, key: str) -> None:
+        """Undo Not a bill or Remind me later: the suggestion is asked about again."""
+        with self.db.writing() as conn:
+            conn.execute("DELETE FROM kv WHERE key IN (?, ?)", (DISMISSED + str(key), LATER + str(key)))
+
+    def unaccept(self, bill_id: int, transaction_ids: list[int]) -> None:
+        """Undo adding a spotted bill: its payments go back to being part of no bill, and the bill goes."""
+        with self.db.writing() as conn:
+            if transaction_ids:
+                marks = ",".join("?" * len(transaction_ids))
+                conn.execute(
+                    f"UPDATE transactions SET bill_id = NULL WHERE bill_id = ? AND id IN ({marks})",
+                    (bill_id, *transaction_ids),
+                )
+            conn.execute("UPDATE bills SET active = 0 WHERE id = ?", (bill_id,))
 
     def dismiss(self, key: str) -> None:
         key = str(key or "")[:200]
@@ -652,7 +700,7 @@ class BillsService:
                 "INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)", (DISMISSED + key, str(int(time.time())))
             )
 
-    def accept(self, key: str, changes: dict[str, Any] | None = None) -> Bill:
+    def accept(self, key: str, changes: dict[str, Any] | None = None) -> tuple[Bill, list[int]]:
         """Add a spotted bill (with any changes the household made to it), and link the payments it was spotted
         from, sorting those with no category into the bill's."""
         found = next((s for s in self.spotted()["suggestions"] if s["key"] == key), None)
@@ -672,4 +720,4 @@ class BillsService:
                     " AND (category_id IS NULL OR category_by IS NULL OR category_by IN ('rule', 'suggest'))",
                     (bill.category_id, *ids),
                 )
-        return bill
+        return bill, list(ids)
