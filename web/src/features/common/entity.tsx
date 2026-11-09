@@ -383,6 +383,90 @@ export function LikelyCard({
   );
 }
 
+// ---------------------------------------------------------------- days of the week
+
+const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const WEEKDAY_NAMES = ["Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays", "Sundays"];
+
+/**
+ * What went on each day of the week (Monday first, cents), the busiest day brightest. Pick a day (tap, hover, or the
+ * arrow keys) to read it in the line above; otherwise the line names the busiest day.
+ */
+export function WeekdaysCard({
+  id,
+  values,
+  over,
+  role = "spending",
+  className,
+}: {
+  id: string;
+  values: number[];
+  /** Over what time, for the corner: "the last 12 months". */
+  over: string;
+  role?: Role;
+  className?: string;
+}) {
+  const [picked, setPicked] = useState<number | null>(null);
+  const total = values.reduce((s, v) => s + v, 0);
+  if (total <= 0) return null;
+  const hi = Math.max(...values, 1);
+  const top = values.indexOf(hi);
+  const at = picked ?? top;
+  return (
+    <Card aria-labelledby={id} className={className}>
+      <CardHead id={id} title="Days of the week" right={<span className="text-[13px] text-ink-3">{over}</span>} />
+      <p className="m-0 min-h-6 text-[14px] text-ink-2" aria-live="polite">
+        {picked == null ? "Most goes on " : "On "}
+        <b className="text-ink">{WEEKDAY_NAMES[at]}</b>, ${short(values[at])}, {Math.round((values[at] / total) * 100)}%
+        of it.
+      </p>
+      <div
+        role="group"
+        aria-label="Spent on each day of the week"
+        className="flex h-[120px] items-end gap-2"
+        onMouseLeave={() => setPicked(null)}
+        onKeyDown={(e) => {
+          const step = e.key === "ArrowLeft" ? -1 : e.key === "ArrowRight" ? 1 : 0;
+          if (!step) return;
+          e.preventDefault();
+          const n = (at + step + 7) % 7;
+          setPicked(n);
+          document.getElementById(`${id}-${n}`)?.focus();
+        }}
+      >
+        {values.map((v, i) => (
+          <button
+            key={i}
+            id={`${id}-${i}`}
+            type="button"
+            aria-label={`${WEEKDAY_NAMES[i]}: $${short(v)}`}
+            aria-pressed={picked === i}
+            onMouseEnter={() => setPicked(i)}
+            onFocus={() => setPicked(i)}
+            onBlur={() => setPicked(null)}
+            onClick={() => setPicked(i)}
+            className="flex h-full flex-1 cursor-pointer flex-col items-center justify-end gap-1.5 rounded-md border-0 bg-transparent p-0"
+          >
+            <span className="mono text-[11px] text-ink-3">{v ? `$${short(v)}` : ""}</span>
+            <span
+              className={cn("striped w-full grow rounded-t-[4px]", i !== at && "opacity-55")}
+              style={
+                {
+                  height: `max(2px, ${(v / hi) * 70}%)`,
+                  flexGrow: 0,
+                  background: ROLE[role],
+                  ["--i" as string]: i,
+                } as CSSProperties
+              }
+            />
+            <span className={cn("text-[12px]", i === at ? "font-semibold text-ink" : "text-ink-3")}>{WEEKDAYS[i]}</span>
+          </button>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 // ---------------------------------------------------------------- changing it
 
 const PHONE = "(max-width: 639px)";

@@ -6,16 +6,16 @@
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useState } from "react";
 import { apiSend, errorMessage } from "~/features/common/api";
 import { Loading } from "~/features/common/brand";
-import { short } from "~/features/common/charts";
 import { Card, CardHead } from "~/features/common/ds";
 import {
   EntityHeader,
   EntityHero,
   Legend,
   LikelyCard,
+  WeekdaysCard,
   MONTH_RANGES,
   MonthBars,
   Timeframe,
@@ -33,8 +33,6 @@ import { TransactionSheet, TxRow } from "~/features/spending/TransactionSheet";
 
 const FIRST = 12;
 const RANGE_KEY = "wmm:category-range";
-const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const WEEKDAY_NAMES = ["Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays", "Sundays"];
 
 export function CategoryPage({ categoryId }: { categoryId: number }) {
   const [range, setRange] = useTimeframe<MonthRange>(RANGE_KEY, MONTH_RANGES, "3");
@@ -102,7 +100,7 @@ export function CategoryPage({ categoryId }: { categoryId: number }) {
         <Budget key={String(d.budget)} d={d} />
         <Merchants d={d} />
         <Regulars d={d} />
-        <Weekdays d={d} />
+        <WeekdaysCard id="cat-week" values={d.weekdays} over={rangeName(d.range.months)} />
       </div>
 
       <Card aria-labelledby="cat-tx">
@@ -426,39 +424,6 @@ function Regulars({ d }: { d: CategoryInsights }) {
             </span>
             <span className="mono text-right text-[13px] text-ink-2">
               {money(Math.round((h.amount * 365) / h.every_days / 12))}/mo
-            </span>
-          </div>
-        ))}
-      </div>
-    </Card>
-  );
-}
-
-function Weekdays({ d }: { d: CategoryInsights }) {
-  const total = d.weekdays.reduce((s, v) => s + v, 0);
-  if (total <= 0) return null;
-  const hi = Math.max(...d.weekdays, 1);
-  const top = d.weekdays.indexOf(hi);
-  return (
-    <Card aria-labelledby="cat-week">
-      <CardHead
-        id="cat-week"
-        title="Days of the week"
-        right={<span className="text-[13px] text-ink-3">{rangeName(d.range.months)}</span>}
-      />
-      <p className="m-0 text-[14px] text-ink-2">
-        Most goes on <b className="text-ink">{WEEKDAY_NAMES[top]}</b>, {Math.round((hi / total) * 100)}% of it.
-      </p>
-      <div className="flex h-[120px] items-end gap-2" role="img" aria-label="Spent on each day of the week">
-        {d.weekdays.map((v, i) => (
-          <div key={i} className="flex h-full flex-1 flex-col items-center justify-end gap-1.5">
-            <span className="mono text-[11px] text-ink-3">{v ? `$${short(v)}` : ""}</span>
-            <span
-              className={cn("striped w-full grow rounded-t-[4px] bg-spending-fill", i !== top && "opacity-55")}
-              style={{ height: `max(2px, ${(v / hi) * 70}%)`, flexGrow: 0, ["--i" as string]: i } as CSSProperties}
-            />
-            <span className={cn("text-[12px]", i === top ? "font-semibold text-ink" : "text-ink-3")}>
-              {WEEKDAYS[i]}
             </span>
           </div>
         ))}

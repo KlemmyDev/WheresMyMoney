@@ -17,7 +17,8 @@ import sqlite3
 import statistics
 from typing import Any
 
-from app.features.spending import merchants
+from app.core import dates
+from app.features.spending import forecast, merchants
 
 _KEY_CHARS = re.compile(r"[^A-Z0-9&' -]+")
 MONTHS = 24  # months of history a merchant's page shows
@@ -482,10 +483,18 @@ def detail(conn: sqlite3.Connection, key: str, today: dt.date) -> dict[str, Any]
     months = _months_back(today, MONTHS)
     first = _month(g["first"])
     shown = [m for m in months if m >= first] or months[-1:]
-    ids = [
-        r[0]
+    rows = [
+        r
         for r in conn.execute(_SPENDING + " ORDER BY t.date DESC, t.id DESC").fetchall()
         if book.key(r[1], r[2], r[3], r[0], r[6]) == key
+    ]
+    ids = [r[0] for r in rows]
+    one_off = {r[0] for r in conn.execute("SELECT id FROM transactions WHERE one_off = 1")}
+    # Money out (cents spent, refunds negative), oldest first: for what's likely and the days of the week.
+    spends = [
+        forecast.Spend(dates.parse(r[4]), -int(r[3]), r[5] or "", key, r[0] in one_off)
+        for r in reversed(rows)
+        if dates.parse(r[4]) <= today
     ]
     year = sum(g["by_month"].get(m, 0) for m in months[-12:])
     year_in = sum(g["in_month"].get(m, 0) for m in months[-12:])
@@ -530,7 +539,73 @@ def detail(conn: sqlite3.Connection, key: str, today: dt.date) -> dict[str, Any]
         "price_change": price_change(g["visits"]) if reg and not reg["stopped"] else None,
         # Each payment's amount, oldest first, for a regular payment's price history.
         "history": [{"date": d, "amount": a} for d, a in g["visits"][-24:]] if reg else [],
+        "likely": likely(spends, today) if _direction(g) == "out" else None,
+        "weekdays": weekdays(spends, today),
     }
+
+
+def likely(spends: list[forecast.Spend], today: dt.date) -> dict[str, Any]:
+    """What's likely to go at one merchant: the rest of this calendar month and the next, with a range, from the
+    forecast learned from this merchant's spending alone (its visits on their days if it's a habit, else its usual
+    rate shaped by the weekday)."""
+    model = forecast.Model(spends, today)
+    out: dict[str, Any] = {"ready": model.ready, "history_days": model.days, "needs_days": forecast.MIN_HISTORY}
+    if not model.ready:
+        return out
+    first = today.replace(day=1)
+    month_end = dates.add_months(first, 1) - dt.timedelta(days=1)
+    next_first = month_end + dt.timedelta(days=1)
+    next_end = dates.add_months(next_first, 1) - dt.timedelta(days=1)
+    acc = forecast.accuracy(spends, today)
+    spread = min(max(1 - acc if acc is not None else 0.35, 0.1), 0.6)
+    so_far = sum(s.amount for s in spends if s.date >= first)
+    ahead = model.days_ahead(today, month_end)
+    if ahead:
+        ahead[0]["expected"] = max(ahead[0]["expected"] - sum(s.amount for s in spends if s.date == today), 0)
+    rest = sum(d["expected"] for d in ahead)
+    nxt = sum(d["expected"] for d in model.days_ahead(next_first, next_end))
+    habit = model.habits[0] if model.habits else None
+    # The model learns only from before today, so after a visit today the next is a gap on from today.
+    visited = any(s.date == today and s.amount > 0 for s in spends)
+    return {
+        **out,
+        "accuracy": acc,
+        "spent": so_far,
+        "rest": rest,
+        "month_total": so_far + rest,
+        "low": so_far + round(rest * (1 - spread)),
+        "high": so_far + round(rest * (1 + spread)),
+        "next_month": next_first.isoformat()[:7],
+        "next": nxt,
+        "next_low": round(nxt * (1 - spread)),
+        "next_high": round(nxt * (1 + spread)),
+        # When it's paid at a steady gap: how often, about how much, and when it's next expected.
+        "habit": (
+            {
+                "every_days": habit.every,
+                "amount": habit.amount,
+                "next": (
+                    (today + dt.timedelta(days=habit.every)).isoformat()
+                    if visited
+                    else v[0].isoformat()
+                    if (v := habit.visits(today, today + dt.timedelta(days=habit.every * 2)))
+                    else None
+                ),
+            }
+            if habit
+            else None
+        ),
+    }
+
+
+def weekdays(spends: list[forecast.Spend], today: dt.date) -> list[int]:
+    """What went there on each day of the week over the last 12 months, Monday first (cents)."""
+    out = [0] * 7
+    since = today - dt.timedelta(days=365)
+    for s in spends:
+        if s.date > since and s.amount > 0:
+            out[s.date.weekday()] += s.amount
+    return out
 
 
 def _named(conn: sqlite3.Connection, key: str | None, name: str | None) -> str | None:
