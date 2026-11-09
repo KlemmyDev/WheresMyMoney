@@ -250,6 +250,54 @@ class FireService:
                 raise LookupError("That scenario has gone.")
         return self.scenarios_saved()
 
+    def debt_race(self, extra: float, into: str, rate_change: float) -> dict[str, Any]:
+        built = self.household()
+        if built is None:
+            raise ValueError("Add each person's super first, on Retirement.")
+        h, _ = built
+        if into not in ("off", "inv"):
+            raise ValueError("Put the extra into the offset or ETFs.")
+        if not 0 <= extra <= 20_000 or not -0.05 <= rate_change <= 0.05:
+            raise ValueError("Those aren't amounts we can use.")
+        r = debt.race(h, extra, into, rate_change)
+        start = dates.today().replace(day=1)
+        return {
+            **r,
+            "extra": round(extra * 100),
+            "interest_saved": round(r["interest_saved"] * 100),
+            "etf_extra": round(r["etf_extra"] * 100),
+            "gone": dates.add_months(start, int(r["months"])).isoformat()[:7],
+            "base_gone": dates.add_months(start, int(r["base_months"])).isoformat()[:7],
+            "start": start.isoformat()[:7],
+        }
+
+    def stress(self, shock: str | None) -> dict[str, Any]:
+        built = self.household()
+        if built is None:
+            raise ValueError("Add each person's super first, on Retirement.")
+        h, _ = built
+        plan = freedom(h, THE_PLAN) or freedom(h, Plan())
+        age = plan["retire_age"] if plan else 60
+        base_plan = THE_PLAN if freedom(h, THE_PLAN) else Plan()
+        out: dict[str, Any] = {
+            "retire_age": age,
+            "typical": project(h, base_plan, age)["lasts"],
+            "shocks": shocks.all_shocks(h, base_plan, age),
+            "fan": shocks.fan(h, base_plan, age),
+        }
+        if shock:
+            hit = shocks.shocked(h, base_plan, age, shock)
+            out["shock"] = {
+                "key": shock,
+                **shocks.SHOCKS[shock],
+                "lasts": hit["lasts"],
+                "ok": hit["ok"],
+                "gap": hit["gap"],
+                "path": [round((x["super"] + x["etfs"] + x["offset"]) * 100) for x in hit["rows"]],
+                "fixes": shocks.fixes(h, base_plan, age, shock),
+            }
+        return out
+
     def saved(self) -> dict[str, Any] | None:
         with self.db.reading() as conn:
             row = conn.execute("SELECT value FROM kv WHERE key = ?", (SAVED,)).fetchone()

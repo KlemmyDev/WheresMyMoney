@@ -161,3 +161,23 @@ def test_each_retired_year_says_which_pot_paid_and_the_ladder_ranks_the_offset_f
     rungs = ladder(h)
     assert [r["key"] for r in rungs] == ["offset", "super", "etfs", "repay"]
     assert rungs[0]["in"] == 68.0 and rungs[1]["in"] == 85.0 and round(rungs[1]["rate"], 3) == 0.063
+
+
+def test_loan_or_invest_matches_the_canvas() -> None:
+    h = sample()
+    off = debt.race(h, 500, "off")
+    assert off["months"] == 143 and round(off["interest_saved"], -2) == 40_700 and off["retire_age"] == 56
+    inv = debt.race(h, 500, "inv")
+    assert inv["months"] == 170 and inv["interest_saved"] == 0 and inv["retire_age"] == 56 and inv["etf_extra"] > 0
+    higher = debt.race(h, 500, "off", 0.005)
+    assert higher["months"] == 149  # the canvas's +0.5%: 149 months
+
+
+def test_each_shock_has_its_cheapest_fixes() -> None:
+    h = sample()
+    rough = shocks.fixes(h, THE_PLAN, 57, "rough")
+    assert [(f["age"], f["lasts"]) for f in rough] == [(60, 93), (59, 87)]
+    spend = shocks.fixes(h, THE_PLAN, 57, "spend")
+    assert spend[0]["age"] == 58 and spend[0]["lasts"] == 92
+    fan = shocks.fan(h, THE_PLAN, 57)
+    assert fan["bad"]["lasts"] < fan["typical"]["lasts"] == 94 < fan["good"]["lasts"]

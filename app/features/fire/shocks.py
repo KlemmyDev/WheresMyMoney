@@ -51,3 +51,37 @@ def all_shocks(h: Household, plan: Plan, retire_age: int) -> list[dict[str, Any]
         r = shocked(h, plan, retire_age, key)
         out.append({"key": key, **about, "lasts": r["lasts"], "ok": r["ok"], "gap": r["gap"]})
     return out
+
+
+def fixes(h: Household, plan: Plan, retire_age: int, shock: str) -> list[dict[str, Any]]:
+    """The cheapest ways back to the aim with a shock in it: working one to three years longer, or spending less once
+    stopped. The two cheapest that reach it; with one, it and the closest that doesn't."""
+    spend = plan.spend if plan.spend is not None else h.spend
+    tries: list[dict[str, Any]] = [
+        {"kind": "later", "age": retire_age + 1, "plan": plan},
+        {"kind": "later", "age": retire_age + 2, "plan": plan},
+        {"kind": "later", "age": retire_age + 3, "plan": plan},
+        {"kind": "spend", "age": retire_age, "spend": round(spend * 0.9), "plan": replace(plan, spend=spend * 0.9)},
+        {"kind": "spend", "age": retire_age, "spend": round(spend * 0.85), "plan": replace(plan, spend=spend * 0.85)},
+    ]
+    out: list[dict[str, Any]] = []
+    for t in tries:
+        r = shocked(h, t["plan"], t["age"], shock)
+        out.append({k: v for k, v in t.items() if k != "plan"} | {"lasts": r["lasts"], "ok": r["ok"]})
+    working = [x for x in out if x["ok"]]
+    rest = sorted((x for x in out if not x["ok"]), key=lambda x: -int(x["lasts"]))
+    # The cheapest that work first; if fewer than two do, the ones that get closest.
+    return (working[:1] + rest[:1] if len(working) == 1 else (working or rest))[:2]
+
+
+def fan(h: Household, plan: Plan, retire_age: int) -> dict[str, Any]:
+    """Good, typical and bad years: growth after inflation 1.5 points either side, as put-away money by age."""
+    out: dict[str, Any] = {}
+    for key, change in (("good", 0.015), ("typical", 0.0), ("bad", -0.015)):
+        r = project(h, replace(plan, growth_change=plan.growth_change + change), retire_age)
+        out[key] = {
+            "lasts": r["lasts"],
+            "path": [round((x["super"] + x["etfs"] + x["offset"]) * 100) for x in r["rows"]],
+        }
+    out["ages"] = [x["age"] for x in project(h, plan, retire_age)["rows"]]
+    return out
