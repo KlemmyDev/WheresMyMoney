@@ -1,19 +1,26 @@
 /**
  * Early retirement: Assumptions (the uplift canvas's NwAssumptions). The few guesses every freedom date rests on:
  * super's return before fees, the super fee (each fund's own, or one set here), inflation and the age to plan to.
- * Change one and the dates move; save when they look right. One set of guesses for every page.
+ * Change one and the dates move; save when they look right. One set of guesses for every page. Above them, how sure
+ * the date is (how far each guess moves it, GET /api/fire/sensitivity), and below, where each "need" comes from.
  */
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { FireNav } from "~/features/fire/FireNav";
 import { fireQuery, type FireSummary } from "~/features/fire/api";
-import { apiSend, errorMessage } from "~/features/common/api";
+import { apiGet, apiSend, errorMessage } from "~/features/common/api";
 import { Loading } from "~/features/common/brand";
 import { Card, CardHead, Stat } from "~/features/common/ds";
 import { pct } from "~/features/common/format";
 import { useToast } from "~/features/common/overlay";
 import { refresh, retirementQuery } from "~/features/common/queries";
 import { Button, PageHead, Pill } from "~/features/common/ui";
+import { COLOUR, TONE, k, useTrack } from "~/features/fire/track";
+
+type Sensitivity = {
+  earliest: number | null;
+  rows: { key: string; name: string; what: string; better: number | null; worse: number | null }[];
+};
 
 type Guess = { super_return: number; super_fee: number | null; inflation: number; plan_to: number };
 type Assumed = {
@@ -85,6 +92,11 @@ export function FireAssumptions() {
     ? { super_return: s.super_return, super_fee: s.super_fee ?? null, inflation: s.inflation, plan_to: s.plan_to }
     : null;
   const cur = g ?? saved;
+  const sens = useQuery({
+    queryKey: ["fire", "sensitivity"],
+    queryFn: ({ signal }) => apiGet<Sensitivity>("fire/sensitivity", undefined, { signal }),
+  });
+  const track = useTrack();
   const q = useQuery({
     queryKey: ["fire", "assume", cur],
     queryFn: () => apiSend<Assumed>("POST", "fire/assume", cur!),
@@ -118,6 +130,8 @@ export function FireAssumptions() {
         The few guesses every freedom date rests on. Change one and watch the dates move; save when they look right.
       </p>
       <FireNav />
+
+      {sens.data && <HowSure s={sens.data} />}
 
       <Card lit tint="accent" aria-labelledby="fa-hero" className="flex flex-col gap-3">
         <CardHead
@@ -195,6 +209,7 @@ export function FireAssumptions() {
           );
         })}
       </div>
+      {track.data && track.data.ready && <WhereNeed t={track.data} />}
       <p className="m-0 text-[12px] text-ink-3">
         One set of guesses for every page, so the dates always agree. Tax and super rules:{" "}
         {fire.data.ready
@@ -203,5 +218,169 @@ export function FireAssumptions() {
         .
       </p>
     </>
+  );
+}
+
+/** How far each guess moves the earliest age to stop, better (green, left) and worse (amber, right), biggest first. */
+function HowSure({ s }: { s: Sensitivity }) {
+  const centre = s.earliest ?? 70;
+  const all = s.rows.flatMap((r) => [r.better ?? 45, r.worse ?? 71]).concat(centre);
+  const lo = Math.min(...all) - 1;
+  const hi = Math.max(...all) + 1;
+  const X = (a: number) => ((a - lo) / (hi - lo)) * 100;
+  const rows = [...s.rows].sort((a, b) => (b.worse ?? 71) - (b.better ?? 45) - ((a.worse ?? 71) - (a.better ?? 45)));
+  const biggest = rows[0];
+  const ages = Array.from({ length: hi - lo + 1 }, (_, i) => lo + i).filter((a) => a % 2 === 0);
+  return (
+    <Card aria-labelledby="fa-sure" className="gap-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 id="fa-sure" className="m-0 text-[20px] leading-7 font-semibold">
+          How sure is &quot;stop at {centre}&quot;?
+        </h2>
+        <span className="text-[12px] text-ink-3">Each bar: change one guess, everything else as it is</span>
+      </div>
+      <div className="flex flex-col gap-2.5">
+        <div className="grid grid-cols-[minmax(130px,240px)_minmax(0,1fr)] gap-4">
+          <span />
+          <div className="relative h-4">
+            {ages.map((a) => (
+              <span
+                key={a}
+                className="mono absolute -translate-x-1/2 text-[11px]"
+                style={{ left: `${X(a)}%`, color: a === centre ? "var(--color-ink)" : "var(--color-ink-3)" }}
+              >
+                {a}
+              </span>
+            ))}
+          </div>
+        </div>
+        {rows.map((r) => {
+          const good = Math.min(r.better ?? 45, centre);
+          const bad = Math.max(r.worse ?? 71, centre);
+          return (
+            <div key={r.key} className="grid grid-cols-[minmax(130px,240px)_minmax(0,1fr)] items-center gap-4">
+              <div>
+                <div className="text-[14px] font-semibold">{r.name}</div>
+                <div className="text-[12px] text-ink-3">{r.what}</div>
+              </div>
+              <div
+                className="relative h-[30px] rounded-lg border border-line bg-sunken"
+                role="img"
+                aria-label={`${r.name}: ${r.what} moves the earliest stop to ${r.better ?? "before 45"} or ${r.worse ?? "after 70"}`}
+              >
+                <div
+                  className="absolute inset-y-1 rounded-l-md"
+                  style={{
+                    left: `${X(good)}%`,
+                    width: `${X(centre) - X(good)}%`,
+                    background: `color-mix(in srgb, ${TONE.good} 55%, transparent)`,
+                  }}
+                />
+                <div
+                  className="absolute inset-y-1 rounded-r-md"
+                  style={{
+                    left: `${X(centre)}%`,
+                    width: `${X(bad) - X(centre)}%`,
+                    background: `color-mix(in srgb, ${TONE.warn} 60%, transparent)`,
+                  }}
+                />
+                <div className="absolute -inset-y-1 w-0.5 -translate-x-1/2 bg-ink" style={{ left: `${X(centre)}%` }} />
+                {good < centre && (
+                  <span
+                    className="mono absolute top-1.5 -translate-x-[115%] text-[12px] text-good"
+                    style={{ left: `${X(good)}%` }}
+                  >
+                    {r.better ?? "<45"}
+                  </span>
+                )}
+                {bad > centre && (
+                  <span
+                    className="mono absolute top-1.5 translate-x-[15%] text-[12px] text-warn"
+                    style={{ left: `${X(bad)}%` }}
+                  >
+                    {r.worse ?? "70+"}
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {biggest && (
+        <p className="m-0 text-[14px] leading-5 text-ink-2">
+          {biggest.name} matter most: {biggest.what.split(" / ")[1] ?? "worse"} moves the date to{" "}
+          {biggest.worse ?? "after 70"}. That&apos;s why the plan checks in every year instead of trusting one forecast.
+        </p>
+      )}
+    </Card>
+  );
+}
+
+/** Where the needs come from: worked back from the end, so every year has a number to be at. */
+function WhereNeed({ t }: { t: import("~/features/fire/api").TrackReady }) {
+  const lead = t.people[0];
+  const goalI = Math.min(t.goal.age - lead.age, t.years.length - 1);
+  const opensI = Math.min(t.opens - lead.age, t.years.length - 1);
+  const steps: [string, string, React.ReactNode][] = [
+    [
+      COLOUR.super,
+      `Super at ${t.opens}`,
+      <>
+        Enough to pay {k(t.goal.spend)} every year from {t.opens} to {t.goal.plan_to}, growing as it&apos;s spent,
+        ending at $0: <b className="num text-ink">{k(t.years[opensI].super_need)}</b>.
+      </>,
+    ],
+    [
+      COLOUR.outside,
+      "Outside super when you stop",
+      t.goal.age < t.opens ? (
+        <>
+          Enough for the {t.opens - t.goal.age} years from stopping to {t.opens}:{" "}
+          <b className="num text-ink">{k(t.years[goalI].outside_need)}</b> by {t.goal.year}.
+        </>
+      ) : (
+        <>Nothing: super opens the year you stop.</>
+      ),
+    ],
+    [
+      COLOUR.loan,
+      "Back to today",
+      <>
+        Take off what today&apos;s savings will add and the growth on the way. What&apos;s left is where each part has
+        to be now: super <b className="num text-ink">{k(t.parts.super.need)}</b>, outside{" "}
+        <b className="num text-ink">{k(t.parts.outside.need)}</b>. The loan: the most today&apos;s repayments clear by{" "}
+        {t.goal.year}, <b className="num text-ink">{k(t.parts.loan.need)}</b>.
+      </>,
+    ],
+  ];
+  return (
+    <Card aria-labelledby="fa-need" className="gap-4">
+      <h2 id="fa-need" className="m-0 text-[20px] leading-7 font-semibold">
+        Where &quot;need&quot; comes from
+      </h2>
+      <p className="m-0 text-[14px] text-ink-2">
+        We start at the end and walk backwards, so every year has a number it needs to be at.
+      </p>
+      <ol className="m-0 flex list-none flex-col gap-3 p-0">
+        {steps.map(([colour, title, body], i) => (
+          <li key={title} className="flex items-start gap-3.5">
+            <span
+              className="num inline-flex size-8 flex-none items-center justify-center rounded-[10px] font-semibold"
+              style={{ color: colour, background: `color-mix(in srgb, ${colour} 20%, transparent)` }}
+            >
+              {i + 1}
+            </span>
+            <div>
+              <div className="font-semibold">{title}</div>
+              <div className="text-[14px] leading-5 text-ink-2">{body}</div>
+            </div>
+          </li>
+        ))}
+      </ol>
+      <p className="m-0 text-[13px] text-ink-3">
+        Outside super&apos;s savings beyond the bridge carry on into the super years, so they come off super&apos;s
+        need: the two together decide whether the goal works.
+      </p>
+    </Card>
   );
 }

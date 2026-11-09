@@ -78,7 +78,7 @@ export function FireCheckin() {
     <>
       <FlowHead
         over="Early retirement · checkpoint"
-        title={`Check in · ${shortDate(b.now.date)}`}
+        title={`Check the plan · ${shortDate(b.now.date)}`}
         steps={["Update", "How we went"]}
         step={result ? 1 : 0}
       />

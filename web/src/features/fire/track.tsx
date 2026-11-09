@@ -133,7 +133,7 @@ export function LifeTimeline({ t, compact }: { t: TrackReady; compact?: boolean 
   // Marks close together take turns on rows, so their labels don't run into each other.
   const lane: number[] = [];
   marks.forEach((m, i) => {
-    const prev = marks.slice(0, i).filter((o) => Math.abs(o.at - m.at) < 11);
+    const prev = marks.slice(0, i).filter((o) => Math.abs(o.at - m.at) < 16);
     const used = new Set(prev.map((o) => lane[marks.indexOf(o)]));
     let l = 0;
     while (used.has(l)) l++;

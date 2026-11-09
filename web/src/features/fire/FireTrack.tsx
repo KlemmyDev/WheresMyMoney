@@ -60,7 +60,7 @@ export function FireTrack() {
                 to="/early-retirement/checkin"
                 className="btn-primary inline-flex min-h-11 items-center rounded-xl px-4 text-[14px] font-semibold no-underline"
               >
-                Check in
+                Check the plan
               </Link>
             </>
           ) : undefined
@@ -238,7 +238,7 @@ function Fig({ label, value, note, tone }: { label: string; value: string; note?
     <div className="rounded-2xl border border-line bg-sunken p-3.5">
       <Eyebrow>{label}</Eyebrow>
       <div
-        className="num mt-1 text-[22px] leading-7 sm:text-[24px] sm:leading-[30px]"
+        className="num mt-1 text-[20px] leading-7 whitespace-nowrap sm:text-[24px] sm:leading-[30px]"
         style={tone ? { color: TONE[tone] } : undefined}
       >
         {value}

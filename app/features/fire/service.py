@@ -690,6 +690,61 @@ class FireService:
             },
         }
 
+    def sensitivity(self) -> dict[str, Any]:
+        """How sure is the date: the earliest age to stop on today's pace, and the same with one guess changed at a
+        time (returns, spending, super fees, the plan-to age), better and worse. Ages; None is "not by 70"."""
+        built = self.household()
+        if built is None:
+            raise ValueError("Add each person's super first, on Retirement.")
+        h, _ = built
+        plan = self.current_plan()
+
+        def earliest(hh: Household, p: Plan = plan) -> int | None:
+            r = freedom(hh, p)
+            return r["retire_age"] if r else None
+
+        rows = [
+            (
+                "returns",
+                "Returns",
+                "1% a year higher / lower",
+                replace(h, super_return=h.super_return + 0.01),
+                replace(h, super_return=h.super_return - 0.01),
+            ),
+            ("spend", "Spending once stopped", "10% less / more", None, None),
+            (
+                "fees",
+                "Super fees",
+                "0.25% lower / 0.5% higher",
+                replace(h, super_fee=max(h.super_fee - 0.0025, 0)),
+                replace(h, super_fee=h.super_fee + 0.005),
+            ),
+            (
+                "plan_to",
+                "Plan to age",
+                f"{h.plan_to - 2} / {h.plan_to + 3}",
+                replace(h, plan_to=h.plan_to - 2),
+                replace(h, plan_to=h.plan_to + 3),
+            ),
+            (
+                "inflation",
+                "Inflation",
+                "0.5% lower / higher",
+                replace(h, inflation=h.inflation - 0.005),
+                replace(h, inflation=h.inflation + 0.005),
+            ),
+        ]
+        spend = plan.spend if plan.spend is not None else h.spend
+        out = []
+        for key, name, what, better, worse in rows:
+            if key == "spend":
+                good, bad = earliest(h, replace(plan, spend=spend * 0.9)), earliest(h, replace(plan, spend=spend * 1.1))
+            else:
+                assert better is not None and worse is not None
+                good, bad = earliest(better), earliest(worse)
+            out.append({"key": key, "name": name, "what": what, "better": good, "worse": bad})
+        return {"earliest": earliest(h), "rows": out}
+
     def save_goal(self, body: dict[str, Any]) -> dict[str, Any]:
         """Set the goal: {"age": 55, "spend": cents a year, "plan_to": 92} (the age can be left out to keep it). The age is kept for early retirement;
         spending and the plan-to age are the retirement settings every estimate uses."""
