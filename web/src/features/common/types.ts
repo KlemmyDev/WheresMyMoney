@@ -46,6 +46,9 @@ export type Goal = {
   ref: string;
   /** Top-ups planned but not moved yet (not counted in saved). */
   planned: { id: number; amount: number; date: string }[];
+  /** When the household said it was reached, and what happened to the money then. */
+  reached_at: string | null;
+  outcome: "kept" | "spent" | "offset" | null;
 };
 
 export type AccountsOverview = {

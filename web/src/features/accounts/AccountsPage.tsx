@@ -836,7 +836,9 @@ function Goals({ account, goals }: { account: Account; goals: Goal[] }) {
       </div>
       {goals.map((g) => (
         <div key={g.id} className="grid grid-cols-[1fr_110px_110px_auto] items-center gap-2 text-[13px]">
-          <span>{g.name}</span>
+          <Link to="/goals/$goalId" params={{ goalId: String(g.id) }} className="text-ink hover:underline">
+            {g.name}
+          </Link>
           <Input
             aria-label={`${g.name} saved`}
             className="text-right"

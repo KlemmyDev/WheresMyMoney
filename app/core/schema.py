@@ -390,6 +390,14 @@ def _bill_pause_and_varies(conn: sqlite3.Connection) -> None:
     conn.execute("UPDATE bills SET varies = 1, how = 'auto' WHERE how = 'estimate'")
 
 
+def _goal_reached_and_removed(conn: sqlite3.Connection) -> None:
+    """goals: `reached_at`, the day the household said it was reached, and `outcome`, what happened to the money then
+    (kept, spent, offset). `removed_at`: taken off the goals (the money stays in the account), until Undo."""
+    conn.execute("ALTER TABLE goals ADD COLUMN reached_at TEXT")
+    conn.execute("ALTER TABLE goals ADD COLUMN outcome TEXT")
+    conn.execute("ALTER TABLE goals ADD COLUMN removed_at TEXT")
+
+
 MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _baseline,
     _money,
@@ -416,4 +424,5 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _names_stuck_to_numbers,
     _loan_rows_not_merchants,
     _bill_pause_and_varies,
+    _goal_reached_and_removed,
 ]

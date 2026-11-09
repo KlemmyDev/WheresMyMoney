@@ -93,3 +93,34 @@ def test_a_planned_top_up_is_done_or_dropped(client: TestClient, household: dict
     g = ok(client.post(f"/api/goals/{goal['id']}/top_up", json={"amount": 2000, "moved": False}))
     g = ok(client.post(f"/api/goals/moves/{g['planned'][0]['id']}", json={"moved": False}))
     assert g["saved"] == 5000 and g["planned"] == []
+
+
+def _goal(client: TestClient, household: dict) -> dict:
+    return ok(
+        client.post(
+            "/api/goals",
+            json={"account_id": household["Savings"], "name": "Japan trip", "target": dollars(8000), "saved": 0},
+        )
+    )
+
+
+def test_a_removed_goal_leaves_the_list_and_comes_back_with_undo(client: TestClient, household: dict) -> None:
+    goal = _goal(client, household)
+    ok(client.post(f"/api/goals/{goal['id']}/top_up", json={"amount": dollars(500)}))
+    ok(client.delete(f"/api/goals/{goal['id']}"))
+    assert goal["id"] not in [g["id"] for g in ok(client.get("/api/accounts"))["goals"]]
+    assert client.post(f"/api/goals/{goal['id']}/top_up", json={"amount": 100}).status_code == 404
+    back = ok(client.post(f"/api/goals/{goal['id']}/restore"))
+    assert back["saved"] == dollars(500)
+    assert goal["id"] in [g["id"] for g in ok(client.get("/api/accounts"))["goals"]]
+    assert client.post(f"/api/goals/{goal['id']}/restore").status_code == 404
+
+
+def test_a_reached_goal_says_what_happened_to_the_money(client: TestClient, household: dict) -> None:
+    goal = _goal(client, household)
+    assert goal["reached_at"] is None
+    reached = ok(client.post(f"/api/goals/{goal['id']}/reached", json={"outcome": "offset"}))
+    assert reached["reached_at"] == "2026-11-12" and reached["outcome"] == "offset"
+    assert client.post(f"/api/goals/{goal['id']}/reached", json={"outcome": "lottery"}).status_code == 422
+    undone = ok(client.post(f"/api/goals/{goal['id']}/reached", json={"outcome": None}))
+    assert undone["reached_at"] is None and undone["outcome"] is None

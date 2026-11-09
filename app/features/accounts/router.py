@@ -117,6 +117,19 @@ async def remove_goal(svc: ServicesDep, goal_id: int):
     return {"removed": await run(svc.accounts.remove_goal, goal_id)}
 
 
+@router.post("/goals/{goal_id}/restore")
+async def restore_goal(svc: ServicesDep, goal_id: int):
+    """Undo removing a goal."""
+    return await run(svc.accounts.restore_goal, goal_id)
+
+
+@router.post("/goals/{goal_id}/reached")
+async def reach_goal(svc: ServicesDep, goal_id: int, body: JsonBody):
+    """The goal is reached: {"outcome": "kept" | "spent" | "offset"}; {"outcome": null} undoes it."""
+    outcome = body.get("outcome")
+    return await run(svc.accounts.reach_goal, goal_id, str(outcome) if outcome else None)
+
+
 @router.post("/goals/{goal_id}/top_up")
 async def top_up_goal(svc: ServicesDep, goal_id: int, body: JsonBody):
     """Add to what a goal has saved: {"amount": 10000}; with "moved": false it's planned, counted once moved."""

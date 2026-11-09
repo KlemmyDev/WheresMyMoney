@@ -110,14 +110,15 @@ def test_an_amount_that_varies_is_apart_from_how_its_paid(client: TestClient, ho
 def test_an_older_estimate_bill_becomes_one_that_varies(tmp_path) -> None:
     import sqlite3
 
-    from app.core.schema import MIGRATIONS
+    from app.core.schema import MIGRATIONS, _bill_pause_and_varies
 
     conn = sqlite3.connect(tmp_path / "old.db")
-    for step in MIGRATIONS[:-1]:
+    at = MIGRATIONS.index(_bill_pause_and_varies)
+    for step in MIGRATIONS[:at]:
         step(conn)
     conn.execute(
         "INSERT INTO bills (name, amount, every, next_due, how, match, created_at)"
         " VALUES ('Power', 20000, 'quarterly', '2026-12-01', 'estimate', '', 0)"
     )
-    MIGRATIONS[-1](conn)
+    MIGRATIONS[at](conn)
     assert conn.execute("SELECT how, varies, paused_until FROM bills").fetchone() == ("auto", 1, None)

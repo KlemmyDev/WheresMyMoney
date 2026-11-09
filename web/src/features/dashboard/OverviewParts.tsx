@@ -356,12 +356,12 @@ export function GoalsCard({ d }: { d: Dashboard }) {
               const look = goalLook(g, i);
               const planned = g.planned.reduce((t, m) => t + m.amount, 0);
               return (
-                <button
-                  type="button"
+                <Link
                   key={g.id}
-                  onClick={() => setOpen(g.id)}
-                  aria-label={`${g.name}: ${money(g.saved)} of ${money(g.target)}. Top up`}
-                  className="group press flex min-h-16 cursor-pointer items-center gap-3 rounded-[18px] border border-line bg-tile-2 px-3 py-2.5 text-left text-ink transition-colors duration-150 hover:border-line-2 hover:bg-raised"
+                  to="/goals/$goalId"
+                  params={{ goalId: String(g.id) }}
+                  aria-label={`${g.name}: ${money(g.saved)} of ${money(g.target)}`}
+                  className="group press flex min-h-16 cursor-pointer items-center gap-3 rounded-[18px] border border-line bg-tile-2 px-3 py-2.5 text-left text-ink no-underline transition-colors duration-150 hover:border-line-2 hover:bg-raised"
                 >
                   <Ring value={p} size={52} role={look.role} label={`${g.name} ${Math.round(p)}%`}>
                     <span className="num text-[12px]">{Math.round(p)}%</span>
@@ -377,9 +377,9 @@ export function GoalsCard({ d }: { d: Dashboard }) {
                     aria-hidden
                     className="flex-none text-[13px] font-semibold text-teal opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100"
                   >
-                    Top up →
+                    Open →
                   </span>
-                </button>
+                </Link>
               );
             })}
           </div>
