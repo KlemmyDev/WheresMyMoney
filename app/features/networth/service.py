@@ -113,6 +113,32 @@ class NetWorthService:
 
     # -- the picture ----------------------------------------------------------------------------
 
+    def likely(self, people: list[dict[str, Any]], lo: dict[str, Any] | None, offsetting: int) -> dict[str, Any]:
+        """Where net worth is likely to be in a year, from what's being put away: super (work's and salary
+        sacrifice, after the 15% tax going in), the offsetting accounts at their recent pace, the funds at the last
+        year's buying, and the loan paid down at its repayment. The home and crypto are held flat: no guessing."""
+        super_in = round(sum((p["salary"] * p["rate"] + p.get("sacrifice", 0)) * 0.85 for p in people))
+        accounts_in = max(self.accounts.offsetting_growth(), 0) * 12
+        shares_in = max(self.investments.bought_lately(), 0)
+        loan_down = 0
+        if lo and lo.get("repayment") and lo.get("rate_bp") is not None:
+            owed = float(lo["balance"])
+            for _ in range(12):
+                interest = max(owed - offsetting, 0) * lo["rate_bp"] / 10000 / 12
+                paid = max(lo["repayment"] - interest, 0)
+                owed -= paid
+                loan_down += paid
+        put_away = super_in + accounts_in + shares_in
+        return {
+            "month": dates.add_months(dates.today(), 12).isoformat()[:7],
+            "put_away": put_away,
+            "super": super_in,
+            "accounts": accounts_in,
+            "shares": shares_in,
+            "loan_down": round(loan_down),
+            "gain": put_away + round(loan_down),
+        }
+
     def overview(self, span: str = "1y") -> dict[str, Any]:
         months = RANGES.get(span, 12)
         today = dates.today()
@@ -132,8 +158,10 @@ class NetWorthService:
             return total
 
         assets = self.assets()
-        shares_now = self.investments.values_on([today])[0]
-        shares = self.investments.values_on(days)
+        shares_now = self.investments.values_on([today], crypto=False)[0]
+        shares = self.investments.values_on(days, crypto=False)
+        crypto_now = self.investments.values_on([today], crypto=True)[0]
+        crypto = self.investments.values_on(days, crypto=True)
 
         loan_days = {d["date"]: d["balance"] for d in self.accounts.activity(lo["id"], 366)["days"]} if lo else {}
         earliest_owed = loan_days[min(loan_days)] if loan_days else (lo["balance"] if lo else 0)
@@ -159,6 +187,7 @@ class NetWorthService:
                         "date": iso,
                         "accounts": accts,
                         "shares": shares[n] if day < today else shares_now,
+                        "crypto": crypto[n] if day < today else crypto_now,
                         "super": super_on(iso) if day < today else sum(p["balance"] for p in people),
                         "home": by_kind.get("home", 0),
                         "other": by_kind.get("car", 0) + by_kind.get("other", 0),
@@ -167,6 +196,7 @@ class NetWorthService:
                 )
         now = history[-1]
         return {
+            "likely": self.likely(people, lo, ov["offsetting"]),
             "range": span,
             "accounts": [
                 {"id": a["id"], "name": a["name"], "role": a["role"], "balance": a["balance"], "known": a["known"]}
@@ -183,7 +213,14 @@ class NetWorthService:
                 if lo
                 else None
             ),
-            "shares": {"value": shares_now, "funds": len(self.investments.overview()["funds"])},
+            "shares": {
+                "value": shares_now,
+                "funds": len([f for f in self.investments.overview()["funds"] if f.get("kind") != "crypto"]),
+            },
+            "crypto": {
+                "value": crypto_now,
+                "funds": len([f for f in self.investments.overview()["funds"] if f.get("kind") == "crypto"]),
+            },
             "super": [{"person": p["person"], "balance": p["balance"], "as_of": p["as_of"]} for p in people],
             "assets": assets,
             "now": now,

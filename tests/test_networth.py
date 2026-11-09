@@ -41,3 +41,34 @@ def test_super_over_time(client: TestClient, household: dict) -> None:
     h = {x["date"]: x["super"] for x in ok(client.get("/api/networth?range=1y"))["history"]}
     assert h["2025-11-12"] == dollars(90000)  # before the first: the first
     assert h["2026-03-12"] == dollars(90000) and h["2026-10-12"] == dollars(112600)
+
+
+def test_crypto_is_its_own_part_and_a_year_ahead_is_likely(client: TestClient, household: dict) -> None:
+    def fund(ticker: str, kind: str) -> int:
+        body = {"ticker": ticker, "name": ticker, "group": "intl", "kind": kind}
+        return int(ok(client.post("/api/investments/funds", json=body))["id"])
+
+    trade = {"side": "buy", "date": "2026-06-01"}
+    ok(
+        client.post(
+            "/api/investments/trades", json={**trade, "fund_id": fund("VGS", "etf"), "units": 10, "price": dollars(100)}
+        )
+    )
+    ok(
+        client.post(
+            "/api/investments/trades",
+            json={**trade, "fund_id": fund("BTC", "crypto"), "units": 0.01, "price": dollars(150000)},
+        )
+    )
+    ok(
+        client.post(
+            "/api/retirement/people", json={"person": "Alex", "born": 1988, "salary": dollars(100000), "rate": 0.12}
+        )
+    )
+    n = ok(client.get("/api/networth?range=1y"))
+    assert n["now"]["shares"] == dollars(1000) and n["now"]["crypto"] == dollars(1500)
+    assert n["crypto"]["value"] == dollars(1500) and n["shares"]["value"] == dollars(1000)
+    lk = n["likely"]
+    assert lk["month"] == "2027-11" and lk["super"] == round(dollars(12000) * 0.85)
+    assert lk["shares"] == dollars(1000)  # the last year's buying, crypto left out
+    assert lk["loan_down"] > 0 and lk["gain"] == lk["put_away"] + lk["loan_down"]
