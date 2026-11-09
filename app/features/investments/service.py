@@ -575,15 +575,15 @@ class InvestmentsService:
             "parcels": parcels,
         }
 
-    def history(self, span: str) -> list[dict[str, Any]]:
+    def history(self, span: str, fund_id: int | None = None) -> list[dict[str, Any]]:
         """The portfolio's value and what had been put in (its cost), sampled across the span: daily for a month,
-        weekly up to a year, fortnightly for five."""
+        weekly up to a year, fortnightly for five. With `fund_id`, that one holding's."""
         days = RANGES.get(span, 366)
         step = 1 if days <= 31 else 7 if days <= 366 else 14
         today = dates.today()
         with self.db.reading() as conn:
-            funds = self._funds(conn)
-            trades = self._trades(conn)
+            funds = [f for f in self._funds(conn) if fund_id is None or f["id"] == fund_id]
+            trades = {k: v for k, v in self._trades(conn).items() if fund_id is None or k == fund_id}
             first = min((t[0][0] for t in trades.values() if t), default=None)
             if first is None:
                 return []

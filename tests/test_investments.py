@@ -157,3 +157,13 @@ def test_platforms_and_crypto(client: TestClient) -> None:
     ok(trade(client, f["id"], "buy", 0.0125, 160000, "2026-06-01"))
     assert ok(client.get("/api/investments"))["funds"][0]["units"] == 0.0125
     assert client.post("/api/investments/funds", json={"ticker": "X", "kind": "bond"}).status_code == 422
+
+
+def test_one_holdings_history(client: TestClient) -> None:
+    vas, vgs = fund(client), fund(client, "VGS", "intl")
+    ok(trade(client, vas, "buy", 10, 100, "2026-06-01"))
+    ok(trade(client, vgs, "buy", 5, 200, "2026-07-01"))
+    both = ok(client.get("/api/investments/history", params={"range": "1y"}))
+    one = ok(client.get("/api/investments/history", params={"range": "1y", "fund": vgs}))
+    assert one[0]["date"] == "2026-07-01" and one[-1]["cost"] == dollars(1000)
+    assert both[-1]["cost"] == dollars(2000)

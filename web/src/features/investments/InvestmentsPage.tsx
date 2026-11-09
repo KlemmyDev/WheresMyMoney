@@ -4,6 +4,7 @@
  * a split for putting more in, holdings, distributions, trades, and offset or shares, as facts from the household's
  * own numbers. Money in cents; a price can have fractions of a cent.
  */
+import { useNavigate } from "@tanstack/react-router";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiSend, errorMessage } from "~/features/common/api";
@@ -44,7 +45,7 @@ const GROUP_ROLE: Record<string, Role> = {
   crypto: "spending",
   other: "ink",
 };
-const GROUP_TONE: Record<string, Tone> = {
+export const GROUP_TONE: Record<string, Tone> = {
   aus: "invest",
   intl: "grad",
   bonds: "bills",
@@ -290,6 +291,7 @@ function PutMoreIn({ p }: { p: Portfolio }) {
 
 function Holdings({ p, onFund }: { p: Portfolio; onFund: (f: Fund | "new") => void }) {
   const [trading, setTrading] = useState(false);
+  const navigate = useNavigate();
   return (
     <Card aria-labelledby="inv-hold" className="flex flex-col gap-3 md:col-span-8">
       <CardHead
@@ -333,8 +335,8 @@ function Holdings({ p, onFund }: { p: Portfolio; onFund: (f: Fund | "new") => vo
             <button
               key={f.id}
               type="button"
-              onClick={() => onFund(f)}
-              aria-label={`${f.ticker}, ${f.name}: ${f.units} units worth ${money(f.value)}, ${signed(f.gain)} since bought. Edit the fund`}
+              onClick={() => navigate({ to: "/investments/$fundId", params: { fundId: String(f.id) } })}
+              aria-label={`${f.ticker}, ${f.name}: ${f.units} units worth ${money(f.value)}, ${signed(f.gain)} since bought`}
               className="chip-host press grid cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-2xl border-0 border-t border-line bg-transparent px-2 py-3 text-left text-ink first:border-t-0 hover:bg-tile-2 md:grid-cols-[minmax(0,1.6fr)_repeat(5,minmax(0,1fr))]"
             >
               <span className="flex min-w-0 items-center gap-3">
@@ -379,10 +381,10 @@ function Holdings({ p, onFund }: { p: Portfolio; onFund: (f: Fund | "new") => vo
   );
 }
 
-function TradeForm({ p, onDone }: { p: Portfolio; onDone: () => void }) {
+export function TradeForm({ p, onDone, only }: { p: Portfolio; onDone: () => void; only?: number }) {
   const qc = useQueryClient();
   const [side, setSide] = useState<"buy" | "sell">("buy");
-  const [fundId, setFundId] = useState(p.funds[0]?.id);
+  const [fundId, setFundId] = useState(only ?? p.funds[0]?.id);
   const fund = p.funds.find((f) => f.id === fundId);
   const [units, setUnits] = useState("");
   const [each, setEach] = useState(fund?.price ? (fund.price / 100).toString() : "");
@@ -423,19 +425,21 @@ function TradeForm({ p, onDone }: { p: Portfolio; onDone: () => void }) {
         </ChoiceChip>
       </div>
       <div className="no-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1" role="group" aria-label="Fund">
-        {p.funds.map((f) => (
-          <ChoiceChip
-            key={f.id}
-            pressed={fundId === f.id}
-            onClick={() => {
-              setFundId(f.id);
-              if (f.price) setEach((f.price / 100).toString());
-            }}
-            role={GROUP_ROLE[f.group] ?? "accent"}
-          >
-            {f.ticker}
-          </ChoiceChip>
-        ))}
+        {p.funds
+          .filter((f) => only == null || f.id === only)
+          .map((f) => (
+            <ChoiceChip
+              key={f.id}
+              pressed={fundId === f.id}
+              onClick={() => {
+                setFundId(f.id);
+                if (f.price) setEach((f.price / 100).toString());
+              }}
+              role={GROUP_ROLE[f.group] ?? "accent"}
+            >
+              {f.ticker}
+            </ChoiceChip>
+          ))}
       </div>
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
         <label className="flex flex-col gap-1.5">
@@ -615,7 +619,7 @@ function Trades({ p }: { p: Portfolio }) {
   );
 }
 
-function FundSheet({
+export function FundSheet({
   fund,
   groups,
   onClose,

@@ -32,6 +32,7 @@ import { Route as AppAccountsAccountIdRouteImport } from './routes/_app/accounts
 import { Route as AppBillsBillIdRouteImport } from './routes/_app/bills_.$billId'
 import { Route as AppBillsSpottedRouteImport } from './routes/_app/bills_.spotted'
 import { Route as AppGoalsGoalIdRouteImport } from './routes/_app/goals_.$goalId'
+import { Route as AppInvestmentsFundIdRouteImport } from './routes/_app/investments_.$fundId'
 import { Route as AppMerchantsKeyRouteImport } from './routes/_app/merchants_.$key'
 import { Route as AppRetirementStatementRouteImport } from './routes/_app/retirement_.statement'
 import { Route as AppSpendingCategoryIdRouteImport } from './routes/_app/spending_.$categoryId'
@@ -150,6 +151,11 @@ const AppGoalsGoalIdRoute = AppGoalsGoalIdRouteImport.update({
   path: '/goals/$goalId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppInvestmentsFundIdRoute = AppInvestmentsFundIdRouteImport.update({
+  id: '/investments_/$fundId',
+  path: '/investments/$fundId',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppMerchantsKeyRoute = AppMerchantsKeyRouteImport.update({
   id: '/merchants_/$key',
   path: '/merchants/$key',
@@ -189,6 +195,7 @@ export interface FileRoutesByFullPath {
   '/bills/$billId': typeof AppBillsBillIdRoute
   '/bills/spotted': typeof AppBillsSpottedRoute
   '/goals/$goalId': typeof AppGoalsGoalIdRoute
+  '/investments/$fundId': typeof AppInvestmentsFundIdRoute
   '/merchants/$key': typeof AppMerchantsKeyRoute
   '/retirement/statement': typeof AppRetirementStatementRoute
   '/spending/$categoryId': typeof AppSpendingCategoryIdRoute
@@ -216,6 +223,7 @@ export interface FileRoutesByTo {
   '/bills/$billId': typeof AppBillsBillIdRoute
   '/bills/spotted': typeof AppBillsSpottedRoute
   '/goals/$goalId': typeof AppGoalsGoalIdRoute
+  '/investments/$fundId': typeof AppInvestmentsFundIdRoute
   '/merchants/$key': typeof AppMerchantsKeyRoute
   '/retirement/statement': typeof AppRetirementStatementRoute
   '/spending/$categoryId': typeof AppSpendingCategoryIdRoute
@@ -245,6 +253,7 @@ export interface FileRoutesById {
   '/_app/bills_/$billId': typeof AppBillsBillIdRoute
   '/_app/bills_/spotted': typeof AppBillsSpottedRoute
   '/_app/goals_/$goalId': typeof AppGoalsGoalIdRoute
+  '/_app/investments_/$fundId': typeof AppInvestmentsFundIdRoute
   '/_app/merchants_/$key': typeof AppMerchantsKeyRoute
   '/_app/retirement_/statement': typeof AppRetirementStatementRoute
   '/_app/spending_/$categoryId': typeof AppSpendingCategoryIdRoute
@@ -274,6 +283,7 @@ export interface FileRouteTypes {
     | '/bills/$billId'
     | '/bills/spotted'
     | '/goals/$goalId'
+    | '/investments/$fundId'
     | '/merchants/$key'
     | '/retirement/statement'
     | '/spending/$categoryId'
@@ -301,6 +311,7 @@ export interface FileRouteTypes {
     | '/bills/$billId'
     | '/bills/spotted'
     | '/goals/$goalId'
+    | '/investments/$fundId'
     | '/merchants/$key'
     | '/retirement/statement'
     | '/spending/$categoryId'
@@ -329,6 +340,7 @@ export interface FileRouteTypes {
     | '/_app/bills_/$billId'
     | '/_app/bills_/spotted'
     | '/_app/goals_/$goalId'
+    | '/_app/investments_/$fundId'
     | '/_app/merchants_/$key'
     | '/_app/retirement_/statement'
     | '/_app/spending_/$categoryId'
@@ -503,6 +515,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppGoalsGoalIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/investments_/$fundId': {
+      id: '/_app/investments_/$fundId'
+      path: '/investments/$fundId'
+      fullPath: '/investments/$fundId'
+      preLoaderRoute: typeof AppInvestmentsFundIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/merchants_/$key': {
       id: '/_app/merchants_/$key'
       path: '/merchants/$key'
@@ -548,6 +567,7 @@ interface AppRouteChildren {
   AppBillsBillIdRoute: typeof AppBillsBillIdRoute
   AppBillsSpottedRoute: typeof AppBillsSpottedRoute
   AppGoalsGoalIdRoute: typeof AppGoalsGoalIdRoute
+  AppInvestmentsFundIdRoute: typeof AppInvestmentsFundIdRoute
   AppMerchantsKeyRoute: typeof AppMerchantsKeyRoute
   AppRetirementStatementRoute: typeof AppRetirementStatementRoute
   AppSpendingCategoryIdRoute: typeof AppSpendingCategoryIdRoute
@@ -574,6 +594,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppBillsBillIdRoute: AppBillsBillIdRoute,
   AppBillsSpottedRoute: AppBillsSpottedRoute,
   AppGoalsGoalIdRoute: AppGoalsGoalIdRoute,
+  AppInvestmentsFundIdRoute: AppInvestmentsFundIdRoute,
   AppMerchantsKeyRoute: AppMerchantsKeyRoute,
   AppRetirementStatementRoute: AppRetirementStatementRoute,
   AppSpendingCategoryIdRoute: AppSpendingCategoryIdRoute,
