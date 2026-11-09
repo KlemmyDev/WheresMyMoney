@@ -459,7 +459,9 @@ export type SpendingMonth = {
   projected: number;
   daily: number[];
   categories: { id: number; name: string; budget: number | null; spent: number }[];
+  /** Spending this month with no category yet: cents, and how many transactions. */
   unsorted: number;
+  unsorted_count: number;
   unbudgeted: number;
   by_person: { user_id: number | null; spent: number }[];
   top_up: Rule | null;

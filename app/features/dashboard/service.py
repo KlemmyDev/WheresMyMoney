@@ -22,7 +22,7 @@ from app.features.checkins.service import CheckinService
 from app.features.rules.service import RulesService
 from app.features.spending.service import SpendingService
 
-PERIODS = {"30d": 30, "6m": 182, "1y": 365, "all": 730}
+PERIODS = {"30d": 30, "3m": 91, "6m": 182, "1y": 365, "all": 730}
 
 
 class DashboardService:

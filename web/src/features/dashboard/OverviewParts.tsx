@@ -1,28 +1,29 @@
 /**
- * The Overview's new pieces (Nightfall): the balance hero with account filter and hide toggle, quick actions, accounts
- * with trend lines, and savings goals as rings. Built only from the design system (ds.tsx, icons.tsx).
+ * The Overview's top half (Nightfall, from the uplift canvas SfOverview): the total balance with a sentence about how
+ * each account is doing, Check in as its one action, and the savings goals as rings. Built only from the design system.
  */
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { useState, type KeyboardEvent, type PointerEvent } from "react";
 import {
   BigNumber,
   Card,
   CardHead,
-  ChoiceChip,
+  Details,
   EmptyState,
   Eyebrow,
-  IconButton,
   ROLE,
   Ring,
+  Stat,
   type Role as DsRole,
 } from "~/features/common/ds";
-import { dayDate, money, pct, todayIso } from "~/features/common/format";
-import { dashboardQuery } from "~/features/common/queries";
-import { Chip, I, type Glyph, type Tone } from "~/features/common/icons";
+import { dayDate, money, parseDate, pct, todayIso } from "~/features/common/format";
+import { dashboardQuery, netWorthQuery } from "~/features/common/queries";
+import { I } from "~/features/common/icons";
 import { useActions } from "~/features/common/layout";
 import { useStoredFlag } from "~/features/common/theme";
-import type { Dashboard, Role } from "~/features/common/types";
-import { Button, Pill, Segmented } from "~/features/common/ui";
+import type { Dashboard, Role, Target } from "~/features/common/types";
+import { Button, Segmented } from "~/features/common/ui";
 import { TopUpSheet, goalLook } from "~/features/goals/GoalFlows";
 
 const ROLE_DS: Record<Role, DsRole> = {
@@ -32,26 +33,13 @@ const ROLE_DS: Record<Role, DsRole> = {
   savings: "savings",
   track: "ink",
 };
-const ROLE_TONE: Record<Role, Tone> = {
-  offset: "offset",
-  bills: "bills",
-  spending: "spending",
-  savings: "savings",
-  track: "neutral",
-};
-const ROLE_GLYPH: Record<Role, Glyph> = {
-  offset: I.offset,
-  bills: I.bills,
-  spending: I.accounts,
-  savings: I.savings,
-  track: I.list,
-};
 
+/** Whether balances start hidden on this device (Settings, Appearance): for when someone else can see the screen. */
 export function useHidden() {
   return useStoredFlag("wmm:hide-balances");
 }
 
-const mask = "$ ••••••";
+const MASK = "$ ••••••";
 
 /** A line through `points`, scaled into a w×h box. */
 function line(points: number[], w: number, h: number, pad = 6) {
@@ -67,8 +55,9 @@ function line(points: number[], w: number, h: number, pad = 6) {
     .join(" ");
 }
 
-const SPAN = { "30d": 30, "6m": 182, "1y": 365 } as const;
+const SPAN = { "30d": 30, "3m": 91, "6m": 182, "1y": 365 } as const;
 type Range = keyof typeof SPAN;
+const RANGE_WORDS: Record<Range, string> = { "30d": "a month", "3m": "3 months", "6m": "6 months", "1y": "a year" };
 
 /** The day `daysAgo` days before today, as "Sat 7 Nov". */
 function ago(daysAgo: number) {
@@ -79,43 +68,76 @@ function ago(daysAgo: number) {
   );
 }
 
-const EYE_OPEN = (
-  <>
-    <path
-      d="M2.5 12C3.5 10.5 7 6 12 6s8.5 4.5 9.5 6c-1 1.5-4.5 6-9.5 6s-8.5-4.5-9.5-6z"
-      fill="currentColor"
-      fillOpacity={0.15}
-    />
-    <path d="M9.5 12a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0" />
-  </>
-);
-const EYE_SHUT = (
-  <path d="M3 3l18 18M10.6 6.1A9.8 9.8 0 0 1 12 6c5 0 8.5 4.5 9.5 6-.5.8-1.6 2.3-3.2 3.6M6.4 7.5C4.6 8.8 3.2 10.7 2.5 12c1 1.5 4.5 6 9.5 6 1.6 0 3-.4 4.3-1" />
-);
+type HeroAccount = Dashboard["accounts"][number];
+
+/**
+ * Is an account where its job says it should be? Bills against its months of bills; Spending against how the month is
+ * going (it runs down by design, so its monthly amount isn't the test); Savings holds the goals, so it always is. The
+ * offset's job (cover the loan) is said as a share instead, and accounts without a job aren't judged.
+ */
+function onAim(t: Target | null, spendingBehind: boolean): boolean | null {
+  if (!t || t.kind === "loan") return null;
+  if (t.kind === "allowance") return !spendingBehind;
+  if (t.kind === "goals") return true;
+  return t.progress >= 0.97;
+}
+
+function joinNames(names: string[]): string {
+  return names.length < 2 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+}
+
+/** "Spending, Bills and Savings are where they should be. Offset covers 12% of the loan." */
+export function heroSentence(accounts: HeroAccount[], spendingBehind: boolean): string {
+  const ok = accounts.filter((a) => onAim(a.target, spendingBehind) === true).map((a) => a.name);
+  const parts: string[] = [];
+  if (ok.length)
+    parts.push(
+      `${joinNames(ok)} ${ok.length === 1 ? "is" : "are"} where ${ok.length === 1 ? "it" : "they"} should be.`,
+    );
+  for (const a of accounts) {
+    const t = a.target;
+    if (!t || onAim(t, spendingBehind) === true) continue;
+    if (t.kind === "loan") parts.push(`${a.name} covers ${pct(t.progress)} of the loan.`);
+    else if (t.kind === "allowance") parts.push(`${a.name} is running behind for the month.`);
+    else parts.push(`${a.name} is ${money(Math.max(0, t.amount - a.balance))} under its aim.`);
+  }
+  return parts.join(" ");
+}
+
+/** What each account's figure means, under See the numbers. */
+function aimNote(a: HeroAccount): string {
+  const t = a.target;
+  if (!t) return a.offsets_loan ? "offsets the loan" : "kept apart";
+  if (t.kind === "months")
+    return t.held != null ? `${t.held.toFixed(1)} months, aim ${t.months}` : `aim ${t.months} months of bills`;
+  if (t.kind === "allowance") return `of ${money(t.amount)} for the month`;
+  if (t.kind === "goals") return `${t.count} ${t.count === 1 ? "goal" : "goals"}`;
+  return `covers ${pct(t.progress)} of the loan`;
+}
+
+/** Days between two ISO dates. */
+const daysBetween = (from: string, to: string) =>
+  Math.round((parseDate(to).getTime() - parseDate(from).getTime()) / 86400000);
 
 export function BalanceHero({ d }: { d: Dashboard }) {
-  const [hide, setHide] = useHidden();
-  const [pick, setPick] = useState<number | "all">("all");
+  const { checkin } = useActions();
+  const [hidden] = useHidden();
+  const show = (cents: number, opts?: { cents?: boolean }) => (hidden ? MASK : money(cents, opts));
   const [range, setRange] = useState<Range>("30d");
   const [pt, setPt] = useState<number | null>(null);
   // A longer trend comes from the same endpoint; the rest of the page keeps this month's figures.
   const longer = useQuery({ ...dashboardQuery(range), enabled: range !== "30d", placeholderData: keepPreviousData });
+  const worth = useQuery(netWorthQuery("1y"));
   const src = range === "30d" ? d : (longer.data ?? d);
   const accounts = d.accounts;
-  const sparkOf = (id: number) => src.accounts.find((a) => a.id === id)?.spark ?? [];
-  const sel = pick === "all" ? null : (accounts.find((a) => a.id === pick) ?? null);
-  const total = sel ? sel.balance : accounts.reduce((t, a) => t + a.balance, 0);
-  const sparks = accounts.map((a) => sparkOf(a.id));
+  const total = accounts.reduce((t, a) => t + a.balance, 0);
+  const sparks = accounts.map((a) => src.accounts.find((x) => x.id === a.id)?.spark ?? []);
   const len = Math.min(...sparks.map((s) => s.length).filter((n) => n > 0), Infinity);
-  const spark = sel
-    ? sparkOf(sel.id)
-    : Number.isFinite(len)
-      ? Array.from({ length: len }, (_, i) => sparks.reduce((t, s) => t + (s[s.length - len + i] ?? 0), 0))
-      : [];
+  const spark = Number.isFinite(len)
+    ? Array.from({ length: len }, (_, i) => sparks.reduce((t, s) => t + (s[s.length - len + i] ?? 0), 0))
+    : [];
   const path = line(spark, 600, 140);
-  const colour = sel ? ROLE[ROLE_DS[sel.role]] : ROLE.accent;
-  const positive = accounts.filter((a) => a.balance > 0);
-  const positiveTotal = positive.reduce((t, a) => t + a.balance, 0) || 1;
+  const colour = ROLE.accent;
   const n = spark.length;
   const step = n > 1 ? (SPAN[range] - 1) / (n - 1) : 0;
   const lo = n ? Math.min(...spark) : 0;
@@ -123,6 +145,11 @@ export function BalanceHero({ d }: { d: Dashboard }) {
   const yAt = (v: number) => 134 - ((v - lo) / (hi - lo || 1)) * 128;
   const at = pt != null && pt < n ? pt : null;
   const shown = at ?? n - 1;
+  const delta = n > 1 ? spark[n - 1] - spark[0] : null;
+  const last = d.checkin.last;
+  const since = last ? daysBetween(last.date, d.today) : null;
+  const w = worth.data?.now;
+  const netWorth = w ? w.accounts + w.shares + w.super + w.other + w.home - w.loan : null;
   // Drag (or hover) along the chart to read any point; vertical swipes still scroll the page.
   const scrub = (e: PointerEvent<HTMLDivElement>) => {
     if (n < 2) return;
@@ -134,59 +161,23 @@ export function BalanceHero({ d }: { d: Dashboard }) {
     e.preventDefault();
     setPt(Math.min(n - 1, Math.max(0, shown + (e.key === "ArrowRight" ? 1 : -1))));
   };
-  const rangeName = range === "30d" ? "month" : range === "6m" ? "6 months" : "year";
   return (
     <Card lit aria-labelledby="hero" className="md:col-span-8">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <Eyebrow id="hero">{sel ? sel.name : `Total across ${accounts.length} accounts`}</Eyebrow>
-          <BigNumber size="xl" className="mt-1">
-            {hide ? mask : money(total, { cents: true })}
-          </BigNumber>
-          <div className="mt-1 text-[13px] text-ink-3">
-            {sel
-              ? sel.offsets_loan
-                ? "Offsets the loan"
-                : "Doesn't offset the loan"
-              : d.coverage.ratio != null
-                ? `Offsets ${pct(d.coverage.ratio)} of the loan`
-                : "Add the loan to see what this saves"}
+          <Eyebrow id="hero">
+            Total balance · {accounts.length} {accounts.length === 1 ? "account" : "accounts"}
+          </Eyebrow>
+          <div className="mt-1 flex flex-wrap items-baseline gap-x-3">
+            <BigNumber size="xl">{show(total)}</BigNumber>
+            {delta != null && !hidden && (
+              <span className={delta >= 0 ? "num text-[15px] text-good" : "num text-[15px] text-bad"}>
+                {delta >= 0 ? "+" : "−"}
+                {money(Math.abs(delta))} in {RANGE_WORDS[range]}
+              </span>
+            )}
           </div>
         </div>
-        <IconButton label={hide ? "Show balances" : "Hide balances"} onClick={() => setHide(!hide)}>
-          <svg
-            viewBox="0 0 24 24"
-            width="20"
-            height="20"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            aria-hidden
-          >
-            {hide ? EYE_SHUT : EYE_OPEN}
-          </svg>
-        </IconButton>
-      </div>
-      <div role="group" aria-label="Show an account" className="no-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1">
-        <ChoiceChip pressed={pick === "all"} onClick={() => setPick("all")}>
-          All
-        </ChoiceChip>
-        {accounts.map((a) => (
-          <ChoiceChip
-            key={a.id}
-            pressed={pick === a.id}
-            onClick={() => setPick(a.id)}
-            g={ROLE_GLYPH[a.role]}
-            tone={ROLE_TONE[a.role]}
-            role={ROLE_DS[a.role]}
-          >
-            {a.name}
-          </ChoiceChip>
-        ))}
-      </div>
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[13px] text-ink-3">Drag across the chart to read any day</span>
         <Segmented<Range>
           label="Range"
           value={range}
@@ -196,25 +187,31 @@ export function BalanceHero({ d }: { d: Dashboard }) {
           }}
           options={[
             { value: "30d", label: "1M" },
+            { value: "3m", label: "3M" },
             { value: "6m", label: "6M" },
-            { value: "1y", label: "1Y" },
+            { value: "1y", label: "12M" },
           ]}
         />
       </div>
+      {!hidden && (
+        <p className="m-0 max-w-[62ch] text-[16px] leading-relaxed text-ink-2">
+          {heroSentence(accounts, (d.spending?.vs_pace ?? 0) > 0)}
+        </p>
+      )}
       {path && (
         <div
           role="slider"
           tabIndex={0}
-          aria-label={`${sel ? sel.name : "Total"} over the last ${rangeName}`}
+          aria-label={`Total balance over ${RANGE_WORDS[range]}`}
           aria-valuemin={1}
           aria-valuemax={n}
           aria-valuenow={shown + 1}
-          aria-valuetext={`${ago(Math.round((n - 1 - shown) * step))}: ${hide ? "hidden" : money(spark[shown])}`}
+          aria-valuetext={`${ago(Math.round((n - 1 - shown) * step))}: ${hidden ? "hidden" : money(spark[shown])}`}
           onPointerDown={scrub}
           onPointerMove={scrub}
           onPointerLeave={(e) => e.pointerType === "mouse" && setPt(null)}
           onKeyDown={onKey}
-          className="relative h-[130px] cursor-ew-resize touch-pan-y rounded-xl outline-offset-4 select-none sm:h-[160px]"
+          className="relative h-[120px] cursor-ew-resize touch-pan-y rounded-xl outline-offset-4 select-none sm:h-[150px]"
         >
           <svg
             viewBox="0 0 600 140"
@@ -260,44 +257,34 @@ export function BalanceHero({ d }: { d: Dashboard }) {
                 style={{ left: `clamp(64px, ${(at / (n - 1)) * 100}%, calc(100% - 64px))` }}
               >
                 <span className="block text-[11px] text-ink-3">{ago(Math.round((n - 1 - at) * step))}</span>
-                <span className="num block text-[14px] text-ink">
-                  {hide ? "••••••" : money(spark[at], { cents: true })}
-                </span>
+                <span className="num block text-[14px] text-ink">{show(spark[at], { cents: true })}</span>
               </span>
             </>
           )}
         </div>
       )}
-      {!sel && positive.length > 1 && (
-        <div>
-          <div
-            className="flex h-2.5 overflow-hidden rounded-full"
-            role="img"
-            aria-label={positive.map((a) => `${a.name} ${Math.round((a.balance / positiveTotal) * 100)}%`).join(", ")}
-          >
-            {positive.map((a) => (
-              <span
-                key={a.id}
-                className="striped"
-                style={{ width: `${(a.balance / positiveTotal) * 100}%`, backgroundColor: ROLE[ROLE_DS[a.role]] }}
-              />
-            ))}
-          </div>
-          <div className="mt-1.5 flex flex-wrap gap-x-2 gap-y-0.5">
-            {positive.map((a) => (
-              <button
-                key={a.id}
-                type="button"
-                onClick={() => setPick(a.id)}
-                className="press inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-full border-0 bg-transparent px-1.5 text-[12px] text-ink-3 hover:text-ink"
-              >
-                <span aria-hidden className="size-2 rounded-full" style={{ background: ROLE[ROLE_DS[a.role]] }} />
-                {a.name} {Math.round((a.balance / positiveTotal) * 100)}%
-              </button>
-            ))}
-          </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <Button primary onClick={checkin}>
+          Check in
+        </Button>
+        <span className="text-[13px] text-ink-3">
+          {last
+            ? `Last check-in ${dayDate(last.date)}, ${since === 0 ? "today" : since === 1 ? "yesterday" : `${since} days ago`}`
+            : "No check-in yet"}
+        </span>
+        {netWorth != null && (
+          <Link to="/net-worth" className="ml-auto text-[14px] font-semibold text-teal no-underline">
+            Net worth {show(netWorth)} →
+          </Link>
+        )}
+      </div>
+      <Details label="See the numbers">
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+          {accounts.map((a) => (
+            <Stat key={a.id} label={a.name} value={show(a.balance)} note={aimNote(a)} role={ROLE_DS[a.role]} />
+          ))}
         </div>
-      )}
+      </Details>
     </Card>
   );
 }
@@ -307,12 +294,22 @@ export function GoalsCard({ d }: { d: Dashboard }) {
   const { newGoal } = useActions();
   const [open, setOpen] = useState<number | null>(null);
   const openGoal = goals.find((g) => g.id === open) ?? null;
+  const saved = goals.reduce((t, g) => t + g.saved, 0);
+  const target = goals.reduce((t, g) => t + g.target, 0);
+  const next = goals.find((g) => g.saved < g.target) ?? goals[0];
   return (
     <Card aria-labelledby="ov-goals">
       <CardHead
         id="ov-goals"
-        title="Savings goals"
-        right={goals.length ? <Pill tone="mute">{money(d.savings?.balance ?? 0)} saved</Pill> : undefined}
+        title="Goals"
+        right={
+          goals.length ? (
+            <span className="flex gap-2">
+              <Button onClick={newGoal}>New goal</Button>
+              {next && <Button onClick={() => setOpen(next.id)}>Top up</Button>}
+            </span>
+          ) : undefined
+        }
       />
       {goals.length === 0 ? (
         <EmptyState
@@ -328,47 +325,38 @@ export function GoalsCard({ d }: { d: Dashboard }) {
           Split savings into goals, like a trip or a new car, and see each one fill up here.
         </EmptyState>
       ) : (
-        <div className="no-scrollbar -mx-1 flex gap-2.5 overflow-x-auto px-1 pb-1">
-          {goals.map((g, i) => {
-            const p = g.target ? Math.min(100, (g.saved / g.target) * 100) : 0;
-            const look = goalLook(g, i);
-            return (
-              <button
-                type="button"
-                key={g.id}
-                onClick={() => setOpen(g.id)}
-                aria-label={`${g.name}: ${money(g.saved)} of ${money(g.target)}. Top up`}
-                className="chip-host press flex w-[150px] flex-none cursor-pointer flex-col gap-2.5 rounded-[22px] border border-line bg-tile-2 p-3.5 text-left text-ink"
-              >
-                <span className="flex items-start justify-between">
-                  <Ring value={p} role={look.role} label={`${g.name} ${Math.round(p)}%`}>
-                    <span className="num text-[14px]">{Math.round(p)}%</span>
+        <>
+          <p className="m-0 -mt-1 text-[14px] text-ink-3">
+            {money(saved)} of {money(target)} saved, in Savings
+          </p>
+          <div className="grid gap-2.5 sm:grid-cols-[repeat(auto-fill,minmax(260px,1fr))]">
+            {goals.map((g, i) => {
+              const p = g.target ? Math.min(100, (g.saved / g.target) * 100) : 0;
+              const look = goalLook(g, i);
+              const planned = g.planned.reduce((t, m) => t + m.amount, 0);
+              return (
+                <button
+                  type="button"
+                  key={g.id}
+                  onClick={() => setOpen(g.id)}
+                  aria-label={`${g.name}: ${money(g.saved)} of ${money(g.target)}. Top up`}
+                  className="press flex min-h-16 cursor-pointer items-center gap-3 rounded-[18px] border border-line bg-tile-2 px-3 py-2.5 text-left text-ink"
+                >
+                  <Ring value={p} size={52} role={look.role} label={`${g.name} ${Math.round(p)}%`}>
+                    <span className="num text-[12px]">{Math.round(p)}%</span>
                   </Ring>
-                  <Chip g={look.g} tone={look.tone} size="sm" />
-                </span>
-                <span>
-                  <span className="block font-semibold">{g.name}</span>
-                  <span className="block text-[13px] text-ink-3">
-                    {money(g.saved)} of {money(g.target)}
-                  </span>
-                  {g.planned.length > 0 && (
-                    <span className="block text-[12px] text-teal">
-                      +{money(g.planned.reduce((t, m) => t + m.amount, 0))} planned
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-semibold">{g.name}</span>
+                    <span className="block truncate text-[13px] text-ink-3">
+                      {money(g.saved)} of {money(g.target)} · {money(Math.max(0, g.target - g.saved))} to go
                     </span>
-                  )}
-                </span>
-              </button>
-            );
-          })}
-          <button
-            type="button"
-            onClick={newGoal}
-            className="chip-host press flex w-[150px] flex-none cursor-pointer flex-col items-center justify-center gap-2 rounded-[22px] border border-dashed border-line-2 bg-transparent p-3.5 text-ink-2"
-          >
-            <Chip g={I.plus} tone="neutral" size="lg" />
-            <span className="font-semibold">New goal</span>
-          </button>
-        </div>
+                    {planned > 0 && <span className="block text-[12px] text-teal">+{money(planned)} planned</span>}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </>
       )}
       <TopUpSheet goal={openGoal} index={goals.findIndex((g) => g.id === open)} onClose={() => setOpen(null)} />
     </Card>
