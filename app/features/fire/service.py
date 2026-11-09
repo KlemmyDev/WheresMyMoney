@@ -8,6 +8,7 @@ balance, falling back to the 0.6% guess where none are known (decided 2026-11-09
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import time
 from dataclasses import replace
@@ -15,6 +16,7 @@ from typing import Any
 
 from app.core import dates
 from app.core.database import Database
+from app.features.accounts import ledger
 from app.features.accounts.service import AccountsService
 from app.features.dashboard.service import DashboardService
 from app.features.fire import debt, shocks, tax, whatif
@@ -125,6 +127,7 @@ class FireService:
         now_put_away = sum(p.super_balance for p in h.people) + h.etfs
         target = at["super"] + at["etfs"]
         saved = self.saved()
+        track = self.track(saved) if saved else None
         return {
             "ready": True,
             "today": _summary(today_plan),
@@ -147,7 +150,8 @@ class FireService:
             },
             "scenarios": self.scenarios(h, today_plan, with_plan),
             "saved": saved,
-            "vs_plan": _vs_plan(saved, now_put_away + h.offset) if saved else None,
+            "vs_plan": _vs_plan(track[-1]) if track else None,
+            "track": track,
             "rows": [_row(r) for r in (chosen or project(h, THE_PLAN, age))["rows"] if r["age"] <= max(h.plan_to, 92)],
             "bridge": bridge(h, chosen or project(h, THE_PLAN, age)),
             "next_dollar": [
@@ -360,6 +364,45 @@ class FireService:
             "funds_fee": fund_fee(self.retirement.people())[0],
         }
 
+    def track(self, saved: dict[str, Any]) -> list[dict[str, Any]]:
+        """Each check-in (from a year before the plan was saved) and today: what was put away then (super, ETFs and
+        the offset, as the plan counts it) against where the saved plan has it by then. In cents."""
+        start = dt.date.fromisoformat(saved["date"])
+        today = dates.today()
+        with self.db.reading() as conn:
+            days = [
+                dt.date.fromisoformat(r[0])
+                for r in conn.execute(
+                    "SELECT DISTINCT date FROM checkins WHERE date >= ? AND date < ? ORDER BY date",
+                    ((start - dt.timedelta(days=365)).isoformat(), today.isoformat()),
+                )
+            ]
+        days.append(today)
+        people = self.retirement.people()
+        history = self.retirement.history()
+        settings = self.retirement.settings()
+        crypto = None if settings.get("count_crypto") else False
+        etfs = self.investments.values_on(days, crypto=crypto)
+        offsets = [a for a in self.accounts.overview()["accounts"] if a.get("offsets_loan")]
+        out = []
+        with self.db.reading() as conn:
+            for day, etf in zip(days, etfs, strict=True):
+                iso = day.isoformat()
+                sup = 0
+                for p in people:
+                    values = history.get(p["id"]) or [(p["as_of"] or iso, p["balance"])]
+                    then = [b for d, b in values if d <= iso]
+                    sup += then[-1] if then else values[0][1]
+                if day == today:
+                    sup = sum(p["balance"] for p in people)
+                off = (
+                    sum(ledger.balance(conn, a["id"], iso) for a in offsets)
+                    if day < today
+                    else sum(a["balance"] for a in offsets)
+                )
+                out.append({"date": iso, "actual": sup + etf + off, "expected": _expected(saved, day)})
+        return out
+
     def freedom_now(self) -> dict[str, Any] | None:
         """The plan's freedom date now against the saved plan's, for the notification; None with no saved plan."""
         saved = self.saved()
@@ -453,17 +496,29 @@ def _mile(h: Household, age: int | None, spend: int | None = None) -> dict[str, 
     return {"age": age, "year": h.year_at(age), **({"spend": spend} if spend is not None else {})}
 
 
-def _vs_plan(saved: dict[str, Any], now_total: float) -> dict[str, Any] | None:
-    """This year against the saved plan's path: ahead or behind, in cents."""
-    year = dates.today().year
-    expected = next((p["total"] for p in saved.get("path", []) if p["year"] == year), None)
-    if expected is None:
+def _expected(saved: dict[str, Any], day: dt.date) -> int | None:
+    """Where the saved plan has super, ETFs and the offset on this day: its yearly path, a year on from the day it
+    was saved for each step, in between in a straight line. None before it was saved."""
+    path = [p["total"] for p in saved.get("path", [])]
+    start = dt.date.fromisoformat(saved["date"])
+    if not path or day < start:
+        return None
+    t = (day - start).days / 365.25
+    i = int(t)
+    if i >= len(path) - 1:
+        return path[-1]
+    return round(path[i] + (path[i + 1] - path[i]) * (t - i))
+
+
+def _vs_plan(now: dict[str, Any]) -> dict[str, Any] | None:
+    """Today against the saved plan's path: ahead or behind, in cents."""
+    if now["expected"] is None:
         return None
     return {
-        "year": year,
-        "expected": expected,
-        "actual": round(now_total * 100),
-        "ahead": round(now_total * 100) - expected,
+        "year": int(now["date"][:4]),
+        "expected": now["expected"],
+        "actual": now["actual"],
+        "ahead": now["actual"] - now["expected"],
     }
 
 

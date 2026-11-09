@@ -56,6 +56,8 @@ export type Fire =
         path: { year: number; total: number }[];
       } | null;
       vs_plan: { year: number; expected: number; actual: number; ahead: number } | null;
+      /** Each check-in since a year before the plan was saved, and today, against where the plan has it. */
+      track: { date: string; actual: number; expected: number | null }[] | null;
       rows: FireRow[];
       bridge: Bridge;
       ladder: Rung[];

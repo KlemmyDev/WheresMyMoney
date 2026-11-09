@@ -12,7 +12,7 @@ import { fireQuery, type FireRow } from "~/features/fire/api";
 import { apiSend } from "~/features/common/api";
 import { Loading } from "~/features/common/brand";
 import { Card, CardHead, ChoiceChip, ROLE, Stat } from "~/features/common/ds";
-import { money } from "~/features/common/format";
+import { money, monthYear, shortDate } from "~/features/common/format";
 import { ScrubChart } from "~/features/common/ScrubChart";
 import { cn, Empty, PageHead, Pill, Switch } from "~/features/common/ui";
 
@@ -72,6 +72,7 @@ export function FireDrawdown() {
   const shown = rows[at ?? 0];
   const saved = f.saved;
   const vs = f.vs_plan;
+  const track = f.track ?? [];
 
   return (
     <>
@@ -219,23 +220,55 @@ export function FireDrawdown() {
           {saved && vs ? (
             <>
               <p className="m-0 text-[16px] text-ink">
-                {vs.ahead >= 0 ? "Ahead of the plan" : "Behind the plan"} by <b>{money(Math.abs(vs.ahead))}</b> this
-                year: super, ETFs and the offset come to {money(vs.actual)} against the {money(vs.expected)} the plan
-                expected.
+                {Math.abs(vs.ahead) < vs.expected * 0.005 ? (
+                  <>Right on the plan</>
+                ) : (
+                  <>
+                    {vs.ahead >= 0 ? "Ahead of the plan" : "Behind the plan"} by <b>{money(Math.abs(vs.ahead))}</b>
+                  </>
+                )}
+                : super, ETFs and the offset come to {money(vs.actual)} against the {money(vs.expected)} the plan has
+                for today.
               </p>
-              {saved.path.length > 1 && (
-                <ScrubChart
-                  label="The saved plan's path: super, ETFs and offset together, by year"
-                  lines={[
-                    { name: "The plan", values: saved.path.map((p) => p.total), colour: ROLE.savings, fill: true },
-                  ]}
-                  at={(i) => String(saved.path[i]?.year ?? "")}
-                  format={(v) => money(v)}
-                  floor={0}
-                  height={160}
-                  marks={[{ i: 0, label: `Now ${money(vs.actual)}` }]}
-                  axis={[0, Math.round((saved.path.length - 1) / 2), saved.path.length - 1]}
-                />
+              {track.length > 1 ? (
+                <>
+                  <ScrubChart
+                    label="Each check-in's super, ETFs and offset against where the saved plan has them"
+                    lines={[
+                      {
+                        name: "The plan",
+                        values: track.map((p) => p.expected),
+                        colour: ROLE.savings,
+                        dashed: true,
+                      },
+                      { name: "Check-ins", values: track.map((p) => p.actual), colour: ROLE.invest, fill: true },
+                    ]}
+                    at={(i) => (track[i] ? shortDate(track[i].date) : "")}
+                    format={(v) => money(v)}
+                    floor={0}
+                    height={160}
+                    axis={[0, track.length - 1]}
+                    axisAt={(i) => (track[i] ? monthYear(track[i].date) : "")}
+                  />
+                  <p className="m-0 text-[12px] text-ink-3">
+                    Each check-in, and today. The plan&apos;s line starts the day it was saved, {shortDate(saved.date)}.
+                  </p>
+                </>
+              ) : (
+                saved.path.length > 1 && (
+                  <ScrubChart
+                    label="The saved plan's path: super, ETFs and offset together, by year"
+                    lines={[
+                      { name: "The plan", values: saved.path.map((p) => p.total), colour: ROLE.savings, fill: true },
+                    ]}
+                    at={(i) => String(saved.path[i]?.year ?? "")}
+                    format={(v) => money(v)}
+                    floor={0}
+                    height={160}
+                    marks={[{ i: 0, label: `Now ${money(vs.actual)}` }]}
+                    axis={[0, Math.round((saved.path.length - 1) / 2), saved.path.length - 1]}
+                  />
+                )
               )}
             </>
           ) : (
