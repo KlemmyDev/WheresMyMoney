@@ -2,13 +2,15 @@
 On track: where each part of the plan has to be every year to stop at the goal age, against where today's pace has
 it. Three parts, each with its own job:
 
-- Super has to last from when it opens (60) to the plan-to age, paying whatever outside super has left to pay.
+- Super has to last from when it opens (60) to the plan-to age on its own.
 - Outside super (the ETFs) has to pay for the years from stopping until super opens.
 - The loan has to be gone by the year you stop.
 
 Each "need" is worked backwards from the end, through the same year-by-year flows the freedom model uses (the money
 going in while working, the offset's leftovers joining the ETFs when the loan goes, each year's growth and each
-retired year's spending), so a balance on its need line, with the plan's contributions, gets there exactly.
+retired year's spending), so a balance on its need line, with the plan's contributions, gets there exactly. Anything outside super beyond the
+bridge carries on paying after 60, so the two together decide: the goal works when what's put away is on or above
+their combined need, whichever part it sits in.
 
 Money in dollars (today's), the loan in dollars of the day; the service converts to cents.
 """
@@ -36,9 +38,7 @@ def checkpoints(h: Household, plan: Plan, goal: int) -> dict[str, Any]:
         g = 1 + x["growth"]
         nxt = sup_need[age + 1]
         if age >= goal and age >= opens:
-            # What super itself has to pay that year: anything left outside super pays first, as in the model.
-            paid = x.get("paid") or {}
-            sup_need[age] = (nxt + paid.get("super", 0.0) + paid.get("short", 0.0)) / g
+            sup_need[age] = (nxt + x.get("need", 0.0)) / g
         elif age >= goal:
             sup_need[age] = nxt / g
         else:
@@ -77,7 +77,9 @@ def checkpoints(h: Household, plan: Plan, goal: int) -> dict[str, Any]:
                 "super": x["super"],
                 "etfs": x["etfs"] + x.get("cash", 0.0),
                 "owed": x["owed"],
-                "super_need": sup_need.get(age, 0.0),
+                # Outside super's future savings beyond the bridge carry on into the super years, so they come off
+                # super's need; outside super itself never needs less than nothing.
+                "super_need": sup_need.get(age, 0.0) + min(out_need.get(age, 0.0), 0.0),
                 "outside_need": max(out_need.get(age, 0.0), 0.0),
                 "owe_max": owe_max.get(age) if age <= goal else None,
                 "short": (x.get("paid") or {}).get("short", 0.0),

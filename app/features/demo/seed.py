@@ -331,6 +331,8 @@ def seed(db: Database, today: dt.date | None = None) -> bool:
                 )
         conn.execute("INSERT OR REPLACE INTO kv (key, value) VALUES ('setting:setup_done', 'true')")
         conn.execute("INSERT OR REPLACE INTO kv (key, value) VALUES ('setting:household', '\"Demo household\"')")
+        # The early-retirement goal: stop at 58, three years before today's pace gets there.
+        conn.execute("INSERT OR REPLACE INTO kv (key, value) VALUES ('fire:goal', '{\"age\": 58, \"set_at\": 0}')")
     return True
 
 
