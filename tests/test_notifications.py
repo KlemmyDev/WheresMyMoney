@@ -112,3 +112,17 @@ def test_new_bills_spotted_are_told_once_per_set() -> None:
         rule.defaults,
     )
     assert two and two.title == "We spotted 2 bills" and two.key != one.key
+
+
+def test_freedom_date_moving_from_the_plan_is_told_once_per_new_date() -> None:
+    rule = BY_ID["freedom"]
+    assert rule.check(facts(), rule.defaults) is None
+    same = {"age": 51, "year": 2039, "saved_age": 51, "saved_year": 2039, "saved_at": 1}
+    assert rule.check(facts(freedom=same), rule.defaults) is None
+    later = rule.check(facts(freedom={**same, "age": 53, "year": 2041}), rule.defaults)
+    assert later and later.title == "Your freedom date moved to 53" and later.url == "/early-retirement"
+    assert "2 years later than the plan's 51" in later.body
+    sooner = rule.check(facts(freedom={**same, "age": 50, "year": 2038}), rule.defaults)
+    assert sooner and "a year sooner" in sooner.body and sooner.key != later.key
+    gone = rule.check(facts(freedom={**same, "age": None, "year": None}), rule.defaults)
+    assert gone and "past 70" in gone.title

@@ -105,6 +105,8 @@ def test_the_hub_has_milestones_scenarios_and_a_plan_to_make_yours(client: TestC
     assert saved["saved"]["retire_age"] == f["plan"]["retire_age"] and saved["rules"]["now"] == []
     again = ok(client.get("/api/fire"))
     assert again["saved"]["retire_age"] == f["plan"]["retire_age"] and again["vs_plan"]["year"] == 2026
+    now = client.app.state.services.fire.freedom_now()  # type: ignore[attr-defined]
+    assert now["age"] == now["saved_age"] == f["plan"]["retire_age"]
     ok(client.delete("/api/fire/plan"))
     assert ok(client.get("/api/fire"))["saved"] is None
 

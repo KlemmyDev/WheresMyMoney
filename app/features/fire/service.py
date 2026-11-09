@@ -360,6 +360,24 @@ class FireService:
             "funds_fee": fund_fee(self.retirement.people())[0],
         }
 
+    def freedom_now(self) -> dict[str, Any] | None:
+        """The plan's freedom date now against the saved plan's, for the notification; None with no saved plan."""
+        saved = self.saved()
+        if not saved:
+            return None
+        built = self.household()
+        if built is None:
+            return None
+        h, _ = built
+        now = freedom(h, THE_PLAN)
+        return {
+            "age": now["retire_age"] if now else None,
+            "year": now["retire_year"] if now else None,
+            "saved_age": saved["retire_age"],
+            "saved_year": saved["retire_year"],
+            "saved_at": saved.get("saved_at"),
+        }
+
     def saved(self) -> dict[str, Any] | None:
         with self.db.reading() as conn:
             row = conn.execute("SELECT value FROM kv WHERE key = ?", (SAVED,)).fetchone()
