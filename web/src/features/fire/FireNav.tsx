@@ -6,6 +6,8 @@ import { cn } from "~/features/common/ui";
 export const FIRE_PAGES = [
   { to: "/early-retirement", label: "Freedom" },
   { to: "/early-retirement/scenarios", label: "Scenarios" },
+  { to: "/early-retirement/bridge", label: "Before super opens" },
+  { to: "/early-retirement/next", label: "Where the extra goes" },
 ] as const;
 
 export function FireNav() {
