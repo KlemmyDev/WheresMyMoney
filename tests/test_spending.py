@@ -226,3 +226,47 @@ def test_sorting_a_merchant_can_be_undone(client: TestClient, household: dict) -
         )
     )
     assert later["category"] is None  # nothing remembered any more
+
+
+def test_sorting_several_at_once_can_remember_their_merchants_and_be_undone(
+    client: TestClient, household: dict
+) -> None:
+    acct = household["Spending"]
+    shopping = cat(client, "Shopping")
+    made = [
+        ok(client.post("/api/transactions", json={"amount": -1000 * (i + 1), "description": d, "account_id": acct}))
+        for i, d in enumerate(["KMART 1283 YAMANTO", "SPOTLIGHT IPSWICH", "KMART 1108 REDBANK"])
+    ]
+    before = {t["id"]: t["category_id"] for t in ok(client.get("/api/transactions"))}
+
+    done = ok(
+        client.post(
+            "/api/transactions/sort",
+            json={"ids": [made[0]["id"], made[1]["id"]], "category_id": shopping, "always": True},
+        )
+    )
+    assert done["sorted"] == 2 and done["remembered"] == 2
+    after = {t["id"]: t["category_id"] for t in ok(client.get("/api/transactions"))}
+    # The two picked, and the other Kmart through the remembered merchant.
+    assert {after[m["id"]] for m in made} == {shopping}
+
+    ok(client.post("/api/transactions/sort/undo", json={"undo": done["undo"]}))
+    back = {t["id"]: t["category_id"] for t in ok(client.get("/api/transactions"))}
+    assert all(back[m["id"]] == before[m["id"]] for m in made)
+    # Kmart isn't remembered any more.
+    t = ok(client.post("/api/transactions", json={"amount": -500, "description": "KMART 9 X", "account_id": acct}))
+    assert t["category_id"] != shopping
+
+
+def test_sorting_several_at_once_without_remembering_touches_only_those(client: TestClient, household: dict) -> None:
+    acct = household["Spending"]
+    fun = cat(client, "Fun")
+    a, b = (
+        ok(client.post("/api/transactions", json={"amount": -700, "description": d, "account_id": acct}))
+        for d in ["ZOO TICKETS ONLINE", "ZOO TICKETS ONLINE"]
+    )
+    done = ok(client.post("/api/transactions/sort", json={"ids": [a["id"]], "category_id": fun}))
+    assert done["sorted"] == 1 and done["remembered"] == 0
+    cats = {t["id"]: t["category_id"] for t in ok(client.get("/api/transactions"))}
+    assert cats[a["id"]] == fun and cats[b["id"]] != fun
+    assert client.post("/api/transactions/sort", json={"ids": [], "category_id": fun}).status_code == 422

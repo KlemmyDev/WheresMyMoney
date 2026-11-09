@@ -11,10 +11,11 @@ import { apiSend, errorMessage } from "~/features/common/api";
 import { Loading } from "~/features/common/brand";
 import { Card, CardHead, ChoiceChip } from "~/features/common/ds";
 import { useToast } from "~/features/common/overlay";
-import { dayDate, longDate, money } from "~/features/common/format";
+import { dayDate, longDate, money, pct, todayIso } from "~/features/common/format";
+import { EntityHeader, EntityHero } from "~/features/common/entity";
 import { merchantDirectoryQuery, merchantSuggestionsQuery, refresh } from "~/features/common/queries";
 import type { MergeSuggestion, MerchantSummary } from "~/features/common/types";
-import { Button, Empty, ErrorText, Input, PageHead, Segmented, cn } from "~/features/common/ui";
+import { Button, Empty, ErrorText, Input, Segmented, cn } from "~/features/common/ui";
 import { MerchantPicker } from "~/features/merchants/MerchantPicker";
 import { MerchantMark } from "~/features/spending/MerchantIcon";
 
@@ -106,9 +107,20 @@ export function MerchantsPage({ search }: { search: MerchantSearch }) {
   const year = side.reduce((a, m) => a + yearOf(m, dir), 0);
   const top = [...side].sort(SORTS.spent.by(dir))[0];
   const inCount = q.data.filter((m) => m.received_count > 0).length;
+  const ranked = [...side].sort(SORTS.spent.by(dir));
+  const topShare = year ? ranked.slice(0, 5).reduce((a, m) => a + yearOf(m, dir), 0) / year : 0;
+  const regular = side.filter((m) => m.regular && !m.regular.stopped);
+  const regularMonth = regular.reduce((a, m) => a + (m.regular!.typical * 365) / m.regular!.every_days / 12, 0);
+  const today = todayIso();
+  const yearAgo = `${Number(today.slice(0, 4)) - 1}${today.slice(4)}`;
+  const ups = side.filter((m) => m.price_change?.up && m.price_change.date >= yearAgo);
   return (
     <>
-      <PageHead over={`Money · ${q.data.length} merchants`} title="Merchants" />
+      <EntityHeader
+        back={{ to: "/spending", label: "Spending" }}
+        title="Merchants"
+        sub={`${q.data.length} merchants`}
+      />
       {q.data.length === 0 ? (
         <Empty title="No merchants yet">Import a statement and the shops you spend at show up here.</Empty>
       ) : (
@@ -122,18 +134,60 @@ export function MerchantsPage({ search }: { search: MerchantSearch }) {
             ]}
             onChange={(v) => go({ dir: v === "in" ? "in" : undefined })}
           />
-          <p className="m-0 text-[16px] text-ink-2">
-            {dir === "in"
-              ? `${money(year)} received from ${side.length} ${side.length === 1 ? "payer" : "payers"} over the last 12 months.`
-              : `${money(year)} spent at ${side.length} merchants over the last 12 months.`}
-            {top && yearOf(top, dir) > 0 && (
-              <>
-                {" "}
-                The most {dir === "in" ? "from" : "at"} <span className="text-ink">{top.name}</span>,{" "}
-                {money(yearOf(top, dir))}.
-              </>
+          <EntityHero
+            tint={dir === "in" ? "savings" : "spending"}
+            label="Merchants in a sentence"
+            numbers={[
+              {
+                label: "Last 12 months",
+                value: money(year),
+                note: dir === "in" ? "received" : "spent",
+              },
+              {
+                label: dir === "in" ? "Payers" : "Merchants",
+                value: String(side.length),
+                note: `${unsetCount} with no default yet`,
+              },
+              {
+                label: `Top ${Math.min(5, side.length)}`,
+                value: pct(topShare, 0),
+                note: `of the ${dir === "in" ? "money in" : "spending"}`,
+              },
+              {
+                label: "Regular",
+                value: String(regular.length),
+                note: regular.length ? `about ${money(regularMonth)} a month` : "none yet",
+              },
+            ]}
+          >
+            <p className="m-0 text-[17px] leading-relaxed text-ink">
+              {dir === "in" ? (
+                <>
+                  <b>{money(year)}</b> came in from {side.length} {side.length === 1 ? "payer" : "payers"} over the last
+                  12 months
+                </>
+              ) : (
+                <>
+                  We spent <b>{money(year)}</b> at {side.length} merchants over the last 12 months
+                </>
+              )}
+              {top && yearOf(top, dir) > 0 ? (
+                <>
+                  , the most {dir === "in" ? "from" : "at"} {top.name}, <b>{money(yearOf(top, dir))}</b>.
+                </>
+              ) : (
+                "."
+              )}
+            </p>
+            {dir === "out" && (
+              <p className="m-0 text-[15px] text-ink-2">
+                The top {Math.min(5, side.length)} take {pct(topShare, 0)} of it.
+                {regular.length > 0 &&
+                  ` ${regular.length} are regular payments, about ${money(regularMonth)} a month together.`}
+                {ups.length > 0 && ` ${ups.length} went up in price in the last year.`}
+              </p>
             )}
-          </p>
+          </EntityHero>
           {dir === "out" && <Suggestions />}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <Input

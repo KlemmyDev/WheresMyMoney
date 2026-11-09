@@ -75,6 +75,19 @@ async def add(svc: ServicesDep, body: JsonBody, user: UserDep):
     return await run(svc.spending.add, body, user.id if user else None)
 
 
+@router.post("/transactions/sort")
+async def sort_many(svc: ServicesDep, body: JsonBody):
+    """Sort several at once: {"ids": [4, 9], "category_id": 2, "always": true} (always remembers their merchants).
+    Returns how many were sorted and an `undo` to send to /transactions/sort/undo."""
+    return await run(svc.spending.sort_many, body.get("ids") or [], body.get("category_id"), bool(body.get("always")))
+
+
+@router.post("/transactions/sort/undo")
+async def unsort_many(svc: ServicesDep, body: JsonBody):
+    """Undo sorting several at once: send back the `undo` that POST /transactions/sort returned."""
+    return await run(svc.spending.unsort_many, body.get("undo"))
+
+
 @router.put("/transactions/{tx_id}")
 async def update(svc: ServicesDep, tx_id: int, body: JsonBody):
     """Change its category ({"category_id": 1, "always": true} remembers it for the merchant) or note."""

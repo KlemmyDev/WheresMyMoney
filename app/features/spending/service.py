@@ -675,6 +675,82 @@ class SpendingService:
                 )
         return {"restored": len(undo["transactions"])}
 
+    def sort_many(self, ids: Any, category_id: Any, always: bool = False) -> dict[str, Any]:
+        """Sort several transactions into one category at once (split ones are left as they are). With `always`, also
+        remember the category for each of their merchants, which sorts those merchants' unsorted transactions too.
+        Returns how many it sorted and what Undo needs to put everything back."""
+        try:
+            tx_ids = sorted({int(i) for i in ids})
+            category = int(category_id)
+        except (TypeError, ValueError):
+            raise ValueError("Pick some transactions and a category.") from None
+        if not tx_ids:
+            raise ValueError("Pick some transactions and a category.")
+        marks = ",".join("?" * len(tx_ids))
+        with self.db.writing() as conn:
+            if not conn.execute("SELECT 1 FROM categories WHERE id = ?", (category,)).fetchone():
+                raise ValueError("Choose one of your categories.")
+            rows = conn.execute(
+                f"SELECT id, category_id, category_by, merchant, description FROM transactions WHERE id IN ({marks})"
+                " AND id NOT IN (SELECT transaction_id FROM splits)",
+                tx_ids,
+            ).fetchall()
+            for r in rows:
+                conn.execute(
+                    "UPDATE transactions SET category_id = ?, category_by = 'you' WHERE id = ?", (category, r[0])
+                )
+            rules: list[dict[str, Any]] = []
+            changes: list[tuple[int, int | None, str | None]] = []
+            if always:
+                seen: set[str] = set()
+                for r in rows:
+                    if not r[3] or r[3] in seen:
+                        continue
+                    seen.add(r[3])
+                    taken = dict(conn.execute("SELECT pattern, category_id FROM merchant_rules").fetchall())
+                    pattern = merchants.learn_pattern(r[3], taken, category, r[4])
+                    if not pattern or any(x["pattern"] == pattern for x in rules):
+                        continue
+                    rules.append({"pattern": pattern, "was": taken.get(pattern)})
+                    learn(conn, r[3], category, r[4], changes)
+        return {
+            "sorted": len(rows),
+            "skipped": len(tx_ids) - len(rows),
+            "remembered": len(rules),
+            "also": len(changes),
+            "undo": {
+                "picked": [{"id": r[0], "category_id": r[1], "category_by": r[2]} for r in rows],
+                "rules": rules,
+                "transactions": [{"id": t, "category_id": c, "category_by": b} for t, c, b in changes],
+            },
+        }
+
+    def unsort_many(self, undo: Any) -> dict[str, Any]:
+        """Undo sort_many with what it returned as `undo`: remembered merchants go back to what they were, the
+        transactions those sorted go back, and so do the ones picked."""
+        if not isinstance(undo, dict) or not isinstance(undo.get("picked"), list):
+            raise ValueError("Send back what sorting them returned as undo.")
+        with self.db.writing() as conn:
+            for r in undo.get("rules") or []:
+                if r.get("was") is None:
+                    conn.execute("DELETE FROM merchant_rules WHERE pattern = ?", (str(r["pattern"]),))
+                else:
+                    conn.execute(
+                        "UPDATE merchant_rules SET category_id = ? WHERE pattern = ?",
+                        (int(r["was"]), str(r["pattern"])),
+                    )
+            for t in undo.get("transactions") or []:
+                conn.execute(
+                    "UPDATE transactions SET category_id = ?, category_by = ? WHERE id = ? AND category_by = 'rule'",
+                    (t.get("category_id"), t.get("category_by"), int(t["id"])),
+                )
+            for t in undo["picked"]:
+                conn.execute(
+                    "UPDATE transactions SET category_id = ?, category_by = ? WHERE id = ?",
+                    (t.get("category_id"), t.get("category_by"), int(t["id"])),
+                )
+        return {"restored": len(undo["picked"])}
+
     def remove_transaction(self, tx_id: int) -> bool:
         """Only what was typed in (or an adjustment) can be removed: a statement's rows are the bank's."""
         with self.db.writing() as conn:

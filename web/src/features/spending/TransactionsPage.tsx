@@ -3,17 +3,18 @@
  * for every account or one, with what came in and went out that month and where it went by category. Tap a category
  * to see only its transactions, or show only what's not sorted, money in or money out. Searching looks back over
  * every month. Tap a transaction for its sheet: its category (or a split), making it a recurring bill, a note,
- * someone paying it back, and deleting one typed in by hand.
+ * someone paying it back, and deleting one typed in by hand. Select picks several to sort into one category at once.
  */
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { errorMessage } from "~/features/common/api";
+import { apiSend, errorMessage } from "~/features/common/api";
+import { useToast } from "~/features/common/overlay";
 import { CategoryPicker } from "~/features/common/CategoryPicker";
 import { Card, ChoiceChip, EmptyState, Eyebrow } from "~/features/common/ds";
 import { dayDate, money } from "~/features/common/format";
 import { I } from "~/features/common/icons";
-import { accountsQuery, categoriesQuery, transactionsQuery } from "~/features/common/queries";
+import { accountsQuery, categoriesQuery, refresh, transactionsQuery } from "~/features/common/queries";
 import type { Transaction } from "~/features/common/types";
 import { Button, ErrorText, Input, PageHead, Segmented, cn } from "~/features/common/ui";
 import { TransactionSheet, TxRow } from "~/features/spending/TransactionSheet";
@@ -60,6 +61,13 @@ export function TransactionsPage({ search }: { search: TxSearch }) {
   const [dir, setDir] = useState<"all" | "out" | "in">("all");
   const [open, setOpen] = useState<number | null>(null);
   const [everyCat, setEveryCat] = useState(false);
+  // Picking several to sort at once.
+  const [picking, setPicking] = useState(false);
+  const [picked, setPicked] = useState<number[]>([]);
+  const stopPicking = () => {
+    setPicking(false);
+    setPicked([]);
+  };
   const accounts = useQuery(accountsQuery);
   const cats = useQuery(categoriesQuery);
   const txs = useQuery({
@@ -277,7 +285,19 @@ export function TransactionsPage({ search }: { search: TxSearch }) {
             Sort them by merchant
           </Link>
         )}
+        <span className="hidden flex-1 sm:block" />
+        <Button small onClick={() => (picking ? stopPicking() : setPicking(true))} aria-pressed={picking}>
+          {picking ? "Done" : "Select"}
+        </Button>
       </div>
+      {picking && (
+        <SortBar
+          picked={picked}
+          all={shown.filter((t) => t.kind !== "adjustment" && !t.splits?.length).map((t) => t.id)}
+          onPick={setPicked}
+          onDone={stopPicking}
+        />
+      )}
 
       {txs.isError && <ErrorText>{errorMessage(txs.error)}</ErrorText>}
       {txs.data && !shown.length ? (
@@ -317,7 +337,17 @@ export function TransactionsPage({ search }: { search: TxSearch }) {
                   <span className="num normal-case">{money(net, { cents: true, sign: true })}</span>
                 </div>
                 {list.map((t) => (
-                  <TxRow key={t.id} tx={t} onOpen={(x) => setOpen(x.id)} sub={byId[t.account_id]?.name ?? ""} />
+                  <TxRow
+                    key={t.id}
+                    tx={t}
+                    sub={byId[t.account_id]?.name ?? ""}
+                    picked={picking ? picked.includes(t.id) : undefined}
+                    onOpen={(x) =>
+                      picking
+                        ? setPicked((p) => (p.includes(x.id) ? p.filter((i) => i !== x.id) : [...p, x.id]))
+                        : setOpen(x.id)
+                    }
+                  />
                 ))}
               </section>
             );
@@ -331,5 +361,88 @@ export function TransactionsPage({ search }: { search: TxSearch }) {
       )}
       <TransactionSheet tx={openTx} onClose={() => setOpen(null)} />
     </>
+  );
+}
+
+/**
+ * Sorting several at once: how many are picked (or pick everything shown), the category for them, whether to remember
+ * it for their merchants, and Sort. The toast offers Undo, which puts back the categories and anything remembered.
+ */
+function SortBar({
+  picked,
+  all,
+  onPick,
+  onDone,
+}: {
+  picked: number[];
+  all: number[];
+  onPick: (ids: number[]) => void;
+  onDone: () => void;
+}) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const cats = useQuery(categoriesQuery);
+  const [cat, setCat] = useState<number | null>(null);
+  const [always, setAlways] = useState(false);
+  const name = cats.data?.categories.find((c) => c.id === cat)?.name ?? "";
+  const sort = useMutation({
+    mutationFn: () =>
+      apiSend<{ sorted: number; skipped: number; also: number; undo: unknown }>("POST", "transactions/sort", {
+        ids: picked,
+        category_id: cat,
+        always,
+      }),
+    onSuccess: (r) => {
+      refresh(qc);
+      onDone();
+      const extra = r.also ? `, and ${r.also} more by their merchants` : "";
+      toast(`Sorted ${r.sorted} into ${name}${extra}`, () =>
+        apiSend("POST", "transactions/sort/undo", { undo: r.undo })
+          .then(() => refresh(qc))
+          .catch((e) => toast(errorMessage(e))),
+      );
+    },
+    onError: (e) => toast(errorMessage(e)),
+  });
+  const everything = all.length > 0 && all.every((id) => picked.includes(id));
+  return (
+    <div
+      role="region"
+      aria-label="Sort the picked transactions"
+      className="sticky top-20 z-10 flex flex-col gap-2 rounded-2xl border border-line-2 bg-tile p-3 shadow-lg"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="min-w-0 flex-1 text-[14px]">
+          {picked.length ? `${picked.length} picked` : "Tap transactions to pick them."}
+        </span>
+        <button
+          type="button"
+          className="cursor-pointer border-0 bg-transparent p-0 text-[13px] font-semibold text-teal"
+          onClick={() => onPick(everything ? [] : all)}
+        >
+          {everything ? "Pick none" : `Pick all ${all.length}`}
+        </button>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="w-48">
+          <CategoryPicker
+            label="Sort as"
+            value={cat}
+            categories={cats.data?.categories ?? []}
+            placeholder="Sort as…"
+            onChange={setCat}
+            className="min-h-11 text-[14px]"
+          />
+        </div>
+        <label className="flex min-h-11 cursor-pointer items-center gap-2 text-[14px] text-ink-2">
+          <input type="checkbox" checked={always} onChange={(e) => setAlways(e.target.checked)} className="size-4" />
+          Remember for these merchants
+        </label>
+        <span className="flex-1" />
+        <Button primary small disabled={!picked.length || cat == null || sort.isPending} onClick={() => sort.mutate()}>
+          Sort {picked.length || ""}
+        </Button>
+      </div>
+    </div>
   );
 }
