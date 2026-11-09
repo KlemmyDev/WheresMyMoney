@@ -645,6 +645,21 @@ class AccountsService:
                 matched += 1
         return matched
 
+    def goal_detail(self, goal_id: int) -> dict[str, Any]:
+        """One goal with every top-up (moved, matched from a statement, or still planned), newest first."""
+        goal = next((g for g in self.overview()["goals"] if g["id"] == goal_id), None)
+        if goal is None:
+            raise LookupError("That goal has gone.")
+        with self.db.reading() as conn:
+            moves = [
+                {"id": r[0], "date": r[1], "amount": r[2], "status": r[3]}
+                for r in conn.execute(
+                    "SELECT id, date, amount, status FROM goal_moves WHERE goal_id = ? ORDER BY date DESC, id DESC",
+                    (goal_id,),
+                )
+            ]
+        return {**goal, "moves": moves}
+
     def remove_goal(self, goal_id: int) -> bool:
         """Take a goal off the list: what it saved stays in the account, just not in a goal. Undo brings it back."""
         with self.db.writing() as conn:
