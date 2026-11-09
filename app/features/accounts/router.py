@@ -148,6 +148,18 @@ async def settle_move(svc: ServicesDep, move_id: int, body: JsonBody):
     return await run(svc.accounts.settle_move, move_id, bool(body.get("moved")))
 
 
+@router.post("/loan/change")
+async def change_loan(svc: ServicesDep, body: JsonBody):
+    """Change the loan: the repayment, a lump sum paid in, or a refinance (see the service). Returns the loan and an
+    `undo` to send to /loan/change/undo."""
+    return await run(svc.accounts.change_loan, body)
+
+
+@router.post("/loan/change/undo")
+async def undo_loan_change(svc: ServicesDep, body: JsonBody):
+    return await run(svc.accounts.undo_loan_change, body.get("undo"))
+
+
 @router.post("/loan/rate")
 async def change_rate(svc: ServicesDep, body: JsonBody):
     """The rate changed: {"rate_bp": 637, "repayment": 324000, "since": "2026-11-01"}. The repayment is optional."""

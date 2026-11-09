@@ -32,7 +32,7 @@ MAX_ACCOUNTS = 20
 
 _COLUMNS = (
     "id, name, kind, role, last4, colour, offsets_loan, target_months, allowance, alert_below, rate_bp, repayment,"
-    " repay_from, goal_date, sort, icon"
+    " repay_from, goal_date, sort, icon, lender, rate_type"
 )
 # The marks an account can wear (the web app's glyph names).
 ACCOUNT_ICONS = (
@@ -71,6 +71,8 @@ def _row(r: tuple[Any, ...]) -> dict[str, Any]:
         "goal_date": r[13],
         "sort": r[14],
         "icon": r[15],
+        "lender": r[16],
+        "rate_type": r[17],
     }
 
 
@@ -782,6 +784,114 @@ class AccountsService:
                 "UPDATE accounts SET rate_bp = ?, repayment = COALESCE(?, repayment) WHERE id = ?",
                 (rate_bp, repayment, lo["id"]),
             )
+        return self.view(lo["id"])
+
+    def _changed(self, conn: Any, loan_id: int, field: str, value: int, was: int | None, note: str) -> int:
+        today = dates.today().isoformat()
+        conn.execute(
+            "DELETE FROM loan_changes WHERE account_id = ? AND date = ? AND field = ? AND value = ?",
+            (loan_id, today, field, value),
+        )
+        cur = conn.execute(
+            "INSERT INTO loan_changes (account_id, date, field, value, was, description, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (loan_id, today, field, value, was, note, int(time.time())),
+        )
+        return int(cur.lastrowid or 0)
+
+    def change_loan(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Change the home loan from today, kept in its history, with what Undo needs to put it back:
+
+        - {"kind": "repayment", "repayment": 340000}
+        - {"kind": "lump", "amount": 2000000, "from_account": 1}: paid into the loan (it owes less; the account it
+          came from, if any, holds less)
+        - {"kind": "refinance", "lender": "uBank", "rate_bp": 599, "rate_type": "variable", "costs": 35000}
+        """
+        row = self.loan()
+        if row is None:
+            raise LookupError("There's no home loan yet.")
+        lo = self.view(row["id"])  # with its balance
+        kind = str(body.get("kind") or "")
+        now = int(time.time())
+        today = dates.today().isoformat()
+        undo: dict[str, Any] = {"loan": {k: lo[k] for k in ("repayment", "rate_bp", "lender", "rate_type")}}
+        with self.db.writing() as conn:
+            if kind == "repayment":
+                pay = money(body, "repayment")
+                if not pay or pay <= 0:
+                    raise ValueError("Enter the monthly repayment.")
+                undo["changes"] = [
+                    self._changed(conn, lo["id"], "repayment", pay, lo["repayment"], "Changed in the app")
+                ]
+                conn.execute("UPDATE accounts SET repayment = ? WHERE id = ?", (pay, lo["id"]))
+            elif kind == "lump":
+                amount = money(body, "amount")
+                if not amount or amount <= 0:
+                    raise ValueError("Enter how much went into the loan.")
+                if amount > lo["balance"]:
+                    raise ValueError("That's more than the loan owes.")
+                source = body.get("from_account")
+                balances = [(lo["id"], lo["balance"], lo["balance"] - amount)]
+                note = "Lump sum"
+                if source not in (None, ""):
+                    acct = self.get(int(source))
+                    if acct is None or acct["kind"] != "bank":
+                        raise ValueError("Choose the account it came from.")
+                    held = ledger.balance(conn, acct["id"])
+                    balances.append((acct["id"], held, held - amount))
+                    note = f"Lump sum from {acct['name']}"
+                undo["changes"] = [self._changed(conn, lo["id"], "lump", amount, lo["balance"], note)]
+                undo["balances"] = []
+                for account_id, was, now_bal in balances:
+                    undo["balances"].append({"id": account_id, "balance": was})
+                    ledger.add_known(conn, account_id, today, now_bal, "checkin", False, now)
+            elif kind == "refinance":
+                rate = body.get("rate_bp")
+                try:
+                    rate_bp = int(rate)  # type: ignore[arg-type]
+                except (TypeError, ValueError):
+                    raise ValueError("Enter the new rate.") from None
+                if not 0 < rate_bp <= 3000:
+                    raise ValueError("Enter the new rate, like 5.99.")
+                lender = " ".join(str(body.get("lender") or "").split())[:40] or None
+                rate_type = str(body.get("rate_type") or "variable")
+                if rate_type not in ("variable", "fixed"):
+                    raise ValueError("Say whether the rate is variable or fixed.")
+                costs = money(body, "costs") or 0
+                note = f"Refinanced{f' with {lender}' if lender else ''}, {rate_type}"
+                if costs:
+                    note += f", ${costs / 100:,.0f} to switch"
+                undo["changes"] = [self._changed(conn, lo["id"], "refinance", rate_bp, lo["rate_bp"], note)]
+                if rate_bp != lo["rate_bp"]:
+                    undo["changes"].append(self._changed(conn, lo["id"], "rate", rate_bp, lo["rate_bp"], note))
+                conn.execute(
+                    "UPDATE accounts SET rate_bp = ?, lender = ?, rate_type = ? WHERE id = ?",
+                    (rate_bp, lender, rate_type, lo["id"]),
+                )
+            else:
+                raise ValueError("Say what changed: the repayment, a lump sum or a refinance.")
+        return {"loan": self.view(lo["id"]), "undo": undo}
+
+    def undo_loan_change(self, undo: Any) -> dict[str, Any]:
+        """Put the loan back as change_loan found it: its repayment, rate and lender, any balances it moved, and the
+        history rows it added."""
+        if not isinstance(undo, dict) or not isinstance(undo.get("loan"), dict):
+            raise ValueError("Send back what the change returned as undo.")
+        lo = self.loan()
+        if lo is None:
+            raise LookupError("There's no home loan yet.")
+        was = undo["loan"]
+        now = int(time.time())
+        today = dates.today().isoformat()
+        with self.db.writing() as conn:
+            conn.execute(
+                "UPDATE accounts SET repayment = ?, rate_bp = ?, lender = ?, rate_type = ? WHERE id = ?",
+                (was.get("repayment"), was.get("rate_bp"), was.get("lender"), was.get("rate_type"), lo["id"]),
+            )
+            for change_id in undo.get("changes") or []:
+                conn.execute("DELETE FROM loan_changes WHERE id = ? AND account_id = ?", (int(change_id), lo["id"]))
+            for b in undo.get("balances") or []:
+                ledger.add_known(conn, int(b["id"]), today, int(b["balance"]), "checkin", False, now)
         return self.view(lo["id"])
 
     def offsetting_growth(self, days: int = 90) -> int:
