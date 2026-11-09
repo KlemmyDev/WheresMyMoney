@@ -123,3 +123,21 @@ def test_picking_a_known_fund_fills_in_its_fees(client: TestClient) -> None:
     # A cap must be dollars at or above nothing.
     bad = {"name": "Admin", "kind": "pct", "amount": 0.001, "cap": -1}
     assert client.put(f"/api/retirement/people/{p['id']}", json={"fees": [bad]}).status_code == 422
+
+
+def test_what_each_person_earns_gives_their_room_in_super(client: TestClient) -> None:
+    p = ok(
+        client.post(
+            "/api/retirement/people",
+            json={"person": "Alex", "born": 1988, "salary": dollars(120000), "rate": 0.12},
+        )
+    )
+    assert p["sacrifice"] == 0 and p["pay_every"] == "fortnightly"
+    # Work pays 12% of $120,000 ($14,400) of the $30,000 cap.
+    assert p["concessional"] == dollars(14400) and p["room"] == dollars(15600)
+    p = ok(client.put(f"/api/retirement/people/{p['id']}", json={"sacrifice": dollars(6000), "pay_every": "monthly"}))
+    assert p["room"] == dollars(9600) and p["pay_every"] == "monthly" and p["salary"] == dollars(120000)
+    p = ok(client.put(f"/api/retirement/people/{p['id']}", json={"sacrifice": dollars(20000)}))
+    assert p["room"] == 0
+    bad = client.put(f"/api/retirement/people/{p['id']}", json={"pay_every": "daily"})
+    assert bad.status_code == 422
