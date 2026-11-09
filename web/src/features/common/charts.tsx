@@ -296,21 +296,39 @@ export function FlowBars({
   );
 }
 
-/** A bar a day across the spending month: spent days in violet, days to come flat and grey, today marked. */
+/**
+ * A bar a day across the spending month: spent days in violet, days to come hatched (what's expected that day, or the
+ * even pace), today marked, the even pace as a dashed line. Point at, tap or arrow along the days to read one.
+ */
 export function DayBars({
   daily,
   today,
   pace,
   label,
+  start,
+  expected,
 }: {
   daily: number[];
   today: number;
   pace: number;
   label: string;
+  /** The month's first day (ISO), so a day's readout can name it. */
+  start?: string;
+  /** What's expected each day, when the forecast has learned it; days to come are drawn at it. */
+  expected?: number[];
 }) {
-  const hi = Math.max(pace * 2, ...daily, 1);
+  const [picked, setPicked] = useState<number | null>(null);
+  const ahead = (i: number) => expected?.[i] ?? pace;
+  const hi = Math.max(pace * 2, ...daily, ...(expected ?? []), 1);
   const ticks = niceTicks(hi);
   const top = ticks[ticks.length - 1];
+  const n = daily.length;
+  const dayName = (i: number) => {
+    if (!start) return `Day ${i + 1}`;
+    const d = new Date(`${start}T12:00:00`);
+    d.setDate(d.getDate() + i);
+    return d.toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short" });
+  };
   return (
     <div className="flex gap-2.5">
       <div className="mono flex h-[170px] flex-col justify-between text-right text-xs text-ink-3">
@@ -319,34 +337,76 @@ export function DayBars({
         ))}
       </div>
       <div className="relative min-w-0 flex-1">
-        <div className="relative flex h-[170px] items-end gap-[3px] border-b border-line" role="img" aria-label={label}>
+        <div
+          className="relative flex h-[170px] items-end gap-[3px] border-b border-line"
+          role="group"
+          aria-label={label}
+          onMouseLeave={() => setPicked(null)}
+          onKeyDown={(e) => {
+            if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+            e.preventDefault();
+            const next = Math.max(0, Math.min(n - 1, (picked ?? today - 1) + (e.key === "ArrowLeft" ? -1 : 1)));
+            setPicked(next);
+            (e.currentTarget.querySelectorAll("button")[next] as HTMLElement | undefined)?.focus();
+          }}
+        >
           <div
-            className="absolute inset-x-0 border-t-[1.5px] border-dashed border-ink-2"
+            className="pointer-events-none absolute inset-x-0 border-t-[1.5px] border-dashed border-ink-2"
             style={{ bottom: `${(pace / top) * 100}%` }}
           />
           {daily.map((v, i) => {
             const past = i < today;
             return (
-              <div key={i} className="relative flex h-full flex-1 items-end">
+              <button
+                key={i}
+                type="button"
+                tabIndex={i === (picked ?? today - 1) ? 0 : -1}
+                aria-label={`${dayName(i)}: ${past ? `spent ${money(v)}` : `likely about ${money(ahead(i))}`}`}
+                onMouseEnter={() => setPicked(i)}
+                onFocus={() => setPicked(i)}
+                onClick={() => setPicked(i)}
+                className="relative flex h-full flex-1 cursor-pointer items-end border-0 bg-transparent p-0"
+              >
                 {i === today - 1 && <div className="absolute inset-y-0 -right-[2px] w-px bg-teal" />}
                 <div
-                  className={
-                    past ? "striped w-full grow rounded-t-[4px] bg-spending-fill" : "hatched w-full rounded-t-[4px]"
-                  }
+                  className={cn(
+                    past ? "striped w-full grow rounded-t-[4px] bg-spending-fill" : "hatched w-full rounded-t-[4px]",
+                    picked != null && picked !== i && "opacity-55",
+                  )}
                   style={
                     {
-                      // What's ahead is likely, not known: a hatched bar at the even pace.
+                      // What's ahead is likely, not known: a hatched bar at what's expected that day.
                       height: past
                         ? `max(2px, ${(v / top) * 100}%)`
-                        : `max(2px, ${(Math.min(pace, top) / top) * 100}%)`,
+                        : `max(2px, ${(Math.min(ahead(i), top) / top) * 100}%)`,
                       ["--i" as string]: i,
                       ["--c" as string]: "var(--color-spending-fill)",
                     } as CSSProperties
                   }
                 />
-              </div>
+              </button>
             );
           })}
+          {picked != null && (
+            <span
+              aria-hidden
+              className="pointer-events-none absolute top-1 z-10 -translate-x-1/2 rounded-xl border border-line-2 bg-raised px-2.5 py-1.5 whitespace-nowrap shadow-[var(--shadow-float)]"
+              style={{ left: `clamp(72px, ${((picked + 0.5) / n) * 100}%, calc(100% - 72px))` }}
+            >
+              <span className="block text-[11px] text-ink-3">
+                {dayName(picked)}
+                {picked === today - 1 ? " · today" : ""}
+              </span>
+              {picked < today ? (
+                <span className="num block text-[14px] text-ink">{money(daily[picked], { cents: true })} spent</span>
+              ) : (
+                <span className="num block text-[14px] text-ink">about {money(ahead(picked))} likely</span>
+              )}
+              {expected?.[picked] != null && picked < today && (
+                <span className="block text-[11px] text-ink-3">usually about {money(expected[picked])}</span>
+              )}
+            </span>
+          )}
         </div>
       </div>
     </div>

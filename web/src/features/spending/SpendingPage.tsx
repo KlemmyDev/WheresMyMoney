@@ -1,7 +1,7 @@
 /**
- * Spending (design: CkSpend): the spending month from top-up to top-up. What's left of the allowance, safe to spend a
- * day, the pace against an even month, where it'll be at the next top-up (what's left rolls into the offset), each day's
- * spending, every category (budgeted or not, each opening its own page), who spent it, and the latest spending.
+ * Spending (from the uplift canvas, MoSpending): the spending month from top-up to top-up. Whether it's on track and
+ * what's likely by the end, the category to watch, what's left to sort, each day's spending against what's expected
+ * (read any day by pointing at it), every category (each opening its own page), who spent it, and the latest spending.
  */
 import { Loading } from "~/features/common/brand";
 import { Banner, Bar, BigNumber, Card, Eyebrow, Stat, Details } from "~/features/common/ds";
@@ -10,7 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { SpendingCategories } from "~/features/spending/SpendingCategories";
 import { errorMessage } from "~/features/common/api";
-import { Count, DayBars } from "~/features/common/charts";
+import { DayBars } from "~/features/common/charts";
 import { amount, capsDate, money, shortDate } from "~/features/common/format";
 import { useActions } from "~/features/common/layout";
 import { budgetSuggestionsQuery, spendingQuery } from "~/features/common/queries";
@@ -39,6 +39,12 @@ export function SpendingPage() {
       </Empty>
     );
   const under = m.vs_pace <= 0;
+  const likely = m.spent + Math.max(0, m.left - m.projected);
+  // The category to watch: the budgeted one furthest through its budget, once it's past most of it.
+  const watch = m.categories
+    .filter((c) => c.budget && c.spent / c.budget >= 0.8)
+    .sort((a, b) => b.spent / (b.budget || 1) - a.spent / (a.budget || 1))[0];
+  const learned = m.expected.ready && m.expected.daily.length === m.days;
   return (
     <>
       <PageHead
@@ -94,10 +100,15 @@ export function SpendingPage() {
             </div>
             <Pill tone={under ? "good" : "warn"}>{under ? "On track" : "Over plan"}</Pill>
           </div>
-          <p className="m-0 text-[16px] text-ink-2">
+          <p className="m-0 text-[17px] leading-relaxed text-ink">
+            Spending is {under ? "on track" : "running ahead of plan"}: <b>{money(m.spent)}</b> of {money(m.allowance)}{" "}
+            this month, about <b>{money(likely)}</b> likely by {shortDate(m.end)}.
+            {watch ? ` ${watch.name} is the one to watch: ${money(watch.spent)} of its ${money(watch.budget)}.` : ""}
+          </p>
+          <p className="m-0 text-[15px] text-ink-2">
             {under
-              ? `That's ${money(-m.vs_pace)} less than planned by now, day ${m.day} of ${m.days}.`
-              : `That's ${money(m.vs_pace)} more than planned by now, day ${m.day} of ${m.days}.`}{" "}
+              ? `That's ${money(-m.vs_pace)} less than planned by now.`
+              : `That's ${money(m.vs_pace)} more than planned by now.`}{" "}
             {m.projected >= 0
               ? `At this rate about ${money(m.projected)} will be left when it's topped up on ${shortDate(nextDay(m.end))}, and goes back to the offset.`
               : `At this rate it'll run ${money(-m.projected)} short before it's topped up on ${shortDate(nextDay(m.end))}.`}
@@ -118,27 +129,24 @@ export function SpendingPage() {
           <Details label="See the numbers">
             <div className="grid grid-cols-3 gap-2.5">
               <Stat label="Left" value={money(m.left)} note={`of ${money(m.allowance)}`} role="spending" />
-              <Stat
-                label="Average a day"
-                value={money(m.day ? Math.round(m.spent / m.day) : 0)}
-                note={`the plan is ${money(m.even_per_day)}`}
-                role="spending"
-              />
+              <Stat label="Likely by the end" value={money(likely)} note={`by ${shortDate(m.end)}`} role="spending" />
               <Stat label="Days left" value={String(m.remaining)} note={`of ${m.days}`} role="spending" />
             </div>
           </Details>
         </Card>
-        <Card lit aria-labelledby="sp-safe" className="justify-center md:col-span-4" tint="accent">
-          <Eyebrow id="sp-safe">Left to spend</Eyebrow>
-          <div className="flex items-baseline gap-2">
-            <BigNumber>
-              <Count k="sp:left" value={Math.max(m.left, 0)} format={(v) => money(v)} />
-            </BigNumber>
-          </div>
+        <Card aria-labelledby="sp-sort" className="justify-center md:col-span-4" tint="accent">
+          <Eyebrow id="sp-sort">To sort</Eyebrow>
+          <BigNumber>{m.unsorted_count}</BigNumber>
           <div className="text-[13px] text-ink-3">
-            of {money(m.allowance)}, with {m.remaining} days to go. The plan has{" "}
-            {money(Math.max(0, m.allowance - Math.round(m.allowance * m.pace)))} left by now.
+            {m.unsorted_count
+              ? `${m.unsorted_count === 1 ? "spend needs" : "spends need"} a category, ${money(m.unsorted)} in all.`
+              : "Every spend this month has a category."}
           </div>
+          {m.unsorted_count > 0 && (
+            <Link to="/sort" className="text-[14px] font-semibold text-teal no-underline">
+              Sort them →
+            </Link>
+          )}
         </Card>
       </div>
       <Tile i={4} aria-labelledby="s-daily">
@@ -152,7 +160,7 @@ export function SpendingPage() {
               </span>
               <span className="inline-flex items-center gap-1.5">
                 <i className="w-3.5 border-t-2 border-dashed border-ink-2" />
-                The plan, {money(m.even_per_day)} a day
+                Even pace
               </span>
             </span>
           }
@@ -163,7 +171,9 @@ export function SpendingPage() {
           daily={m.daily}
           today={m.day}
           pace={m.even_per_day}
-          label={`Spending on ${m.daily.filter((v) => v > 0).length} of ${m.day} days so far`}
+          start={m.start}
+          expected={learned ? m.expected.daily : undefined}
+          label={`Spending each day this month, on ${m.daily.filter((v) => v > 0).length} of ${m.day} days so far`}
         />
         <div className="mono flex justify-between pl-10 text-xs text-ink-3">
           <span>{shortDate(m.start).toUpperCase()}</span>
