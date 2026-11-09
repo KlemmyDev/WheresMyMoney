@@ -1,6 +1,6 @@
 /**
- * The loan and offset (design: CkLoan): balance, what's offsetting it, the interest charged on the rest, the rate and
- * repayment; the projection of the loan against the offsets (at the recent pace, or the planned saving from the
+ * The loan and offset (the uplift canvas's EnLoan, on the entity template): what's owed and what the offset saves this
+ * month in a sentence, the interest actually charged month by month; the projection of the loan against the offsets (at the recent pace, or the planned saving from the
  * rules) with the date they meet and the goal; each account's share of the coverage; and what extra a month would do.
  * Estimates at today's rate, for the household's own planning.
  */
@@ -9,13 +9,15 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useState, type CSSProperties } from "react";
 import { errorMessage } from "~/features/common/api";
-import { colour, daysBetween, longDate, money, monthCaps, monthYear, pct, todayIso } from "~/features/common/format";
+import { colour, daysBetween, longDate, money, monthYear, pct, todayIso } from "~/features/common/format";
 import { loanQuery, type LoanView } from "~/features/common/queries";
-import { Dot, Empty, ErrorText, PageHead, Segmented, Tile, TileTitle } from "~/features/common/ui";
+import { Dot, Empty, ErrorText, Segmented, Tile, TileTitle } from "~/features/common/ui";
+import { EntityHeader, EntityHero, Legend, MonthBars } from "~/features/common/entity";
+import { EditButton, ROLE_GLYPH, ROLE_TONE } from "~/features/accounts/AccountsPage";
 import { LoanSimulator } from "~/features/accounts/LoanSimulator";
 import { RateChangeSheet, type Spotted } from "~/features/accounts/RateChange";
-import { Banner, Card, Details, Term } from "~/features/common/ds";
-import { I } from "~/features/common/icons";
+import { Banner, Card, CardHead, Details, Term } from "~/features/common/ds";
+import { Chip, I } from "~/features/common/icons";
 import { useStoredFlag } from "~/features/common/theme";
 import { Button } from "~/features/common/ui";
 
@@ -50,12 +52,30 @@ export function LoanPage() {
   const p = v[mode];
   const lo = v.loan;
   const goal = lo.goal_date;
+  // What the offset saves this month: interest not charged on the part of the loan the accounts cover.
+  const saved = (Math.min(v.offsetting, lo.balance) * (lo.rate_bp ?? 0)) / 10000 / 12;
+  const rateNote = lo.rate_bp != null ? `at ${(lo.rate_bp / 100).toFixed(2)}% variable` : undefined;
   return (
     <>
-      <PageHead
-        over={`Money · ${lo.rate_bp != null ? `${(lo.rate_bp / 100).toFixed(2)}% a year` : "Home loan"}${goal ? ` · aiming to cover it by ${monthYear(goal)}` : ""}`}
-        title="Home loan"
-        actions={spotted ? undefined : <Button onClick={() => setRateOpen(true)}>Rate changed?</Button>}
+      <EntityHeader
+        back={{ to: "/accounts", label: "Accounts" }}
+        mark={<Chip g={ROLE_GLYPH.loan} tone={ROLE_TONE.loan} size="xl" />}
+        title={lo.name}
+        sub={[
+          lo.rate_bp != null ? `${(lo.rate_bp / 100).toFixed(2)}% variable` : null,
+          lo.repayment ? `${money(lo.repayment)} a month` : null,
+          v.by_account.length
+            ? `${v.by_account.length === 1 ? "one account offsets" : `${v.by_account.length} accounts offset`} it`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" · ")}
+        actions={
+          <>
+            <EditButton account={lo} />
+            {!spotted && <Button onClick={() => setRateOpen(true)}>Rate changed?</Button>}
+          </>
+        }
       />
       {spotted && (
         <Banner
@@ -88,37 +108,30 @@ export function LoanPage() {
         v={v}
         spotted={spotted}
       />
-      <Card lit className="flex flex-col gap-2">
+      <EntityHero
+        tint="bad"
+        label="The loan in a sentence"
+        numbers={[
+          { label: "Owed", value: money(lo.balance), note: rateNote },
+          { label: "Offsetting it", value: money(v.offsetting), note: `${pct(v.coverage)} of the loan` },
+          {
+            label: "Interest this month",
+            value: money(v.charged_per_month),
+            note: `${money(Math.max(v.principal_per_month, 0))} comes off the loan`,
+          },
+          { label: "Saved by the offset", value: money(saved), note: "this month" },
+        ]}
+      >
         <p className="m-0 text-[17px] leading-relaxed text-ink">
           We owe <b>{money(lo.balance)}</b> on the {lo.name.toLowerCase()}. Our accounts hold {money(v.offsetting)}{" "}
           <Term k="offset">against it</Term>, so interest is only charged on the other{" "}
-          {money(Math.max(lo.balance - v.offsetting, 0))}. That saves about{" "}
-          <b>{money(v.interest_per_day, { cents: true })} a day</b>.
+          {money(Math.max(lo.balance - v.offsetting, 0))}. That saves about <b>{money(saved)} this month</b>.
         </p>
         <p className="m-0 text-[15px] text-ink-2">
           {v.recent.date
-            ? `At the rate our accounts have been growing, they'll match the loan by ${monthYear(v.recent.date)}, and then no interest is charged at all.`
+            ? `At the rate our accounts have been growing, they'll match the loan by ${monthYear(v.recent.date)}${goal ? `, ${goalGap(v.recent.date, goal)} our ${monthYear(goal)} aim` : ""}, and then no interest is charged at all.`
             : "At the rate our accounts have been growing, they won't catch up with the loan yet."}
         </p>
-        <Details label="See the figures">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fit,minmax(190px,1fr))] sm:gap-4">
-            <Fig
-              i={0}
-              title="Loan balance"
-              value={money(lo.balance)}
-              sub={`−${money(Math.max(v.principal_per_month, 0))} a month in principal`}
-            />
-            <Fig i={1} title="Our accounts" value={money(v.offsetting)} sub={`cover ${pct(v.coverage)} of the loan`} />
-            <Fig
-              i={2}
-              title="Charged interest on"
-              value={money(Math.max(lo.balance - v.offsetting, 0))}
-              sub={`≈ ${money(v.charged_per_month)} this month`}
-            />
-            <Fig i={3} title="Rate" value={`${((lo.rate_bp ?? 0) / 100).toFixed(2)}%`} sub="a year, variable" />
-            <Fig i={4} title="Repayment" value={money(lo.repayment)} sub="monthly" />
-          </div>
-        </Details>
         {lo.rate_bp != null && lo.repayment ? (
           <Details label="What if we paid more, or the rate moved?">
             <LoanSimulator
@@ -130,7 +143,7 @@ export function LoanPage() {
             />
           </Details>
         ) : null}
-      </Card>
+      </EntityHero>
       {v.interest_charged && <InterestCharged c={v.interest_charged} estimate={v.charged_per_month} />}
       <Tile i={5} aria-labelledby="ln-proj">
         <TileTitle
@@ -176,10 +189,10 @@ export function LoanPage() {
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,440px),1fr))] gap-4">
         <Tile i={6} aria-labelledby="ln-acc">
           <TileTitle id="ln-acc" right={<span className="mono">{pct(v.coverage)}</span>}>
-            How much each account covers
+            The offset effect
           </TileTitle>
           {v.by_account.map((a, i) => (
-            <div key={a.id} className="grid grid-cols-[110px_1fr_150px] items-center gap-3 text-[13px]">
+            <div key={a.id} className="grid grid-cols-[96px_1fr_auto] items-center gap-3 text-[13px]">
               <span className="flex items-center gap-2">
                 <Dot c={a.colour} />
                 {a.name}
@@ -196,12 +209,15 @@ export function LoanPage() {
                   }
                 />
               </span>
-              <span className="mono text-right">
-                {money(a.balance)} · {pct(a.share)}
+              <span className="mono text-right whitespace-nowrap">
+                {money(a.balance)} · saves {money((a.balance * (lo.rate_bp ?? 0)) / 10000 / 12)}
               </span>
             </div>
           ))}
-          <div className="text-xs text-ink-3">Bars are each account's share of the {pct(v.coverage)} covered.</div>
+          <div className="text-xs text-ink-3">
+            Each account's share of the {pct(v.coverage)} covered, and the interest it saves this month: {money(saved)}{" "}
+            in all.
+          </div>
         </Tile>
         <Tile i={7} aria-labelledby="ln-sc">
           <TileTitle id="ln-sc">Extra into offset · scenarios</TileTitle>
@@ -239,12 +255,23 @@ export function LoanPage() {
 
 /** The interest the bank actually charged, from the loan's statements: a cost of the loan, not money coming in. */
 function InterestCharged({ c, estimate }: { c: NonNullable<LoanView["interest_charged"]>; estimate: number }) {
-  const hi = Math.max(...c.months.map((m) => m.amount), 1);
   return (
-    <Tile i={5} aria-labelledby="ln-int">
-      <TileTitle id="ln-int" right={<span className="mono">{money(c.year)} · 12 mo</span>}>
-        Interest charged
-      </TileTitle>
+    <Card aria-labelledby="ln-int" className="flex flex-col gap-3">
+      <CardHead
+        id="ln-int"
+        title="Interest charged"
+        right={
+          <span className="flex flex-wrap items-center gap-3.5">
+            <Legend
+              items={[
+                { label: "Charged", kind: "solid", role: "bills" },
+                { label: "At today's rate", kind: "line", role: "ink" },
+              ]}
+            />
+            <span className="mono text-[13px] text-ink-3">{money(c.year)} over 12 months</span>
+          </span>
+        }
+      />
       <p className="m-0 text-[15px] text-ink-2">
         {c.last ? (
           <>
@@ -257,31 +284,30 @@ function InterestCharged({ c, estimate }: { c: NonNullable<LoanView["interest_ch
           "The loan statements imported so far don't show any interest charged."
         )}
       </p>
-      <div className="flex h-[96px] items-end gap-1.5" role="img" aria-label="Interest charged each month">
-        {c.months.map((m, i) => (
-          <div key={m.month} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1">
-            <i
-              className="w-full grow rounded-t-[3px]"
-              title={`${monthYear(m.month)}: ${money(m.amount, { cents: true })}`}
-              style={
-                {
-                  height: `${(Math.max(m.amount, 0) / hi) * 100}%`,
-                  minHeight: m.amount > 0 ? 2 : 0,
-                  flexGrow: 0,
-                  background: "var(--color-bills-fill)",
-                  "--i": i,
-                } as CSSProperties
-              }
-            />
-            <span className="mono text-[10px] text-ink-3">{monthCaps(m.month).slice(0, 1)}</span>
-          </div>
-        ))}
-      </div>
+      <MonthBars
+        months={c.months.map((m) => ({ key: m.month, label: monthYear(m.month), value: Math.max(m.amount, 0) }))}
+        line={{ value: estimate, label: "At today's rate" }}
+        role="bills"
+        name="Interest charged"
+        height={140}
+        format={(v) => money(v, { cents: true })}
+        describe={(m) => (
+          <>
+            <b className="text-ink">{m.label}</b>: {money(m.value, { cents: true })} charged
+            {m.value > estimate * 1.05
+              ? `, ${money(m.value - estimate)} more than today's rate gives`
+              : m.value < estimate * 0.95
+                ? `, ${money(estimate - m.value)} less than today's rate gives`
+                : ", about what today's rate gives"}
+            .
+          </>
+        )}
+      />
       <div className="text-xs text-ink-3">
         Interest is added to what we owe, so it&apos;s a cost of the loan. It isn&apos;t counted as money in or as a
         merchant.
       </div>
-    </Tile>
+    </Card>
   );
 }
 
@@ -291,16 +317,6 @@ function goalGap(date: string, goal: string): string {
   const months = (y2 - y1) * 12 + (m2 - m1);
   if (months === 0) return "right on";
   return months > 0 ? `${months} months before` : `${-months} months after`;
-}
-
-function Fig({ i, title, value, sub }: { i: number; title: string; value: string; sub: string }) {
-  return (
-    <Tile i={i}>
-      <div className="tt">{title}</div>
-      <div className="mono text-[26px] font-semibold">{value}</div>
-      <div className="mono text-xs text-ink-3">{sub}</div>
-    </Tile>
-  );
 }
 
 function Projection({
