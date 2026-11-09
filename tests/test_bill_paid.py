@@ -35,3 +35,20 @@ def test_a_bill_can_be_paid_a_different_amount(client: TestClient, household: di
 def test_a_bill_cant_be_paid_on_a_day_still_to_come(client: TestClient, household: dict) -> None:
     due = first_due(client)
     assert client.post(f"/api/bills/{due['bill_id']}/pay", json={"date": "2099-01-01"}).status_code == 422
+
+
+def test_a_bills_page_knows_the_due_date_to_mark_paid(client: TestClient, household: dict) -> None:
+    due = first_due(client)
+    page = ok(client.get(f"/api/bills/{due['bill_id']}"))
+    assert page["due"]["date"] == due["date"] and page["due"]["paid"] is None
+    ok(client.post(f"/api/bills/{due['bill_id']}/pay", json={}))
+    assert ok(client.get(f"/api/bills/{due['bill_id']}"))["due"]["paid"]
+
+
+def test_a_removed_bill_comes_back_with_undo(client: TestClient, household: dict) -> None:
+    bill_id = first_due(client)["bill_id"]
+    ok(client.delete(f"/api/bills/{bill_id}"))
+    assert bill_id not in [b["id"] for b in ok(client.get("/api/bills"))["bills"]]
+    back = ok(client.post(f"/api/bills/{bill_id}/restore"))
+    assert bill_id in [b["id"] for b in back["bills"]]
+    assert client.post(f"/api/bills/{bill_id}/restore").status_code == 404

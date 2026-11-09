@@ -355,9 +355,8 @@ function BillForm({
   const qc = useQueryClient();
   const toast = useToast();
   const accounts = useQuery(accountsQuery);
-  const cats = useQuery(categoriesQuery);
   const banks: Account[] = accounts.data?.accounts ?? [];
-  const [f, setF] = useState(() =>
+  const [f, setF] = useState<BillDraft>(() =>
     fromTx
       ? {
           name: titleCase(fromTx.remember_as || fromTx.merchant || fromTx.description),
@@ -463,86 +462,7 @@ function BillForm({
           bill once it&apos;s added.
         </div>
       )}
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div>
-          <Label htmlFor="b-name">Bill</Label>
-          <Input
-            id="b-name"
-            className="font-sans"
-            value={f.name}
-            onChange={(e) => setF({ ...f, name: e.target.value })}
-            placeholder={yearly ? "Christmas" : "Internet"}
-          />
-        </div>
-        <div>
-          <Label htmlFor="b-amt">Amount</Label>
-          <Input
-            id="b-amt"
-            inputMode="decimal"
-            value={f.amount}
-            onChange={(e) => setF({ ...f, amount: e.target.value })}
-            placeholder="89.00"
-          />
-        </div>
-        <div>
-          <Label htmlFor="b-every">Every</Label>
-          <Select id="b-every" value={f.every} onChange={(e) => setF({ ...f, every: e.target.value as Every })}>
-            {EVERY.map((e) => (
-              <option key={e} value={e}>
-                {EVERY_LABEL[e]}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div>
-          <Label htmlFor="b-next">Next due</Label>
-          <Input
-            id="b-next"
-            type="date"
-            value={f.next_due}
-            onChange={(e) => setF({ ...f, next_due: e.target.value })}
-          />
-        </div>
-        <div>
-          <Label htmlFor="b-acct">Paid from</Label>
-          <Select id="b-acct" value={f.account_id} onChange={(e) => setF({ ...f, account_id: e.target.value })}>
-            <option value="">—</option>
-            {banks.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div>
-          <Label htmlFor="b-how">How</Label>
-          <Select id="b-how" value={f.how} onChange={(e) => setF({ ...f, how: e.target.value })}>
-            <option value="auto">Comes out automatically</option>
-            <option value="manual">Paid by hand</option>
-            <option value="estimate">An estimate (it varies)</option>
-          </Select>
-        </div>
-        <div>
-          <Label>Category</Label>
-          <CategoryPicker
-            label="Category"
-            value={f.category_id ? Number(f.category_id) : null}
-            categories={cats.data?.categories ?? []}
-            placeholder="Bills"
-            onChange={(c) => setF({ ...f, category_id: c != null ? String(c) : "" })}
-            className="min-h-10 text-[13px]"
-          />
-        </div>
-        <div>
-          <Label htmlFor="b-match">On the statement as (optional)</Label>
-          <Input
-            id="b-match"
-            value={f.match}
-            onChange={(e) => setF({ ...f, match: e.target.value })}
-            placeholder="TELSTRA"
-          />
-        </div>
-      </div>
+      <BillFields f={f} onChange={setF} yearly={yearly} />
       {(save.isError || remove.isError) && <ErrorText>{errorMessage(save.error ?? remove.error)}</ErrorText>}
       <div className="flex justify-between gap-2">
         {bill !== "new" ? <Button onClick={() => remove.mutate()}>Remove</Button> : <span />}
@@ -556,6 +476,115 @@ function BillForm({
             Save
           </Button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** What a bill is, as it's edited: amounts as typed, ids as strings ("" for none). */
+export type BillDraft = {
+  name: string;
+  amount: string;
+  every: Every;
+  next_due: string;
+  account_id: string;
+  how: string;
+  category_id: string;
+  match: string;
+};
+
+/** The fields of a bill, shared by the Add/Change dialog here and the bill page's edit panel. */
+export function BillFields({
+  f,
+  onChange,
+  yearly,
+}: {
+  f: BillDraft;
+  onChange: (f: BillDraft) => void;
+  yearly?: boolean;
+}) {
+  const accounts = useQuery(accountsQuery);
+  const cats = useQuery(categoriesQuery);
+  const banks: Account[] = accounts.data?.accounts ?? [];
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      <div>
+        <Label htmlFor="b-name">Bill</Label>
+        <Input
+          id="b-name"
+          className="font-sans"
+          value={f.name}
+          onChange={(e) => onChange({ ...f, name: e.target.value })}
+          placeholder={yearly ? "Christmas" : "Internet"}
+        />
+      </div>
+      <div>
+        <Label htmlFor="b-amt">Amount</Label>
+        <Input
+          id="b-amt"
+          inputMode="decimal"
+          value={f.amount}
+          onChange={(e) => onChange({ ...f, amount: e.target.value })}
+          placeholder="89.00"
+        />
+      </div>
+      <div>
+        <Label htmlFor="b-every">Every</Label>
+        <Select id="b-every" value={f.every} onChange={(e) => onChange({ ...f, every: e.target.value as Every })}>
+          {EVERY.map((e) => (
+            <option key={e} value={e}>
+              {EVERY_LABEL[e]}
+            </option>
+          ))}
+        </Select>
+      </div>
+      <div>
+        <Label htmlFor="b-next">Next due</Label>
+        <Input
+          id="b-next"
+          type="date"
+          value={f.next_due}
+          onChange={(e) => onChange({ ...f, next_due: e.target.value })}
+        />
+      </div>
+      <div>
+        <Label htmlFor="b-acct">Paid from</Label>
+        <Select id="b-acct" value={f.account_id} onChange={(e) => onChange({ ...f, account_id: e.target.value })}>
+          <option value="">—</option>
+          {banks.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.name}
+            </option>
+          ))}
+        </Select>
+      </div>
+      <div>
+        <Label htmlFor="b-how">How</Label>
+        <Select id="b-how" value={f.how} onChange={(e) => onChange({ ...f, how: e.target.value })}>
+          <option value="auto">Comes out automatically</option>
+          <option value="manual">Paid by hand</option>
+          <option value="estimate">An estimate (it varies)</option>
+        </Select>
+      </div>
+      <div>
+        <Label>Category</Label>
+        <CategoryPicker
+          label="Category"
+          value={f.category_id ? Number(f.category_id) : null}
+          categories={cats.data?.categories ?? []}
+          placeholder="Bills"
+          onChange={(c) => onChange({ ...f, category_id: c != null ? String(c) : "" })}
+          className="min-h-10 text-[13px]"
+        />
+      </div>
+      <div>
+        <Label htmlFor="b-match">On the statement as (optional)</Label>
+        <Input
+          id="b-match"
+          value={f.match}
+          onChange={(e) => onChange({ ...f, match: e.target.value })}
+          placeholder="TELSTRA"
+        />
       </div>
     </div>
   );

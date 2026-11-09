@@ -3,19 +3,31 @@
  * in a sentence, then each payment as a bar against what it is now, what's ahead, and every payment to open.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { BillDialog } from "~/features/bills/BillsPage";
+import { BillFields, type BillDraft } from "~/features/bills/BillsPage";
+import { MarkPaid } from "~/features/bills/MarkPaid";
 import { Loading } from "~/features/common/brand";
 import { PaymentBars } from "~/features/common/charts";
-import { Card, CardHead, Details, Stat } from "~/features/common/ds";
-import { EVERY_LABEL, dayDate, longDate, money, monthYear, pct } from "~/features/common/format";
+import { Card, CardHead, Details } from "~/features/common/ds";
+import { EditPanel, EntityHeader, EntityHero } from "~/features/common/entity";
+import {
+  EVERY_LABEL,
+  dayDate,
+  editable,
+  longDate,
+  money,
+  monthYear,
+  parseMoney,
+  pct,
+  todayIso,
+} from "~/features/common/format";
 import { Chip, I } from "~/features/common/icons";
 import { accountsQuery, billCandidatesQuery, billQuery, refresh } from "~/features/common/queries";
 import { apiSend, errorMessage } from "~/features/common/api";
 import { useToast } from "~/features/common/overlay";
-import type { BillDetail } from "~/features/common/types";
-import { Button, Empty, ErrorText, Pill } from "~/features/common/ui";
+import type { Bill, BillDetail } from "~/features/common/types";
+import { Button, Empty, ErrorText } from "~/features/common/ui";
 import { TransactionSheet, TxRow } from "~/features/spending/TransactionSheet";
 
 const HOW = {
@@ -66,55 +78,53 @@ export function BillPage({ id }: { id: number }) {
 
   return (
     <>
-      <div className="flex flex-col gap-2">
-        <Link to="/bills" className="self-start text-[14px] font-semibold text-teal no-underline">
-          ← All bills
-        </Link>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <Chip g={I.bills} tone="bills" size="lg" />
-            <h1 className="m-0 min-w-0 truncate text-[28px] leading-9 font-semibold tracking-[-0.03em] sm:text-[40px] sm:leading-[46px]">
-              {b.name}
-            </h1>
-          </div>
-          <div className="flex items-center gap-2">
-            <Pill tone={HOW[b.how][1]}>{HOW[b.how][0]}</Pill>
-            <Button onClick={() => setEditing(true)}>Edit</Button>
-          </div>
-        </div>
-      </div>
+      <EntityHeader
+        back={{ to: "/bills", label: "Bills" }}
+        mark={<Chip g={I.bills} tone="bills" size="xl" />}
+        title={b.name}
+        sub={`${HOW[b.how][0]} · every ${every}${from ? ` · from ${from}` : ""}`}
+        actions={
+          <>
+            <Button onClick={() => setEditing((e) => !e)} aria-expanded={editing}>
+              Change
+            </Button>
+            {d.due && (d.due.paid || b.how !== "auto") && <MarkPaid due={d.due} primary />}
+          </>
+        }
+      />
+      <EditBill key={String(editing)} bill={b} open={editing} onClose={() => setEditing(false)} />
 
-      <Card lit tint="bills" className="flex flex-col gap-2" aria-label={`${b.name} in a sentence`}>
+      <EntityHero
+        tint="bills"
+        label={`${b.name} in a sentence`}
+        numbers={
+          d.count > 0
+            ? [
+                { label: "Paid in total", value: money(d.total), note: `${d.count} payments` },
+                { label: "Last 12 months", value: money(d.last_year), note: "What actually came out" },
+                {
+                  label: "Average payment",
+                  value: money(d.average, { cents: true }),
+                  note: `Now ${money(b.amount, { cents: true })}`,
+                },
+                { label: "Next 12 months", value: money(d.next_year), note: "At today's amount" },
+              ]
+            : undefined
+        }
+      >
         <p className="m-0 text-[17px] leading-relaxed text-ink">
           {b.name} is <b>{money(b.amount, { cents: true })}</b> every {every}
           {b.how === "estimate" ? ", give or take" : ""}, about <b>{money(b.per_year)} a year</b>. That's{" "}
           {pct(d.share, 0)} of all our bills.
         </p>
         <p className="m-0 text-[15px] text-ink-2">
-          Next due <b className="text-ink">{dayDate(b.next_due)}</b>
-          {b.how === "manual" ? ", to pay by hand" : ", coming out automatically"}
-          {from ? ` from ${from}` : ""}.{" "}
+          {dueSentence(d, from)}{" "}
           {d.count && d.first
             ? `We've paid ${money(d.total)} for it since ${monthYear(d.first.slice(0, 7))}, over ${d.count} ${d.count === 1 ? "payment" : "payments"}.`
             : "No payments are linked to it yet. They're matched when a statement with it is imported."}
           {changeSentence(d)}
         </p>
-        {d.count > 0 && (
-          <Details label="See the numbers">
-            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-              <Stat label="Paid in total" value={money(d.total)} note={`${d.count} payments`} role="bills" />
-              <Stat label="Last 12 months" value={money(d.last_year)} note="What actually came out" role="bills" />
-              <Stat
-                label="Average payment"
-                value={money(d.average, { cents: true })}
-                note={`Now ${money(b.amount, { cents: true })}`}
-                role="bills"
-              />
-              <Stat label="Next 12 months" value={money(d.next_year)} note="At today's amount" role="bills" />
-            </div>
-          </Details>
-        )}
-      </Card>
+      </EntityHero>
 
       <div className="grid gap-4 md:grid-cols-12 [&>*]:min-w-0">
         <Card aria-labelledby="bp-paid" className="flex flex-col gap-3 md:col-span-8">
@@ -201,9 +211,86 @@ export function BillPage({ id }: { id: number }) {
         </Card>
       )}
 
-      <BillDialog bill={editing ? b : null} onClose={() => setEditing(false)} />
       <TransactionSheet tx={openTx} onClose={() => setOpen(null)} />
     </>
+  );
+}
+
+/** When it's next due and whether this one is paid: "Paid $89.00 on 3 Nov. Next due 3 Dec, coming out automatically." */
+function dueSentence(d: BillDetail, from?: string): string {
+  const b = d.bill;
+  const paid = d.due?.paid;
+  const way = b.how === "manual" ? ", to pay by hand" : ", coming out automatically";
+  const head = paid ? `Paid ${money(paid.amount, { cents: true })} on ${dayDate(paid.date)}. ` : "";
+  const after = d.due && paid ? d.upcoming.find((u) => u.date > d.due!.date)?.date : undefined;
+  const next = paid ? (after ?? b.next_due) : d.due ? d.due.date : b.next_due;
+  const late = !paid && d.due && d.due.date < todayIso();
+  return `${head}${late ? "Was due" : "Next due"} ${dayDate(next)}${late ? ", not paid yet" : way}${from && !late ? ` from ${from}` : ""}.`;
+}
+
+/**
+ * Change the bill: its fields in the entity edit panel (inline on a desktop, a sheet on a phone). Remove takes it off
+ * the list straight away and goes back to Bills, with Undo in the toast. Keyed on open, so it starts from the bill.
+ */
+function EditBill({ bill, open, onClose }: { bill: Bill; open: boolean; onClose: () => void }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const navigate = useNavigate();
+  const start = (): BillDraft => ({
+    name: bill.name,
+    amount: editable(bill.amount),
+    every: bill.every,
+    next_due: bill.next_due,
+    account_id: String(bill.account_id ?? ""),
+    how: bill.how,
+    category_id: String(bill.category_id ?? ""),
+    match: bill.match,
+  });
+  const [f, setF] = useState(start);
+  const changed = JSON.stringify(f) !== JSON.stringify(start());
+  const save = useMutation({
+    mutationFn: () =>
+      apiSend("PUT", `bills/${bill.id}`, {
+        ...f,
+        amount: parseMoney(f.amount),
+        account_id: f.account_id || null,
+        category_id: f.category_id || null,
+      }),
+    onSuccess: () => {
+      refresh(qc);
+      onClose();
+      toast(`${f.name} saved`);
+    },
+  });
+  const remove = useMutation({
+    mutationFn: () => apiSend("DELETE", `bills/${bill.id}`),
+    onSuccess: () => {
+      refresh(qc);
+      navigate({ to: "/bills" });
+      // Undo outlives this panel (gone once the page goes back to Bills), so it's a plain call, not a mutation here.
+      toast(`${bill.name} removed`, () =>
+        apiSend("POST", `bills/${bill.id}/restore`)
+          .then(() => {
+            refresh(qc);
+            return navigate({ to: "/bills/$billId", params: { billId: String(bill.id) } });
+          })
+          .catch((e) => toast(errorMessage(e))),
+      );
+    },
+  });
+  return (
+    <EditPanel
+      open={open}
+      onClose={onClose}
+      title={`Change ${bill.name}`}
+      onSave={() => save.mutate()}
+      canSave={changed && !!f.name && parseMoney(f.amount) != null}
+      saving={save.isPending || remove.isPending}
+      remove={{ label: "Remove bill", onClick: () => remove.mutate() }}
+      error={save.isError || remove.isError ? errorMessage(save.error ?? remove.error) : undefined}
+    >
+      <BillFields f={f} onChange={setF} />
+    </EditPanel>
   );
 }
 

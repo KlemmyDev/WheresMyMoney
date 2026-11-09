@@ -104,12 +104,20 @@ async def detail(svc: ServicesDep, bill_id: int):
     d = await run(svc.bills.detail, bill_id)
     ids = [int(p["id"]) for p in d["payments"]]
     d["transactions"] = await run(svc.spending.transactions, None, None, None, max(len(ids), 1), ids) if ids else []
+    d["due"] = await run(svc.bills.due_now, bill_id)
     return d
 
 
 @router.put("/{bill_id}")
 async def update(svc: ServicesDep, bill_id: int, body: JsonBody):
     await run(svc.bills.update, bill_id, body)
+    return await _overview(svc)
+
+
+@router.post("/{bill_id}/restore")
+async def restore(svc: ServicesDep, bill_id: int):
+    """Undo removing a bill."""
+    await run(svc.bills.restore, bill_id)
     return await _overview(svc)
 
 
