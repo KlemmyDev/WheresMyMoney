@@ -27,6 +27,14 @@ def balances_of(body: dict[str, Any]) -> dict[int, int]:
     return out
 
 
+def skipped_of(body: dict[str, Any]) -> frozenset[str]:
+    """{"skipped": ["4:2026-10-31", ...]}: the moves (from the check-in form) that didn't happen this time."""
+    raw = body.get("skipped") or []
+    if not isinstance(raw, list) or not all(isinstance(k, str) for k in raw):
+        raise HTTPException(status_code=422, detail="Send the skipped moves as a list of their keys.")
+    return frozenset(raw)
+
+
 @router.get("")
 async def prepare(svc: ServicesDep):
     """The check-in form: each account's last balance and what the rules say it should hold now."""
@@ -36,13 +44,22 @@ async def prepare(svc: ServicesDep):
 @router.post("/check")
 async def check(svc: ServicesDep, body: JsonBody):
     """What a check-in with these balances would say, without saving it."""
-    return await run(svc.checkins.check, balances_of(body), bool(body.get("exact")))
+    return await run(svc.checkins.check, balances_of(body), bool(body.get("exact")), skipped_of(body))
 
 
 @router.post("")
 async def save(svc: ServicesDep, body: JsonBody, user: UserDep):
-    """Save a check-in: {"balances": {...}, "exact": false}."""
-    return await run(svc.checkins.save, balances_of(body), bool(body.get("exact")), user.id if user else None)
+    """Save a check-in: {"balances": {...}, "exact": false, "skipped": [move keys]}."""
+    return await run(
+        svc.checkins.save, balances_of(body), bool(body.get("exact")), user.id if user else None, skipped_of(body)
+    )
+
+
+@router.delete("/{checkin_id}")
+async def undo(svc: ServicesDep, checkin_id: int):
+    """Take back the latest check-in (the Undo on its toast)."""
+    await run(svc.checkins.undo, checkin_id)
+    return {"ok": True}
 
 
 @router.get("/history")
