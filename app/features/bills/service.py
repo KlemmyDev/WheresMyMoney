@@ -221,14 +221,87 @@ class BillsService:
         return sum(b.per_year for b in bills) / 12
 
     def due(self, start: dt.date, end: dt.date, account_id: int | None = None) -> list[dict[str, Any]]:
-        """Every bill falling due from start to end (inclusive), soonest first."""
+        """Every bill falling due from start to end (inclusive), soonest first. `paid` is the payment made for that
+        due date, if there is one: a payment of the bill after the time before it fell due and up to a week after."""
         out = []
-        for b in self.all():
-            if account_id is not None and b.account_id != account_id:
-                continue
+        bills = [b for b in self.all() if account_id is None or b.account_id == account_id]
+        with self.db.reading() as conn:
+            paid_on = {
+                b.id: [
+                    (r[0], r[1], -int(r[2]))
+                    for r in conn.execute(
+                        "SELECT id, date, amount FROM transactions WHERE bill_id = ? AND amount < 0 ORDER BY date",
+                        (b.id,),
+                    )
+                ]
+                for b in bills
+            }
+        for b in bills:
             for day in b.due_between(start, end):
-                out.append({"bill_id": b.id, "name": b.name, "date": day.isoformat(), "amount": b.amount, "how": b.how})
+                before = list(dates.occurrences(dates.parse(b.anchor), b.every, day - dt.timedelta(days=400), day))
+                after = before[-2] if len(before) > 1 else day - dt.timedelta(days=31)
+                window = (after.isoformat(), (day + dt.timedelta(days=7)).isoformat())
+                paid = next(
+                    (
+                        {"transaction_id": t, "date": d, "amount": a}
+                        for t, d, a in paid_on[b.id]
+                        if window[0] < d <= window[1]
+                    ),
+                    None,
+                )
+                out.append(
+                    {
+                        "bill_id": b.id,
+                        "name": b.name,
+                        "date": day.isoformat(),
+                        "amount": b.amount,
+                        "how": b.how,
+                        "paid": paid,
+                    }
+                )
         return sorted(out, key=lambda x: (x["date"], -int(x["amount"])))
+
+    def pay(self, bill_id: int, amount: int | None, day: str | None, user_id: int | None) -> dict[str, Any]:
+        """Mark a bill paid by hand: a typed-in payment of it (its amount unless another is given, today unless another
+        day is), from the account it's paid from or else the bills account. Undo removes that payment."""
+        bill = self.get(bill_id)
+        if bill is None:
+            raise LookupError("That bill has gone.")
+        cents = bill.amount if amount is None else int(amount)
+        if cents <= 0:
+            raise ValueError("How much was paid?")
+        when = dates.parse(day) if day else dates.today()
+        if when > dates.today():
+            raise ValueError("That day hasn't come yet.")
+        with self.db.writing() as conn:
+            account = bill.account_id or next(
+                (r[0] for r in conn.execute("SELECT id FROM accounts WHERE role = 'bills' AND archived = 0 LIMIT 1")),
+                None,
+            )
+            if account is None:
+                raise ValueError("Which account was it paid from? Set that on the bill.")
+            cur = conn.execute(
+                "INSERT INTO transactions (account_id, date, amount, description, merchant, kind, category_id,"
+                " category_by, bill_id, user_id, created_at) VALUES (?, ?, ?, ?, ?, 'manual', ?, ?, ?, ?, ?)",
+                (
+                    account,
+                    when.isoformat(),
+                    -cents,
+                    bill.name,
+                    merchants.merchant(bill.name),
+                    bill.category_id,
+                    "bill" if bill.category_id is not None else None,
+                    bill.id,
+                    user_id,
+                    int(time.time()),
+                ),
+            )
+        return {
+            "transaction_id": int(cur.lastrowid or 0),
+            "bill_id": bill.id,
+            "amount": cents,
+            "date": when.isoformat(),
+        }
 
     def by_month(self, months: int = 12) -> list[dict[str, Any]]:
         """What the bills add up to in each of the coming months (this one first)."""
