@@ -173,14 +173,17 @@ def project(h: Household, plan: Plan, retire_age: int) -> dict[str, Any]:
         if in_part and part:
             sup += part[2] * rules.SUPER_GUARANTEE
         need = max(0.0, need)
+        paid = {"etfs": 0.0, "offset": 0.0, "super": 0.0, "short": 0.0}
         take = min(etf, need)
         etf -= take
         need -= take
+        paid["etfs"] = take
         if loan and need > 1:
             reachable = offset / (1 + inf) ** k
             take = min(reachable, need)
             offset -= take * (1 + inf) ** k
             need -= take
+            paid["offset"] = take
         if age < opens:
             if need > 1 and gap is None:
                 gap = age
@@ -188,8 +191,11 @@ def project(h: Household, plan: Plan, retire_age: int) -> dict[str, Any]:
             take = min(sup, need)
             sup -= take
             need -= take
+            paid["super"] = take
             if need > 1 and out is None:
                 out = age
+        paid["short"] = max(need, 0.0) if need > 1 else 0.0
+        rows[-1]["paid"] = paid
     lasts = out if out is not None else LAST + 1
     return {
         "retire_age": retire_age,

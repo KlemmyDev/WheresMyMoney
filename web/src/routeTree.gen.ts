@@ -33,6 +33,8 @@ import { Route as AppTransactionsRouteImport } from './routes/_app/transactions'
 import { Route as AppAccountsAccountIdRouteImport } from './routes/_app/accounts_.$accountId'
 import { Route as AppBillsBillIdRouteImport } from './routes/_app/bills_.$billId'
 import { Route as AppBillsSpottedRouteImport } from './routes/_app/bills_.spotted'
+import { Route as AppEarlyRetirementBridgeRouteImport } from './routes/_app/early-retirement_.bridge'
+import { Route as AppEarlyRetirementNextRouteImport } from './routes/_app/early-retirement_.next'
 import { Route as AppEarlyRetirementScenariosRouteImport } from './routes/_app/early-retirement_.scenarios'
 import { Route as AppGoalsGoalIdRouteImport } from './routes/_app/goals_.$goalId'
 import { Route as AppInvestmentsFundIdRouteImport } from './routes/_app/investments_.$fundId'
@@ -160,6 +162,17 @@ const AppBillsSpottedRoute = AppBillsSpottedRouteImport.update({
   path: '/bills/spotted',
   getParentRoute: () => AppRoute,
 } as any)
+const AppEarlyRetirementBridgeRoute =
+  AppEarlyRetirementBridgeRouteImport.update({
+    id: '/early-retirement_/bridge',
+    path: '/early-retirement/bridge',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppEarlyRetirementNextRoute = AppEarlyRetirementNextRouteImport.update({
+  id: '/early-retirement_/next',
+  path: '/early-retirement/next',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppEarlyRetirementScenariosRoute =
   AppEarlyRetirementScenariosRouteImport.update({
     id: '/early-retirement_/scenarios',
@@ -222,6 +235,8 @@ export interface FileRoutesByFullPath {
   '/accounts/$accountId': typeof AppAccountsAccountIdRoute
   '/bills/$billId': typeof AppBillsBillIdRoute
   '/bills/spotted': typeof AppBillsSpottedRoute
+  '/early-retirement/bridge': typeof AppEarlyRetirementBridgeRoute
+  '/early-retirement/next': typeof AppEarlyRetirementNextRoute
   '/early-retirement/scenarios': typeof AppEarlyRetirementScenariosRoute
   '/goals/$goalId': typeof AppGoalsGoalIdRoute
   '/investments/$fundId': typeof AppInvestmentsFundIdRoute
@@ -254,6 +269,8 @@ export interface FileRoutesByTo {
   '/accounts/$accountId': typeof AppAccountsAccountIdRoute
   '/bills/$billId': typeof AppBillsBillIdRoute
   '/bills/spotted': typeof AppBillsSpottedRoute
+  '/early-retirement/bridge': typeof AppEarlyRetirementBridgeRoute
+  '/early-retirement/next': typeof AppEarlyRetirementNextRoute
   '/early-retirement/scenarios': typeof AppEarlyRetirementScenariosRoute
   '/goals/$goalId': typeof AppGoalsGoalIdRoute
   '/investments/$fundId': typeof AppInvestmentsFundIdRoute
@@ -288,6 +305,8 @@ export interface FileRoutesById {
   '/_app/accounts_/$accountId': typeof AppAccountsAccountIdRoute
   '/_app/bills_/$billId': typeof AppBillsBillIdRoute
   '/_app/bills_/spotted': typeof AppBillsSpottedRoute
+  '/_app/early-retirement_/bridge': typeof AppEarlyRetirementBridgeRoute
+  '/_app/early-retirement_/next': typeof AppEarlyRetirementNextRoute
   '/_app/early-retirement_/scenarios': typeof AppEarlyRetirementScenariosRoute
   '/_app/goals_/$goalId': typeof AppGoalsGoalIdRoute
   '/_app/investments_/$fundId': typeof AppInvestmentsFundIdRoute
@@ -322,6 +341,8 @@ export interface FileRouteTypes {
     | '/accounts/$accountId'
     | '/bills/$billId'
     | '/bills/spotted'
+    | '/early-retirement/bridge'
+    | '/early-retirement/next'
     | '/early-retirement/scenarios'
     | '/goals/$goalId'
     | '/investments/$fundId'
@@ -354,6 +375,8 @@ export interface FileRouteTypes {
     | '/accounts/$accountId'
     | '/bills/$billId'
     | '/bills/spotted'
+    | '/early-retirement/bridge'
+    | '/early-retirement/next'
     | '/early-retirement/scenarios'
     | '/goals/$goalId'
     | '/investments/$fundId'
@@ -387,6 +410,8 @@ export interface FileRouteTypes {
     | '/_app/accounts_/$accountId'
     | '/_app/bills_/$billId'
     | '/_app/bills_/spotted'
+    | '/_app/early-retirement_/bridge'
+    | '/_app/early-retirement_/next'
     | '/_app/early-retirement_/scenarios'
     | '/_app/goals_/$goalId'
     | '/_app/investments_/$fundId'
@@ -572,6 +597,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppBillsSpottedRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/early-retirement_/bridge': {
+      id: '/_app/early-retirement_/bridge'
+      path: '/early-retirement/bridge'
+      fullPath: '/early-retirement/bridge'
+      preLoaderRoute: typeof AppEarlyRetirementBridgeRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/early-retirement_/next': {
+      id: '/_app/early-retirement_/next'
+      path: '/early-retirement/next'
+      fullPath: '/early-retirement/next'
+      preLoaderRoute: typeof AppEarlyRetirementNextRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/early-retirement_/scenarios': {
       id: '/_app/early-retirement_/scenarios'
       path: '/early-retirement/scenarios'
@@ -646,6 +685,8 @@ interface AppRouteChildren {
   AppAccountsAccountIdRoute: typeof AppAccountsAccountIdRoute
   AppBillsBillIdRoute: typeof AppBillsBillIdRoute
   AppBillsSpottedRoute: typeof AppBillsSpottedRoute
+  AppEarlyRetirementBridgeRoute: typeof AppEarlyRetirementBridgeRoute
+  AppEarlyRetirementNextRoute: typeof AppEarlyRetirementNextRoute
   AppEarlyRetirementScenariosRoute: typeof AppEarlyRetirementScenariosRoute
   AppGoalsGoalIdRoute: typeof AppGoalsGoalIdRoute
   AppInvestmentsFundIdRoute: typeof AppInvestmentsFundIdRoute
@@ -677,6 +718,8 @@ const AppRouteChildren: AppRouteChildren = {
   AppAccountsAccountIdRoute: AppAccountsAccountIdRoute,
   AppBillsBillIdRoute: AppBillsBillIdRoute,
   AppBillsSpottedRoute: AppBillsSpottedRoute,
+  AppEarlyRetirementBridgeRoute: AppEarlyRetirementBridgeRoute,
+  AppEarlyRetirementNextRoute: AppEarlyRetirementNextRoute,
   AppEarlyRetirementScenariosRoute: AppEarlyRetirementScenariosRoute,
   AppGoalsGoalIdRoute: AppGoalsGoalIdRoute,
   AppInvestmentsFundIdRoute: AppInvestmentsFundIdRoute,

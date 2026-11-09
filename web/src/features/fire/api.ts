@@ -11,7 +11,26 @@ export type FireSummary = {
   loan_year: number | null;
 };
 
-export type FireRow = { age: number; year: number; super: number; etfs: number; offset: number };
+export type FireRow = {
+  age: number;
+  year: number;
+  super: number;
+  etfs: number;
+  offset: number;
+  /** Once stopped: what each pot paid that year, and what fell short. */
+  paid?: { etfs: number; offset: number; super: number; short: number };
+};
+
+export type Bridge = { years: number; opens_year: number; outside: number; need: number; covered: boolean };
+
+export type Rung = {
+  key: "offset" | "super" | "etfs" | "repay";
+  in: number;
+  rate: number;
+  out: number;
+  reach: string;
+  risk: boolean;
+};
 
 export type Milestone = { age: number; year: number; spend?: number } | null;
 
@@ -38,7 +57,10 @@ export type Fire =
       } | null;
       vs_plan: { year: number; expected: number; actual: number; ahead: number } | null;
       rows: FireRow[];
-      bridge: { years: number; opens_year: number; outside: number; need: number; covered: boolean };
+      bridge: Bridge;
+      ladder: Rung[];
+      spare: number;
+      room: number;
       next_dollar: { person: string; rate: number; in_hand: number; into_super: number; room: number }[];
       debt: {
         extra: number;
@@ -67,3 +89,22 @@ export const fireQuery = queryOptions({
   queryKey: ["fire"],
   queryFn: ({ signal }) => apiGet<Fire>("fire", undefined, { signal }),
 });
+
+export type Levers = {
+  retire_age: number;
+  spend: number;
+  spare: number;
+  where: "off" | "etf" | "sup" | "mix";
+  keep: boolean;
+  part_time: boolean;
+  one_off: "none" | "car" | "inheritance";
+  pension: boolean;
+};
+
+export type WhatIf = {
+  levers: Levers;
+  result: FireSummary & { gap: number | null };
+  soonest: number | null;
+  rows: FireRow[];
+  bridge: Bridge;
+};

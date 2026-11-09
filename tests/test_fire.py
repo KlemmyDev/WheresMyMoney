@@ -146,3 +146,18 @@ def test_scenarios_are_kept_and_compared(client: TestClient, household: dict) ->
     assert [s["name"] for s in saved] == ["Keep investing"] and saved[0]["result"]["retire_age"] == 57
     assert ok(client.delete(f"/api/fire/scenarios/{saved[0]['id']}")) == []
     assert client.post("/api/fire/scenarios", json={"name": "", "levers": lv}).status_code == 422
+
+
+def test_each_retired_year_says_which_pot_paid_and_the_ladder_ranks_the_offset_first() -> None:
+    from app.features.fire.service import ladder
+
+    h = sample()
+    rows = project(h, THE_PLAN, 57)["rows"]
+    at57 = next(r for r in rows if r["age"] == 57)
+    assert "paid" not in next(r for r in rows if r["age"] == 50)
+    assert at57["paid"]["etfs"] > 0 and at57["paid"]["super"] == 0  # super's still locked at 57
+    at62 = next(r for r in rows if r["age"] == 62)
+    assert at62["paid"]["super"] > 0 and at62["paid"]["short"] == 0
+    rungs = ladder(h)
+    assert [r["key"] for r in rungs] == ["offset", "super", "etfs", "repay"]
+    assert rungs[0]["in"] == 68.0 and rungs[1]["in"] == 85.0 and round(rungs[1]["rate"], 3) == 0.063

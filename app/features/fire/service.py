@@ -157,6 +157,9 @@ class FireService:
                 for p in h.people
             ],
             "debt": [_debt(debt.compare(h, x)) for x in EXTRAS] if h.loan > h.offset else [],
+            "ladder": ladder(h),
+            "spare": round(h.spare * 100),
+            "room": round(h.room * 100),
             "shocks": shocks.all_shocks(h, THE_PLAN, age),
             "assumptions": {
                 "real_growth": h.real_growth,
@@ -202,6 +205,7 @@ class FireService:
             "result": {**(_summary(r["result"]) or {}), "gap": r["result"]["gap"]},
             "soonest": r["soonest"],
             "rows": [_row(x) for x in r["result"]["rows"] if x["age"] <= max(h.plan_to, 92)],
+            "bridge": bridge(h, r["result"]),
         }
         if body.get("target") is not None:
             target = int(body["target"])
@@ -361,7 +365,34 @@ def _summary(r: dict[str, Any] | None) -> dict[str, Any] | None:
 
 
 def _row(r: dict[str, Any]) -> dict[str, Any]:
-    return {"age": r["age"], "year": r["year"], **{k: round(r[k] * 100) for k in ("super", "etfs", "offset")}}
+    out = {"age": r["age"], "year": r["year"], **{k: round(r[k] * 100) for k in ("super", "etfs", "offset")}}
+    if "paid" in r:
+        out["paid"] = {k: round(v * 100) for k, v in r["paid"].items()}
+    return out
+
+
+def ladder(h: Household) -> list[dict[str, Any]]:
+    """What $100 more pay becomes in 10 years each way, for retiring early: after the tax going in, at a likely
+    return (nominal), and whether it can be reached before super opens. Ranked as the canvas does: the offset
+    while the loan's on, then salary sacrifice up to the room, then ETFs; extra repayments last (stuck)."""
+    mtr = h.marginal_rate
+    in_hand = 100 * (1 - mtr)
+    into_super = 100 * (1 - h.rules.CONTRIBUTIONS_TAX)
+    super_rate = (h.super_return - h.super_fee) * (1 - 0.115)  # earnings taxed 15%, less with franking: ~11.5%
+    etf_rate = (h.super_return - 0.002) * (1 - mtr * 0.45)  # distributions taxed at your rate, growth half-taxed later
+    rungs: list[dict[str, Any]] = []
+    if h.loan > h.offset:
+        rungs.append({"key": "offset", "in": in_hand, "rate": h.loan_rate, "reach": "any time", "risk": False})
+    rungs += [
+        {"key": "super", "in": into_super, "rate": super_rate, "reach": "locked until 60", "risk": True},
+        {"key": "etfs", "in": in_hand, "rate": etf_rate, "reach": "any time", "risk": True},
+    ]
+    if h.loan > h.offset:
+        rungs.append({"key": "repay", "in": in_hand, "rate": h.loan_rate, "reach": "stuck in the loan", "risk": False})
+    return [
+        {**r, "out": round(float(r["in"]) * (1 + float(r["rate"])) ** 10, 2), "in": round(float(r["in"]), 2)}
+        for r in rungs
+    ]
 
 
 def _debt(d: dict[str, Any]) -> dict[str, Any]:
