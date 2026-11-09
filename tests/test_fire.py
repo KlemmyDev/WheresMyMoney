@@ -337,3 +337,17 @@ def test_checkpoints_are_recorded_and_compared(client: TestClient, household: di
     later = ok(client.post("/api/fire/checkpoint", json={"save": True}))
     assert later["last"]["date"] == first["now"]["date"] and later["now"]["super"] == dollars(131000)
     assert later["now"]["super_need"] > 0 and later["track"]["ready"]
+
+
+def test_sensitivity_says_returns_move_the_date_most(client: TestClient, household: dict) -> None:
+    for name, born, balance, salary in (("Alex", 1988, 112600, 120000), ("Sam", 1990, 73800, 85000)):
+        body = {"person": name, "born": born, "balance": dollars(balance), "salary": dollars(salary), "rate": 0.12}
+        ok(client.post("/api/retirement/people", json=body))
+    s = ok(client.get("/api/fire/sensitivity"))
+    rows = {r["key"]: r for r in s["rows"]}
+    assert set(rows) == {"returns", "spend", "fees", "plan_to", "inflation"}
+    base = s["earliest"]
+    for r in rows.values():
+        assert (r["better"] or 70) <= base <= (r["worse"] or 71)
+    swing = {k: (r["worse"] or 71) - (r["better"] or 45) for k, r in rows.items()}
+    assert swing["returns"] == max(swing.values())

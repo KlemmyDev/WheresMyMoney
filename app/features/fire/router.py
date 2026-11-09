@@ -55,6 +55,12 @@ async def checkpoint_save(svc: ServicesDep, body: JsonBody):
     return await run(svc.fire.checkpoint, body)
 
 
+@router.get("/sensitivity")
+async def sensitivity(svc: ServicesDep):
+    """How sure is the date: the earliest age to stop, and with each guess changed one at a time."""
+    return await run(svc.fire.sensitivity)
+
+
 @router.post("/plan")
 async def save_plan(svc: ServicesDep):
     """Make the suggested plan the household's. Returns the saved plan and the rule changes it implies (to offer)."""
