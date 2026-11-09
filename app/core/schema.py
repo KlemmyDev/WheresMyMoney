@@ -417,6 +417,15 @@ def _what_you_earn(conn: sqlite3.Connection) -> None:
     conn.execute("ALTER TABLE super_accounts ADD COLUMN pay_every TEXT NOT NULL DEFAULT 'fortnightly'")
 
 
+def _fire_scenarios(conn: sqlite3.Connection) -> None:
+    """fire_scenarios: what-ifs the household kept, to compare side by side. `levers` is JSON (the age to stop,
+    spending, spare a month and where it goes, keep investing, part-time, a one-off, the age pension)."""
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS fire_scenarios (id INTEGER PRIMARY KEY, name TEXT NOT NULL, levers TEXT NOT NULL,"
+        " created_at INTEGER NOT NULL)"
+    )
+
+
 MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _baseline,
     _money,
@@ -447,4 +456,5 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _account_icon,
     _loan_lender,
     _what_you_earn,
+    _fire_scenarios,
 ]

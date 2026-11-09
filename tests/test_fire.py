@@ -114,3 +114,35 @@ def test_coast_is_when_saving_could_stop() -> None:
 
     h = sample()
     assert coast(h, THE_PLAN, 60) == 54
+
+
+def test_what_ifs_match_the_canvas_and_say_what_it_would_take() -> None:
+    from app.features.fire import whatif
+
+    h = sample()
+    lv = whatif.levers_of({"retire_age": 57, "keep": True}, h)
+    r = whatif.run(h, lv)
+    assert r["result"]["ok"] and r["result"]["lasts"] == 94 and r["soonest"] == 57
+    # The canvas's "Retire at 52": $3,000 a month spare, $70,000 a year once stopped, keep investing.
+    r52 = whatif.run(h, whatif.levers_of({"retire_age": 52, "spare": 3000, "spend": 70000, "keep": True}, h))
+    assert r52["soonest"] is not None and r52["soonest"] <= 52
+    ideas = whatif.seek(h, lv, 52)
+    kinds = {i["kind"] for i in ideas}
+    assert {"save", "spend"} <= kinds
+    save = next(i for i in ideas if i["kind"] == "save")
+    assert save["spare"] and project(h, whatif.plan_of(save["levers"], h), 52)["ok"]
+    assert whatif.seek(h, lv, 60)[0]["kind"] == "already"
+    with pytest.raises(ValueError):
+        whatif.levers_of({"where": "moon"}, h)
+
+
+def test_scenarios_are_kept_and_compared(client: TestClient, household: dict) -> None:
+    body = {"person": "Alex", "born": 1988, "balance": dollars(112600), "salary": dollars(120000), "rate": 0.12}
+    ok(client.post("/api/retirement/people", json=body))
+    lv = {"retire_age": 57, "spend": dollars(80000), "spare": dollars(1000), "where": "off", "keep": True}
+    w = ok(client.post("/api/fire/whatif", json={"levers": lv, "target": 55}))
+    assert w["levers"]["spend"] == dollars(80000) and w["result"]["retire_age"] == 57 and w["seek"]["target"] == 55
+    saved = ok(client.post("/api/fire/scenarios", json={"name": "Keep investing", "levers": lv}))
+    assert [s["name"] for s in saved] == ["Keep investing"] and saved[0]["result"]["retire_age"] == 57
+    assert ok(client.delete(f"/api/fire/scenarios/{saved[0]['id']}")) == []
+    assert client.post("/api/fire/scenarios", json={"name": "", "levers": lv}).status_code == 422

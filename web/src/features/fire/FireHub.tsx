@@ -265,7 +265,15 @@ function Hub({ f }: { f: FireReady }) {
         </Card>
 
         <Card aria-labelledby="fh-scen" className="flex flex-col gap-1 md:col-span-12">
-          <CardHead id="fh-scen" title="Your scenarios" />
+          <CardHead
+            id="fh-scen"
+            title="Your scenarios"
+            right={
+              <Link to="/early-retirement/scenarios" className="text-[13px] font-semibold text-teal no-underline">
+                Try a what-if →
+              </Link>
+            }
+          />
           {f.scenarios.map((s) => {
             const mine = saved ? s.key === "keep" : s.key === "today";
             return (

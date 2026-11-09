@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.dependencies import ServicesDep, run
+from app.dependencies import JsonBody, ServicesDep, run
 
 router = APIRouter(prefix="/api/fire")
 
@@ -27,3 +27,34 @@ async def unsave_plan(svc: ServicesDep):
     """Undo making it the plan."""
     await run(svc.fire.unsave_plan)
     return {"saved": None}
+
+
+@router.post("/whatif")
+async def what_if(svc: ServicesDep, body: JsonBody):
+    """{"levers": {"retire_age": 57, "spend": 8000000, "spare": 100000, "where": "off", "keep": true, ...},
+    "target": 52}: the result, the soonest it works, and (with a target) what it would take. Money in cents."""
+    levers = body.get("levers") or {}
+    for key in ("spend", "spare"):
+        if levers.get(key) is not None:
+            levers[key] = levers[key] / 100
+    return await run(svc.fire.what_if, {**body, "levers": levers})
+
+
+@router.get("/scenarios")
+async def scenarios(svc: ServicesDep):
+    return await run(svc.fire.scenarios_saved)
+
+
+@router.post("/scenarios")
+async def save_scenario(svc: ServicesDep, body: JsonBody):
+    """{"name": "Retire at 52", "levers": {...}} (money in cents). Returns the saved scenarios."""
+    levers = body.get("levers") or {}
+    for key in ("spend", "spare"):
+        if levers.get(key) is not None:
+            levers[key] = levers[key] / 100
+    return await run(svc.fire.save_scenario, {**body, "levers": levers})
+
+
+@router.delete("/scenarios/{scenario_id}")
+async def remove_scenario(svc: ServicesDep, scenario_id: int):
+    return await run(svc.fire.remove_scenario, scenario_id)
