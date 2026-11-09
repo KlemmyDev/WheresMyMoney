@@ -105,6 +105,8 @@ def test_the_hub_has_milestones_scenarios_and_a_plan_to_make_yours(client: TestC
     assert saved["saved"]["retire_age"] == f["plan"]["retire_age"] and saved["rules"]["now"] == []
     again = ok(client.get("/api/fire"))
     assert again["saved"]["retire_age"] == f["plan"]["retire_age"] and again["vs_plan"]["year"] == 2026
+    assert again["track"][-1]["expected"] == saved["saved"]["path"][0]["total"]
+    assert again["vs_plan"]["actual"] == again["track"][-1]["actual"]
     now = client.app.state.services.fire.freedom_now()  # type: ignore[attr-defined]
     assert now["age"] == now["saved_age"] == f["plan"]["retire_age"]
     ok(client.delete("/api/fire/plan"))
@@ -210,3 +212,15 @@ def test_drawdown_and_assumptions_answer_for_the_household(client: TestClient, h
     ok(client.put("/api/retirement/settings", json={"super_fee": 0.0073}))
     assert ok(client.get("/api/fire"))["assumptions"]["fee_from"] == "set"
     assert client.put("/api/retirement/settings", json={"super_fee": 0.2}).status_code == 422
+
+
+def test_the_plan_path_runs_a_year_a_step_from_the_day_it_was_saved() -> None:
+    import datetime as dt
+
+    from app.features.fire.service import _expected
+
+    saved = {"date": "2026-07-01", "path": [{"year": 2026, "total": 100}, {"year": 2027, "total": 200}]}
+    assert _expected(saved, dt.date(2026, 6, 30)) is None
+    assert _expected(saved, dt.date(2026, 7, 1)) == 100
+    assert _expected(saved, dt.date(2026, 12, 30)) == 150
+    assert _expected(saved, dt.date(2030, 1, 1)) == 200
