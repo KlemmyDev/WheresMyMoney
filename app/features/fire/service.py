@@ -19,7 +19,7 @@ from app.core.database import Database
 from app.features.accounts import ledger
 from app.features.accounts.service import AccountsService
 from app.features.dashboard.service import DashboardService
-from app.features.fire import debt, shocks, tax, whatif
+from app.features.fire import debt, need, shocks, tax, whatif
 from app.features.fire.model import FEE_GUESS, THE_PLAN, Household, Person, Plan, coast, freedom, project
 from app.features.fire.rules.load import rules_for
 from app.features.investments.service import InvestmentsService
@@ -27,6 +27,7 @@ from app.features.retirement.service import RetirementService
 
 EXTRAS = (250, 500, 1000)  # dollars a month, for loan or invest
 SAVED = "fire:plan"  # kv: the plan the household made theirs, with its path then (to check in against)
+GOAL = "fire:goal"  # kv: the age the household wants to stop work at ({"age": 55, "set_at": ...})
 LEAN = 0.69  # essentials as a share of the spending planned (the canvas's $55,000 of $80,000)
 
 
@@ -502,9 +503,168 @@ class FireService:
             },
         }
 
+    def goal_saved(self) -> dict[str, Any] | None:
+        with self.db.reading() as conn:
+            row = conn.execute("SELECT value FROM kv WHERE key = ?", (GOAL,)).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def current_plan(self) -> Plan:
+        """Today's pace: the plan the household made theirs (keep the loan money working), else as things are."""
+        return THE_PLAN if self.saved() else Plan()
+
+    def on_track(self, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Are we on track: the goal (the age to stop, spending once stopped, plan-to age), the earliest today's
+        pace gets to, each year's need for super, outside super and the loan against where the pace has them,
+        today's three parts, and the smallest change that would close the gap. `body` tries other levers without
+        saving: {"goal": 55, "spend": cents a year, "extra_super" / "extra_etfs" / "extra_loan": cents a month,
+        "keep": bool, "plan_to": 92, "super_return": 0.07, "inflation": 0.03, "supers": {name: cents},
+        "etfs": cents, "loan": cents owed}. Money out in cents."""
+        built = self.household()
+        if built is None:
+            return {"ready": False, "needs": "Add each person's super first, on Retirement."}
+        h, notes = built
+        b = body or {}
+        try:
+            h = _with_overrides(h, b)
+            base = self.current_plan()
+            spend = float(b["spend"]) / 100 if b.get("spend") is not None else h.spend
+            plan = replace(
+                base,
+                spend=spend,
+                keep=bool(b["keep"]) if b.get("keep") is not None else base.keep,
+                extra_super=float(b.get("extra_super") or 0) / 100,
+                extra_etfs=float(b.get("extra_etfs") or 0) / 100,
+                extra_loan=float(b.get("extra_loan") or 0) / 100,
+            )
+        except (TypeError, ValueError, KeyError):
+            raise ValueError("Those levers aren't numbers we can use.") from None
+        if not 20_000 <= spend <= 300_000:
+            raise ValueError("Spending once stopped should be between $20,000 and $300,000 a year.")
+        if min(plan.extra_super, plan.extra_etfs, plan.extra_loan) < 0:
+            raise ValueError("Extra money can't be below nothing.")
+        saved_goal = self.goal_saved()
+        pace = freedom(h, plan)
+        goal = b.get("goal") or (saved_goal or {}).get("age") or (pace["retire_age"] if pace else 60)
+        try:
+            goal = int(goal)
+        except (TypeError, ValueError):
+            raise ValueError("Choose an age to stop work.") from None
+        if not max(h.lead.age + 1, 40) <= goal <= 75:
+            raise ValueError("Choose an age to stop between now and 75.")
+        cp = need.checkpoints(h, plan, goal)
+        r = cp["result"]
+        c = lambda v: round(v * 100) if v is not None else None  # noqa: E731
+        return {
+            "ready": True,
+            "goal": {
+                "age": goal,
+                "year": h.year_at(goal),
+                "set": bool(saved_goal),
+                "set_at": (saved_goal or {}).get("set_at"),
+                "spend": c(spend),
+                "plan_to": h.plan_to,
+            },
+            "people": [
+                {
+                    "name": p.name,
+                    "age": p.age,
+                    "opens": h.year + max(h.rules.PRESERVATION_AGE - p.age, 0),
+                    "super": c(p.super_balance),
+                    "salary": c(p.salary),
+                    "employer": c(p.salary * p.employer_rate),
+                    "sacrifice": c(p.sacrifice),
+                }
+                for p in h.people
+            ],
+            "opens": h.rules.PRESERVATION_AGE,
+            "pace": _summary(pace),
+            "at_goal": {**(_summary(r) or {}), "gap": r["gap"]},
+            "parts": {k: {kk: c(vv) for kk, vv in v.items()} for k, v in cp["parts"].items()},
+            "years": [
+                {
+                    "age": y["age"],
+                    "year": y["year"],
+                    **{k: c(y[k]) for k in ("super", "etfs", "owed", "super_need", "outside_need", "owe_max", "short")},
+                    **({"paid": {k: c(v) for k, v in y["paid"].items()}} if y["paid"] else {}),
+                }
+                for y in cp["years"]
+            ],
+            "closers": [
+                {**x, "amount": x["amount"] if x["key"] in ("keep", "later") else c(x["amount"])}
+                for x in need.closers(h, plan, goal)
+            ],
+            "levers": {
+                "goal": goal,
+                "spend": c(spend),
+                "keep": plan.keep,
+                "extra_super": c(plan.extra_super),
+                "extra_etfs": c(plan.extra_etfs),
+                "extra_loan": c(plan.extra_loan),
+            },
+            "loan": {
+                "repayment": c(h.repayment),
+                "rate": h.loan_rate,
+                "offset": c(h.offset),
+                "gone_year": r["loan_year"],
+            }
+            if h.loan > 0
+            else None,
+            "saving": {"etfs": c(h.etf_saving / 12), "spare": c(h.spare), "room": c(h.room)},
+            "take_home": 1 - h.marginal_rate,
+            "cap": c(h.rules.CONCESSIONAL_CAP),
+            "assumptions": {
+                "real_growth": h.real_growth,
+                "super_return": h.super_return,
+                "fee": h.super_fee,
+                "fee_from": notes["fee_from"],
+                "inflation": h.inflation,
+                "plan_to": h.plan_to,
+            },
+        }
+
+    def save_goal(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Set the goal: {"age": 55, "spend": cents a year, "plan_to": 92}. The age is kept for early retirement;
+        spending and the plan-to age are the retirement settings every estimate uses."""
+        try:
+            age = int(body["age"])
+        except (KeyError, TypeError, ValueError):
+            raise ValueError("Choose an age to stop work.") from None
+        if not 40 <= age <= 75:
+            raise ValueError("Choose an age to stop between 40 and 75.")
+        change: dict[str, Any] = {"retire_age": age}
+        if body.get("spend") is not None:
+            change["spending"] = int(body["spend"])
+        if body.get("plan_to") is not None:
+            change["plan_to"] = int(body["plan_to"])
+        self.retirement.save_settings(change)
+        value = {"age": age, "set_at": int(time.time())}
+        with self.db.writing() as conn:
+            conn.execute("INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)", (GOAL, json.dumps(value)))
+        return self.on_track()
+
     def unsave_plan(self) -> None:
         with self.db.writing() as conn:
             conn.execute("DELETE FROM kv WHERE key = ?", (SAVED,))
+
+
+def _with_overrides(h: Household, b: dict[str, Any]) -> Household:
+    """The household with balances or guesses tried in place of its own (a check-in, the assumptions page)."""
+    supers = {str(k): float(v) / 100 for k, v in (b.get("supers") or {}).items()}
+    if any(v < 0 for v in supers.values()):
+        raise ValueError("A super balance can't be below $0.")
+    people = [replace(p, super_balance=supers.get(p.name, p.super_balance)) for p in h.people]
+    h = replace(
+        h,
+        people=people,
+        etfs=float(b["etfs"]) / 100 if b.get("etfs") is not None else h.etfs,
+        loan=float(b["loan"]) / 100 + h.offset if b.get("loan") is not None else h.loan,
+        super_return=float(b.get("super_return", h.super_return)),
+        inflation=float(b.get("inflation", h.inflation)),
+        plan_to=int(b.get("plan_to", h.plan_to)),
+    )
+    if b.get("super_fee") is not None:
+        h = replace(h, super_fee=float(b["super_fee"]))
+    return h
 
 
 def _lv_out(lv: dict[str, Any]) -> dict[str, Any]:

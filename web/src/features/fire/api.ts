@@ -110,3 +110,78 @@ export type WhatIf = {
   rows: FireRow[];
   bridge: Bridge;
 };
+
+/** Are we on track (GET/POST /api/fire/track): the goal against today's pace, part by part. Money in cents. */
+export type TrackYear = {
+  age: number;
+  year: number;
+  super: number;
+  etfs: number;
+  /** Owed past the offset, dollars of the day. */
+  owed: number;
+  super_need: number;
+  outside_need: number;
+  /** The most that can be owed and still be clear by the goal; null after it. */
+  owe_max: number | null;
+  short: number;
+  paid?: { etfs: number; cash: number; offset: number; super: number; short: number };
+};
+
+export type Part = { need: number; have: number; ahead: number };
+
+export type Closer =
+  | { key: "super" | "etfs"; amount: number; plan: { extra_super?: number; extra_etfs?: number } }
+  | { key: "spend"; amount: number; plan: { spend: number } }
+  | { key: "keep"; amount: 0; plan: { keep: true } }
+  | { key: "later"; amount: number; plan: { goal: number } };
+
+export type TrackLevers = {
+  goal: number;
+  spend: number;
+  keep: boolean;
+  extra_super: number;
+  extra_etfs: number;
+  extra_loan: number;
+};
+
+export type Track =
+  | { ready: false; needs: string }
+  | {
+      ready: true;
+      goal: { age: number; year: number; set: boolean; set_at: number | null; spend: number; plan_to: number };
+      people: {
+        name: string;
+        age: number;
+        opens: number;
+        super: number;
+        salary: number;
+        employer: number;
+        sacrifice: number;
+      }[];
+      opens: number;
+      pace: FireSummary | null;
+      at_goal: FireSummary & { gap: number | null };
+      parts: { loan: Part; outside: Part; super: Part };
+      years: TrackYear[];
+      closers: Closer[];
+      levers: TrackLevers;
+      loan: { repayment: number; rate: number; offset: number; gone_year: number | null } | null;
+      saving: { etfs: number; spare: number; room: number };
+      take_home: number;
+      cap: number;
+      assumptions: {
+        real_growth: number;
+        super_return: number;
+        fee: number;
+        fee_from: string;
+        inflation: number;
+        plan_to: number;
+      };
+    };
+
+export type TrackReady = Extract<Track, { ready: true }>;
+
+export const trackQuery = queryOptions({
+  queryKey: ["fire", "track"],
+  queryFn: ({ signal }) => apiGet<Track>("fire/track", undefined, { signal }),
+});

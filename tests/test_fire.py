@@ -250,3 +250,56 @@ def test_set_your_goal_shows_the_dates_the_hub_will_once_saved(client: TestClien
     ok(client.put(f"/api/retirement/people/{alex['id']}", json={"balance": dollars(400000)}))
     hub = ok(client.get("/api/fire"))
     assert (pre["today"], pre["plan"]) == (hub["today"], hub["plan"])
+
+
+def test_on_track_needs_agree_with_the_freedom_date() -> None:
+    """Stopping at the freedom date works, so every part is on or ahead of its need; two years sooner doesn't, and
+    the part that's short says why. Each need, with the plan's own contributions, gets exactly to its job."""
+    from app.features.fire.need import checkpoints, closers
+
+    h = sample()
+    at = checkpoints(h, THE_PLAN, 57)
+    assert at["result"]["ok"] and all(p["ahead"] >= 0 for p in at["parts"].values())
+    soon = checkpoints(h, THE_PLAN, 55)
+    assert not soon["result"]["ok"]
+    assert soon["parts"]["outside"]["ahead"] < 0 and soon["parts"]["super"]["ahead"] < 0
+    assert soon["parts"]["loan"]["ahead"] > 0  # the loan's gone in 2040, well before 2043
+    years = {y["age"]: y for y in soon["years"]}
+    assert years[60]["outside_need"] == 0 and years[92]["super_need"] == 0 and years[55]["owe_max"] == 0
+    assert years[54]["owe_max"] > 0 and years[56]["owe_max"] is None
+    # The super need rises while working (contributions take it there), then is spent down from 60.
+    assert years[38]["super_need"] < years[60]["super_need"] > years[80]["super_need"]
+    fixes = {c["key"]: c for c in closers(h, THE_PLAN, 55)}
+    assert fixes["later"]["amount"] == 2 and fixes["etfs"]["amount"] == 1000 and fixes["spend"]["amount"] == 15_000
+    assert "super" not in fixes  # super is locked until 60, so it can't pay for the years before
+    assert closers(h, THE_PLAN, 57) == []
+
+
+def test_extra_money_levers_bring_the_date_in() -> None:
+    h = sample()
+    base = freedom(h, Plan())
+    assert base and base["retire_age"] == 60
+    more = freedom(h, Plan(extra_etfs=1000))
+    sac = freedom(h, Plan(extra_super=1000))
+    loan = freedom(h, Plan(extra_loan=1000, keep=True))
+    assert more and sac and loan
+    assert more["retire_age"] < 60 and sac["retire_age"] <= 60 and loan["loan_age"] < base["loan_age"]
+
+
+def test_the_goal_is_saved_and_tried(client: TestClient, household: dict) -> None:
+    for name, born, balance, salary in (("Alex", 1988, 112600, 120000), ("Sam", 1990, 73800, 85000)):
+        body = {"person": name, "born": born, "balance": dollars(balance), "salary": dollars(salary), "rate": 0.12}
+        ok(client.post("/api/retirement/people", json=body))
+    t = ok(client.get("/api/fire/track"))
+    assert t["ready"] and t["goal"]["set"] is False and t["goal"]["age"] == t["pace"]["retire_age"]
+    assert set(t["parts"]) == {"loan", "outside", "super"} and t["years"][0]["age"] == 38
+    saved = ok(client.put("/api/fire/goal", json={"age": 52, "spend": dollars(70000), "plan_to": 95}))
+    assert saved["goal"] == {**saved["goal"], "age": 52, "set": True, "spend": dollars(70000), "plan_to": 95}
+    assert saved["at_goal"]["ok"] is False and saved["closers"]
+    assert ok(client.get("/api/retirement"))["settings"]["spending"] == dollars(70000)
+    tried = ok(client.post("/api/fire/track", json={"goal": 65, "extra_super": dollars(500)}))
+    assert tried["at_goal"]["ok"] and tried["closers"] == [] and tried["levers"]["extra_super"] == dollars(500)
+    assert ok(client.get("/api/fire/track"))["goal"]["age"] == 52  # trying saves nothing
+    lower = ok(client.post("/api/fire/track", json={"supers": {"Alex": 0}}))
+    assert lower["parts"]["super"]["have"] < t["parts"]["super"]["have"]
+    assert client.put("/api/fire/goal", json={"age": 30}).status_code == 422

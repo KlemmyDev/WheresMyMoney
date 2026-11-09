@@ -16,6 +16,26 @@ async def overview(svc: ServicesDep):
     return await run(svc.fire.overview)
 
 
+@router.get("/track")
+async def track(svc: ServicesDep):
+    """Are we on track: the goal, today's pace, each year's need for super, outside super and the loan, today's
+    three parts and what would close the gap. Money in cents."""
+    return await run(svc.fire.on_track)
+
+
+@router.post("/track")
+async def track_try(svc: ServicesDep, body: JsonBody):
+    """The same with other levers tried, nothing saved: {"goal": 55, "spend": cents, "extra_super": cents a month,
+    "extra_etfs": ..., "extra_loan": ..., "keep": true, "supers": {name: cents}, "etfs": cents, "loan": cents}."""
+    return await run(svc.fire.on_track, body)
+
+
+@router.put("/goal")
+async def save_goal(svc: ServicesDep, body: JsonBody):
+    """Set the goal: {"age": 55, "spend": cents a year, "plan_to": 92}. Returns the on-track answer."""
+    return await run(svc.fire.save_goal, body)
+
+
 @router.post("/plan")
 async def save_plan(svc: ServicesDep):
     """Make the suggested plan the household's. Returns the saved plan and the rule changes it implies (to offer)."""
