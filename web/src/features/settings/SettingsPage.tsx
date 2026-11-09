@@ -13,7 +13,7 @@ import { useToast } from "~/features/common/overlay";
 import { Link } from "@tanstack/react-router";
 import { Chip, I } from "~/features/common/icons";
 import { useStoredFlag, useTheme, type ThemeChoice } from "~/features/common/theme";
-import { EVERYTHING } from "~/features/common/ds";
+import { Card, CardHead, Details, EVERYTHING } from "~/features/common/ds";
 import { useHidden } from "~/features/dashboard/OverviewParts";
 import { RetirementSettingsPanel } from "~/features/retirement/Assumptions";
 import {
@@ -40,7 +40,7 @@ import {
 
 const SECTIONS = [
   ["household", "Household", "People, accounts, pay", I.accounts, "spending"],
-  ["notifications", "Notifications", "Reminders on your phone", I.bills, "bills"],
+  ["notifications", "Alerts", "Notifications to your browsers", I.bills, "bills"],
   ["developers", "Developers", "Read-only API keys", I.rules, "offset"],
   ["updates", "Updates and backups", "Channel, versions, restore", I.shield, "savings"],
   ["retirement", "Retirement", "Returns, fees, inflation", I.retire, "savings"],
@@ -318,41 +318,206 @@ function Notifications() {
     denied: "Notifications are blocked for this site in the browser's settings.",
     ready: "",
   }[support];
+  const mineDevice = v.devices.find((d) => d.id === mine);
+  const turnOff = () =>
+    mineDevice &&
+    run.mutate(
+      { method: "DELETE", path: `notifications/push/devices/${mineDevice.id}` },
+      {
+        onSuccess: () => {
+          setMine(null);
+          qc.invalidateQueries({ queryKey: ["notifications"] });
+          toast("Notifications are off for this browser");
+        },
+      },
+    );
+  const ruleRow = (r: NotifyView["rules"][number]) => (
+    <Row key={r.id}>
+      <span>
+        {r.name}
+        <span className="block text-xs text-ink-3">{r.about}</span>
+      </span>
+      <span className="flex items-center gap-2">
+        {Object.entries(r.values).map(([k, val]) => (
+          <label key={k} className="flex items-center gap-1.5 text-[12px] whitespace-nowrap text-ink-3">
+            <Input
+              aria-label={`${r.name}: ${r.units[k] ?? k}`}
+              inputMode="numeric"
+              className="w-16 text-center"
+              defaultValue={val}
+              onBlur={(e) =>
+                Number(e.target.value) !== val &&
+                run.mutate({
+                  method: "PUT",
+                  path: `notifications/rules/${r.id}`,
+                  body: { values: { [k]: Number(e.target.value) } },
+                })
+              }
+            />
+            {r.units[k]}
+          </label>
+        ))}
+        <Switch
+          label={r.name}
+          checked={r.enabled}
+          onChange={(enabled) => run.mutate({ method: "PUT", path: `notifications/rules/${r.id}`, body: { enabled } })}
+        />
+      </span>
+    </Row>
+  );
+  const FIRST = 5;
   return (
     <>
-      <Tile i={0}>
-        <TileTitle>Notifications</TileTitle>
-        <div className="text-[13px] text-ink-2">
-          Reminders pop up on each phone or computer turned on here, even with the app closed. On an iPhone, add
-          WheresMyMoney to the Home Screen first.
-        </div>
-        {why ? (
-          <div className="text-[13px] text-warn">{why}</div>
-        ) : (
-          !mine && (
+      <Card aria-labelledby="nt-browser" className="flex flex-col gap-3">
+        <CardHead
+          id="nt-browser"
+          title="This browser"
+          right={
+            <Pill tone={mineDevice ? "good" : support === "denied" ? "bad" : "mute"}>
+              {mineDevice ? "On" : support === "denied" ? "Blocked" : "Off"}
+            </Pill>
+          }
+        />
+        <p className="m-0 text-[14px] text-ink-2">
+          Notifications from your home server to the browsers you choose. Nothing goes through anyone else&apos;s
+          service.
+        </p>
+        {mineDevice ? (
+          <>
+            <p className="m-0 text-[14px] text-ink">On for {mineDevice.name}.</p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                onClick={() =>
+                  run.mutate(
+                    { method: "POST", path: "notifications/test", body: { target: mineDevice.id } },
+                    { onSuccess: () => toast("A test is on its way") },
+                  )
+                }
+              >
+                Send a test
+              </Button>
+              <Button onClick={turnOff}>Turn off on this browser</Button>
+            </div>
+          </>
+        ) : support === "ready" ? (
+          <>
+            <p className="m-0 text-[14px] text-ink">Notifications aren&apos;t on in this browser yet.</p>
+            <p className="m-0 text-[13px] text-ink-2">
+              Turn them on and you&apos;ll hear when a bill&apos;s due or it&apos;s time to check in, even with
+              WheresMyMoney closed. Your browser will ask first: that&apos;s the browser asking, not WheresMyMoney.
+            </p>
             <div>
-              <Button primary onClick={() => turnOn.mutate()}>
-                Turn on for this device
+              <Button primary disabled={turnOn.isPending} onClick={() => turnOn.mutate()}>
+                Allow notifications
               </Button>
             </div>
-          )
+          </>
+        ) : support === "denied" ? (
+          <>
+            <p className="m-0 text-[14px] text-ink">Notifications are blocked for this site.</p>
+            <p className="m-0 text-[13px] text-ink-2">The browser remembers the block, so only you can lift it:</p>
+            <ol className="m-0 flex list-decimal flex-col gap-1 pl-5 text-[13px] text-ink-2">
+              <li>Click the icon at the left of the address bar.</li>
+              <li>Find Notifications and set it to Allow.</li>
+              <li>Reload this page, then Allow notifications here.</li>
+            </ol>
+          </>
+        ) : support === "ios-install" ? (
+          <>
+            <p className="m-0 text-[14px] text-ink">On iPhone, add it to the Home Screen first.</p>
+            <p className="m-0 text-[13px] text-ink-2">
+              Safari only allows notifications for sites opened from a Home Screen icon:
+            </p>
+            <ol className="m-0 flex list-decimal flex-col gap-1 pl-5 text-[13px] text-ink-2">
+              <li>Tap Share at the bottom of Safari.</li>
+              <li>Choose Add to Home Screen.</li>
+              <li>Open WheresMyMoney from the new icon and come back here.</li>
+            </ol>
+          </>
+        ) : (
+          <p className="m-0 text-[13px] text-warn">{why}</p>
         )}
-        {turnOn.isError && <ErrorText>{errorMessage(turnOn.error)}</ErrorText>}
-        <div className="tt mt-2">Devices</div>
+        {(turnOn.isError || run.isError) && <ErrorText>{errorMessage(turnOn.error ?? run.error)}</ErrorText>}
+      </Card>
+
+      <Card aria-labelledby="nt-what" className="flex flex-col gap-1">
+        <CardHead
+          id="nt-what"
+          title="What to tell you about"
+          right={<span className="text-[13px] text-ink-3">Saved as you change them · goes to every device below</span>}
+        />
+        {v.rules.slice(0, FIRST).map(ruleRow)}
+        {v.rules.length > FIRST && (
+          <Details label={`${v.rules.length - FIRST} more from the app`}>{v.rules.slice(FIRST).map(ruleRow)}</Details>
+        )}
+      </Card>
+
+      <Card aria-labelledby="nt-quiet" className="flex flex-col gap-2">
+        <CardHead
+          id="nt-quiet"
+          title="Quiet hours"
+          right={
+            <Switch
+              label="Quiet hours"
+              checked={v.options.quiet.enabled}
+              onChange={(enabled) =>
+                run.mutate({ method: "PUT", path: "notifications/options", body: { quiet: { enabled } } })
+              }
+            />
+          }
+        />
+        <div className="flex flex-wrap items-center gap-3 text-[14px]">
+          <label className="flex items-center gap-2">
+            <span className="text-ink-2">Quiet from</span>
+            <Input
+              aria-label="Quiet from"
+              type="time"
+              className="w-28"
+              defaultValue={v.options.quiet.start}
+              onBlur={(e) =>
+                run.mutate({ method: "PUT", path: "notifications/options", body: { quiet: { start: e.target.value } } })
+              }
+            />
+          </label>
+          <label className="flex items-center gap-2">
+            <span className="text-ink-2">Until</span>
+            <Input
+              aria-label="Quiet until"
+              type="time"
+              className="w-28"
+              defaultValue={v.options.quiet.end}
+              onBlur={(e) =>
+                run.mutate({ method: "PUT", path: "notifications/options", body: { quiet: { end: e.target.value } } })
+              }
+            />
+          </label>
+        </div>
+        <p className="m-0 text-[13px] text-ink-3">
+          Anything due overnight waits until morning. With no bank feed, nothing changes while you sleep.
+        </p>
+      </Card>
+
+      <Card aria-labelledby="nt-devices" className="flex flex-col gap-1">
+        <CardHead
+          id="nt-devices"
+          title="Devices getting alerts"
+          right={<span className="text-[13px] text-ink-3">{v.devices.length}</span>}
+        />
         {v.devices.map((d) => (
           <Row key={d.id}>
             <span>
-              {d.name} <span className="text-ink-3">· {d.service}</span>{" "}
-              {d.id === mine && <Pill tone="teal">THIS ONE</Pill>}
+              {d.name} {d.id === mine && <Pill tone="teal">This browser</Pill>}
+              <span className="block text-xs text-ink-3">
+                {d.last_sent ? `Last sent ${ago(d.last_sent)}` : "Nothing sent yet"}
+              </span>
               {d.last_error && <span className="block text-xs text-warn">{d.last_error}</span>}
             </span>
             <span className="flex gap-2">
-              <Pill tone="good">PUSH ON</Pill>
               <Button
                 small
                 onClick={() => run.mutate({ method: "POST", path: "notifications/test", body: { target: d.id } })}
               >
-                Send a test
+                Test
               </Button>
               <Button
                 small
@@ -368,105 +533,26 @@ function Notifications() {
             </span>
           </Row>
         ))}
-        {!v.devices.length && <div className="text-ink-3">No devices yet.</div>}
-        {run.isError && <ErrorText>{errorMessage(run.error)}</ErrorText>}
-      </Tile>
-      <Tile i={1}>
-        <TileTitle>Tell us when</TileTitle>
-        {v.rules.map((r) => (
-          <Row key={r.id}>
-            <span>
-              {r.name}
-              <span className="block text-xs text-ink-3">{r.about}</span>
-            </span>
-            <span className="flex items-center gap-2">
-              {Object.entries(r.values).map(([k, val]) => (
-                <label key={k} className="flex items-center gap-1.5 text-[12px] whitespace-nowrap text-ink-3">
-                  <Input
-                    aria-label={`${r.name}: ${r.units[k] ?? k}`}
-                    inputMode="numeric"
-                    className="w-16 text-center"
-                    defaultValue={val}
-                    onBlur={(e) =>
-                      Number(e.target.value) !== val &&
-                      run.mutate({
-                        method: "PUT",
-                        path: `notifications/rules/${r.id}`,
-                        body: { values: { [k]: Number(e.target.value) } },
-                      })
-                    }
-                  />
-                  {r.units[k]}
-                </label>
-              ))}
-              <Switch
-                label={r.name}
-                checked={r.enabled}
-                onChange={(enabled) =>
-                  run.mutate({ method: "PUT", path: `notifications/rules/${r.id}`, body: { enabled } })
-                }
-              />
-            </span>
-          </Row>
-        ))}
-        <Row>
-          <span>
-            Quiet hours
-            <span className="block text-xs text-ink-3">Held back until they end.</span>
-          </span>
-          <span className="flex items-center gap-2">
-            <Input
-              aria-label="Quiet from"
-              type="time"
-              className="w-28"
-              defaultValue={v.options.quiet.start}
-              onBlur={(e) =>
-                run.mutate({ method: "PUT", path: "notifications/options", body: { quiet: { start: e.target.value } } })
-              }
-            />
-            <Input
-              aria-label="Quiet until"
-              type="time"
-              className="w-28"
-              defaultValue={v.options.quiet.end}
-              onBlur={(e) =>
-                run.mutate({ method: "PUT", path: "notifications/options", body: { quiet: { end: e.target.value } } })
-              }
-            />
-            <Switch
-              label="Quiet hours"
-              checked={v.options.quiet.enabled}
-              onChange={(enabled) =>
-                run.mutate({ method: "PUT", path: "notifications/options", body: { quiet: { enabled } } })
-              }
-            />
-          </span>
-        </Row>
-      </Tile>
+        {!v.devices.length && (
+          <p className="m-0 text-[14px] text-ink-3">
+            No devices yet. Allow notifications above, then do the same on your phone.
+          </p>
+        )}
+      </Card>
+
       {v.history.length > 0 && (
-        <Tile i={2}>
-          <TileTitle>Sent lately</TileTitle>
+        <Card aria-labelledby="nt-sent" className="flex flex-col gap-1">
+          <CardHead id="nt-sent" title="Recently sent" />
           {v.history.slice(0, 10).map((h) => (
             <Row key={h.id}>
               <span>
                 {h.title}
                 <span className="block text-xs text-ink-3">{h.body}</span>
               </span>
-              <span className="mono text-xs text-ink-3">
-                {new Date(h.ts * 1000).toLocaleString("en-AU", {
-                  day: "numeric",
-                  month: "short",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}{" "}
-                ·{" "}
-                {Object.entries(h.results)
-                  .map(([k, r]) => `${k} ${r === "ok" ? "✓" : "✕"}`)
-                  .join(" ")}
-              </span>
+              <span className="text-xs whitespace-nowrap text-ink-3">{ago(h.ts)}</span>
             </Row>
           ))}
-        </Tile>
+        </Card>
       )}
     </>
   );

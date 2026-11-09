@@ -50,6 +50,8 @@ class Facts:
     last_statement: str | None  # the latest date an imported statement covers
     # Regular payments whose price changed (app.features.spending.directory.price_changes), newest first.
     price_changes: list[dict[str, Any]] = field(default_factory=list)
+    # Repeating payments that look like bills and haven't been added, waved away or put off ({"key", "name"}).
+    spotted: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -211,6 +213,20 @@ def _prices(f: Facts, v: dict[str, float]) -> Say | None:
     return Say(key, title, "; ".join(lines) + ".", "/merchants")
 
 
+def _spotted(f: Facts, v: dict[str, float]) -> Say | None:
+    """New repeating payments that look like bills: said once for each set of them."""
+    if not f.spotted:
+        return None
+    names = [s["name"] for s in f.spotted]
+    title = f"{names[0]} looks like a bill" if len(names) == 1 else f"We spotted {len(names)} bills"
+    body = (
+        ", ".join(names[:3])
+        + (f" and {len(names) - 3} more" if len(names) > 3 else "")
+        + ". Add them, or say they're not."
+    )
+    return Say("spotted:" + ",".join(sorted(s["key"] for s in f.spotted)), title, body, "/bills/spotted")
+
+
 RULES: list[Rule] = [
     Rule(
         "checkin",
@@ -261,6 +277,7 @@ RULES: list[Rule] = [
         {"percent": 3, "days": 21},
         units={"percent": "% more", "days": "days to tell"},
     ),
+    Rule("spotted", "New bills spotted", "When an import finds repeating payments that look like bills.", _spotted),
     Rule(
         "bills_low",
         "Bills buffer under target",
