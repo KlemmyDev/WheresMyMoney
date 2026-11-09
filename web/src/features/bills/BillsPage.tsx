@@ -1,9 +1,11 @@
 /**
  * Bills (design: CkBills): the bills account against its target, what an average month and the next 30 days hold,
- * the months ahead as a heat strip, and every bill with how often, when next, and how it's paid.
+ * what's due before pay and this month's calendar, the months ahead as a heat strip, and every bill with how often,
+ * when next, where it stands and how it's paid.
  */
 import { Loading } from "~/features/common/brand";
-import { Bar, BigNumber, Card, Details, EmptyState, Eyebrow, Stat, Term } from "~/features/common/ds";
+import { Bar, BigNumber, Card, ChoiceChip, Details, EmptyState, Eyebrow, Stat, Term } from "~/features/common/ds";
+import { BeforePay, BillCalendar, STATUS } from "~/features/bills/BillsParts";
 import { I } from "~/features/common/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -35,6 +37,7 @@ export function BillsPage() {
   const navigate = useNavigate();
   const [editing, setEditing] = useState<Bill | "new" | null>(null);
   const [spotted, setSpotted] = useState<SpottedBill | null>(null);
+  const [filter, setFilter] = useState<Filter>("all");
   const b = q.data;
   const acct = b?.account;
   const history = useQuery({
@@ -47,6 +50,8 @@ export function BillsPage() {
   const t = acct?.target?.kind === "months" ? acct.target : null;
   const held = t?.held ?? 0;
   const maxMonth = Math.max(1, ...b.by_month.map((m) => m.total));
+  const count = (k: Filter) => b.bills.filter(FILTERS[k].test).length;
+  const shown = b.bills.filter(FILTERS[filter].test);
   return (
     <>
       <PageHead
@@ -126,6 +131,10 @@ export function BillsPage() {
           </div>
         </Details>
       </Card>
+      <div className="grid gap-4 md:grid-cols-12 [&>*]:min-w-0">
+        <BeforePay b={b} className="md:col-span-5" />
+        <BillCalendar b={b} className={b.before_pay && b.account ? "md:col-span-7" : "md:col-span-12"} />
+      </div>
       <YearlyCosts b={b} />
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,520px),1fr))] gap-4">
         {acct && t && (
@@ -202,16 +211,27 @@ export function BillsPage() {
         <TileTitle id="bl-all" right={<span className="mono">{b.bills.length} BILLS</span>}>
           All bills{acct ? ` · paid from ${acct.name}` : ""}
         </TileTitle>
+        {b.bills.length > 0 && (
+          <div role="group" aria-label="Show" className="no-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1">
+            {(Object.keys(FILTERS) as Filter[])
+              .filter((k) => k === "all" || k === filter || count(k) > 0)
+              .map((k) => (
+                <ChoiceChip key={k} pressed={filter === k} onClick={() => setFilter(k)}>
+                  {FILTERS[k].label} · {count(k)}
+                </ChoiceChip>
+              ))}
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] border-collapse text-[13px]">
             <thead>
               <tr className="text-left text-xs text-ink-3">
-                {["Bill", "Every", "Next", "Amount", "Per year", "Share", "How"].map((h, i) => (
+                {["Bill", "Every", "Next", "Status", "Amount", "Per year", "How"].map((h, i) => (
                   <th
                     key={h}
                     className={cn(
                       "border-b border-line px-2.5 py-2 font-semibold whitespace-nowrap",
-                      (i === 3 || i === 4) && "text-right",
+                      (i === 4 || i === 5) && "text-right",
                     )}
                   >
                     {h}
@@ -220,7 +240,7 @@ export function BillsPage() {
               </tr>
             </thead>
             <tbody>
-              {b.bills.map((bill) => (
+              {shown.map((bill) => (
                 <tr
                   key={bill.id}
                   className="cursor-pointer hover:bg-raised/40"
@@ -238,19 +258,19 @@ export function BillsPage() {
                   </td>
                   <td className="border-b border-line px-2.5 py-2.5 text-ink-2">{EVERY_LABEL[bill.every]}</td>
                   <td className="mono border-b border-line px-2.5 py-2.5 text-ink-2">{shortDate(bill.next_due)}</td>
+                  <td className="border-b border-line px-2.5 py-2.5">
+                    {bill.status && (
+                      <Pill tone={STATUS[bill.status][1]}>
+                        {STATUS[bill.status][0]}
+                        {bill.status === "late" && bill.status_date ? ` · ${shortDate(bill.status_date)}` : ""}
+                      </Pill>
+                    )}
+                  </td>
                   <td className="mono border-b border-line px-2.5 py-2.5 text-right">
                     {money(bill.amount, { cents: true })}
                   </td>
                   <td className="mono border-b border-line px-2.5 py-2.5 text-right">
                     {money(bill.per_year, { cents: true })}
-                  </td>
-                  <td className="border-b border-line px-2.5 py-2.5">
-                    <span className="relative inline-block h-1.5 w-20 rounded-[3px] bg-raised align-middle">
-                      <i
-                        className="striped grow-x absolute inset-y-0 left-0 rounded-full bg-bills-fill"
-                        style={{ width: `${(bill.share ?? 0) * 100}%` }}
-                      />
-                    </span>
                   </td>
                   <td className="border-b border-line px-2.5 py-2.5">
                     <Pill tone={HOW[bill.how][1]}>{HOW[bill.how][0]}</Pill>
@@ -280,6 +300,15 @@ export function BillsPage() {
     </>
   );
 }
+
+type Filter = "all" | "late" | "soon" | "paid" | "hand";
+const FILTERS: Record<Filter, { label: string; test: (b: Bill) => boolean }> = {
+  all: { label: "All", test: () => true },
+  late: { label: "Late", test: (b) => b.status === "late" },
+  soon: { label: "Due soon", test: (b) => b.status === "soon" },
+  paid: { label: "Paid", test: (b) => b.status === "paid" },
+  hand: { label: "By hand", test: (b) => b.how !== "auto" },
+};
 
 const EVERY: Every[] = ["weekly", "fortnightly", "monthly", "quarterly", "term", "half-yearly", "yearly"];
 

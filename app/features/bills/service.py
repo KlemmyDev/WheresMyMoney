@@ -219,6 +219,25 @@ class BillsService:
             if not conn.execute("UPDATE bills SET active = 1 WHERE id = ? AND active = 0", (bill_id,)).rowcount:
                 raise LookupError("That bill can't be brought back.")
 
+    def status(self, bill_id: int) -> dict[str, Any]:
+        """Where a bill stands, for the list: "paid" (its latest due date is paid), "late" (a due date has passed
+        unpaid), "soon" (due within a week) or "later", with the due date it's about."""
+        d = self.due_now(bill_id)
+        if d is None:
+            return {"status": "later", "status_date": None}
+        today = dates.today()
+        day = dates.parse(d["date"])
+        st = (
+            "paid"
+            if d["paid"]
+            else "late"
+            if day < today
+            else "soon"
+            if day <= today + dt.timedelta(days=7)
+            else "later"
+        )
+        return {"status": st, "status_date": d["date"]}
+
     def due_now(self, bill_id: int) -> dict[str, Any] | None:
         """The due date to mark paid on the bill's page: the first one from a fortnight ago to its next due date that
         hasn't been paid, or else the latest of them (paid)."""
@@ -376,9 +395,11 @@ class BillsService:
         per_year = sum(b.per_year for b in bills)
         biggest = max((b.per_year for b in bills), default=0)
         next30 = self.due(today, today + dt.timedelta(days=30))
+        first = today.replace(day=1)
+        last = (first + dt.timedelta(days=32)).replace(day=1) - dt.timedelta(days=1)
         return {
             "bills": sorted(
-                [{**b.view(), "share": b.per_year / biggest if biggest else 0} for b in bills],
+                [{**b.view(), "share": b.per_year / biggest if biggest else 0, **self.status(b.id)} for b in bills],
                 key=lambda b: -int(b["per_year"]),
             ),
             "per_year": per_year,
@@ -390,6 +411,8 @@ class BillsService:
                 "items": next30,
             },
             "by_month": self.by_month(),
+            # This calendar month's due dates, paid or not, for the calendar.
+            "calendar": {"month": first.isoformat()[:7], "items": self.due(first, last)},
             "account": bills_account,
             "set_aside": self.set_aside(),
         }
