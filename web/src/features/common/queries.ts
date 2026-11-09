@@ -344,6 +344,13 @@ export type SuperAccount = {
   opens: number;
   fees: { name: string; kind: "pct" | "fixed"; amount: number; cap?: number | null }[];
   options: { name: string; share: number; return_pct: number | null; fee_pct: number }[];
+  /** Salary sacrificed into super, cents a year, and how often they're paid. */
+  sacrifice: number;
+  pay_every: "weekly" | "fortnightly" | "monthly";
+  /** This financial year: work's super and salary sacrifice together, the cap, and what's left of it. */
+  concessional: number;
+  cap: number;
+  room: number;
 };
 
 /** A super fund whose fees are known: picking it fills them in. */

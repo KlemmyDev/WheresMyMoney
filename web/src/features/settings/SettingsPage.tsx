@@ -3,6 +3,7 @@
  * and what to be told), developers' API keys, updates and backups, the retirement estimate's assumptions
  * and each super fund's fees and options, and appearance.
  */
+import { Earnings } from "~/features/settings/Earnings";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useState, useSyncExternalStore, type ReactNode } from "react";
@@ -186,6 +187,7 @@ function Household() {
         />
         {put.isError && <ErrorText>{errorMessage(put.error)}</ErrorText>}
       </Tile>
+      <Earnings />
       {session.data?.auth_enabled !== false && (
         <Tile i={1}>
           <TileTitle>Who's in it</TileTitle>

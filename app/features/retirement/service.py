@@ -48,6 +48,9 @@ RANGES: dict[str, tuple[float, float]] = {
 }
 KEY = "retirement:settings"
 PRESERVATION = 60
+# The concessional (before-tax) contributions cap for 2026-27, in cents: work's super and salary sacrifice together.
+CONCESSIONAL_CAP = 3_000_000
+PAY_EVERY = ("weekly", "fortnightly", "monthly")
 
 
 # A new fund's fees until its statement's are put in: typical of a balanced option.
@@ -166,7 +169,7 @@ class RetirementService:
     def people(self) -> list[dict[str, Any]]:
         with self.db.reading() as conn:
             rows = conn.execute(
-                "SELECT id, person, born, fund, balance, as_of, salary, rate, fees, options"
+                "SELECT id, person, born, fund, balance, as_of, salary, rate, fees, options, sacrifice, pay_every"
                 " FROM super_accounts ORDER BY sort, id"
             ).fetchall()
         return [
@@ -185,6 +188,13 @@ class RetirementService:
                 "opens": r[2] + PRESERVATION,
                 "fees": json.loads(r[8] or "[]"),
                 "options": json.loads(r[9] or "[]"),
+                "sacrifice": r[10],
+                "pay_every": r[11],
+                # This financial year's concessional contributions and what's left of the cap (carry-forward isn't
+                # counted: it needs five years of contributions the statements don't show).
+                "concessional": round(r[6] * r[7]) + r[10],
+                "cap": CONCESSIONAL_CAP,
+                "room": max(CONCESSIONAL_CAP - round(r[6] * r[7]) - r[10], 0),
             }
             for r in rows
         ]
@@ -194,7 +204,19 @@ class RetirementService:
         "salary": 12000000, "rate": 0.12, "fees": [{"name": "Admin fee", "kind": "fixed", "amount": 5200}, ...],
         "options": [{"name": "High Growth", "share": 0.7, "return_pct": 0.085, "fee_pct": 0.0055}, ...]}.
         Leaving something out keeps it."""
-        keys = ("person", "born", "fund", "balance", "as_of", "salary", "rate", "fees", "options")
+        keys = (
+            "person",
+            "born",
+            "fund",
+            "balance",
+            "as_of",
+            "salary",
+            "rate",
+            "fees",
+            "options",
+            "sacrifice",
+            "pay_every",
+        )
         with self.db.writing() as conn:
             was: dict[str, Any] = {}
             if person_id is not None:
@@ -222,6 +244,15 @@ class RetirementService:
                 raise ValueError("Enter the year they were born, like 1988.")
             if balance < 0 or salary < 0 or not 0 <= rate <= 0.5:
                 raise ValueError("The balance, salary and rate can't be below nothing.")
+            try:
+                sacrifice = int(b.get("sacrifice") or 0)
+            except (TypeError, ValueError):
+                raise ValueError("Salary sacrifice is an amount a year in cents.") from None
+            if sacrifice < 0:
+                raise ValueError("Salary sacrifice can't be below nothing.")
+            pay_every = str(b.get("pay_every") or "fortnightly")
+            if pay_every not in PAY_EVERY:
+                raise ValueError("Say how often they're paid: weekly, fortnightly or monthly.")
             fund = " ".join(str(b.get("fund") or "").split())[:60]
             # A fund whose fees are known fills them in when it's chosen (unless fees come with it); insurance stays.
             known = known_funds.find(fund)
@@ -236,7 +267,19 @@ class RetirementService:
                 as_of = dates.parse(str(as_of)).isoformat()
             except ValueError:
                 raise ValueError("That date isn't one we can read.") from None
-            values = (person, born, fund, balance, as_of, salary, rate, json.dumps(fees), json.dumps(options))
+            values = (
+                person,
+                born,
+                fund,
+                balance,
+                as_of,
+                salary,
+                rate,
+                json.dumps(fees),
+                json.dumps(options),
+                sacrifice,
+                pay_every,
+            )
             if person_id is None:
                 cur = conn.execute(
                     f"INSERT INTO super_accounts ({', '.join(keys)}, sort, created_at) VALUES"

@@ -410,6 +410,13 @@ def _loan_lender(conn: sqlite3.Connection) -> None:
     conn.execute("ALTER TABLE accounts ADD COLUMN rate_type TEXT")
 
 
+def _what_you_earn(conn: sqlite3.Connection) -> None:
+    """super_accounts: `sacrifice`, salary sacrificed into super in cents a year, and `pay_every`, how often that
+    person is paid (weekly, fortnightly or monthly), for what lands each pay and the room left in super."""
+    conn.execute("ALTER TABLE super_accounts ADD COLUMN sacrifice INTEGER NOT NULL DEFAULT 0")
+    conn.execute("ALTER TABLE super_accounts ADD COLUMN pay_every TEXT NOT NULL DEFAULT 'fortnightly'")
+
+
 MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _baseline,
     _money,
@@ -439,4 +446,5 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _goal_reached_and_removed,
     _account_icon,
     _loan_lender,
+    _what_you_earn,
 ]
