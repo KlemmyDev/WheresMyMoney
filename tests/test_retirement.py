@@ -154,3 +154,18 @@ def test_crypto_stays_out_of_the_plan_until_turned_on_and_has_a_cap(client: Test
     assert s["count_crypto"] is True and s["crypto_cap"] == 0.1 and s["crypto_cap_of"] == "networth"
     assert client.put("/api/retirement/settings", json={"crypto_cap": 0.9}).status_code == 422
     assert client.put("/api/retirement/settings", json={"crypto_cap_of": "moon"}).status_code == 422
+
+
+def test_each_persons_balances_come_with_the_overview(client: TestClient) -> None:
+    p = ok(
+        client.post(
+            "/api/retirement/people",
+            json={"person": "Sam", "born": 1990, "balance": dollars(70000), "as_of": "2026-06-30"},
+        )
+    )
+    ok(client.put(f"/api/retirement/people/{p['id']}", json={"balance": dollars(73800), "as_of": "2026-10-01"}))
+    [sam] = ok(client.get("/api/retirement"))["people"]
+    assert sam["values"] == [
+        {"date": "2026-06-30", "balance": dollars(70000)},
+        {"date": "2026-10-01", "balance": dollars(73800)},
+    ]

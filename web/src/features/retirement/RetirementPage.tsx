@@ -376,38 +376,42 @@ function Plan({
           }
         />
         {people.map((p, i) => (
-          <button
-            key={p.id}
-            type="button"
-            onClick={() => onEdit(p)}
-            aria-label={`${p.person}, ${p.age}: ${money(p.balance)} in ${p.fund || "super"}. Update`}
-            className="press flex cursor-pointer items-center gap-3 rounded-2xl border-0 border-t border-line bg-transparent px-1 py-3 text-left text-ink first:border-t-0 hover:bg-tile-2"
-          >
-            <span
-              aria-hidden
-              className="flex size-11 flex-none items-center justify-center rounded-full text-[16px] font-semibold text-white"
-              style={{ background: AVATARS[i % AVATARS.length] }}
+          <div key={p.id} className="flex items-center gap-2 border-t border-line first:border-t-0">
+            <Link
+              to="/retirement/super/$personId"
+              params={{ personId: String(p.id) }}
+              aria-label={`${p.person}, ${p.age}: ${money(p.balance)} in ${p.fund || "super"}`}
+              className="press flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-2xl px-1 py-3 text-left text-ink no-underline hover:bg-tile-2"
             >
-              {p.person.slice(0, 1).toUpperCase()}
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block font-semibold">
-                {p.person}, {p.age}
+              <span
+                aria-hidden
+                className="flex size-11 flex-none items-center justify-center rounded-full text-[16px] font-semibold text-white"
+                style={{ background: AVATARS[i % AVATARS.length] }}
+              >
+                {p.person.slice(0, 1).toUpperCase()}
               </span>
-              <span className="block truncate text-[13px] text-ink-2">{p.fund || "Super"}</span>
-              <span className="block truncate text-[12px] text-ink-3">
-                {Math.round(p.rate * 100)}% of {k(p.salary)}
-                {s.extra ? ` + ${money(s.extra / people.length)}/mo extra` : ""} · opens in {p.opens}
+              <span className="min-w-0 flex-1">
+                <span className="block font-semibold">
+                  {p.person}, {p.age}
+                </span>
+                <span className="block truncate text-[13px] text-ink-2">{p.fund || "Super"}</span>
+                <span className="block truncate text-[12px] text-ink-3">
+                  {Math.round(p.rate * 100)}% of {k(p.salary)}
+                  {s.extra ? ` + ${money(s.extra / people.length)}/mo extra` : ""} · opens in {p.opens}
+                </span>
               </span>
-            </span>
-            <span className="flex-none text-right">
-              <span className="num block text-[16px]">{money(p.balance)}</span>
-              <span className="block text-[12px] text-ink-3">{p.as_of ? monthYear(p.as_of) : ""}</span>
-            </span>
-            <span aria-hidden className="text-ink-3">
-              ›
-            </span>
-          </button>
+              <span className="flex-none text-right">
+                <span className="num block text-[16px]">{money(p.balance)}</span>
+                <span className="block text-[12px] text-ink-3">{p.as_of ? monthYear(p.as_of) : ""}</span>
+              </span>
+              <span aria-hidden className="text-ink-3">
+                ›
+              </span>
+            </Link>
+            <Button small onClick={() => onEdit(p)} aria-label={`Update ${p.person}`}>
+              Update
+            </Button>
+          </div>
         ))}
       </Card>
 

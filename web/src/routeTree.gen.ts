@@ -37,6 +37,7 @@ import { Route as AppInvestmentsFundIdRouteImport } from './routes/_app/investme
 import { Route as AppMerchantsKeyRouteImport } from './routes/_app/merchants_.$key'
 import { Route as AppRetirementStatementRouteImport } from './routes/_app/retirement_.statement'
 import { Route as AppSpendingCategoryIdRouteImport } from './routes/_app/spending_.$categoryId'
+import { Route as AppRetirementSuperPersonIdRouteImport } from './routes/_app/retirement_.super.$personId'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -177,6 +178,12 @@ const AppSpendingCategoryIdRoute = AppSpendingCategoryIdRouteImport.update({
   path: '/spending/$categoryId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppRetirementSuperPersonIdRoute =
+  AppRetirementSuperPersonIdRouteImport.update({
+    id: '/retirement_/super/$personId',
+    path: '/retirement/super/$personId',
+    getParentRoute: () => AppRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
@@ -206,6 +213,7 @@ export interface FileRoutesByFullPath {
   '/merchants/$key': typeof AppMerchantsKeyRoute
   '/retirement/statement': typeof AppRetirementStatementRoute
   '/spending/$categoryId': typeof AppSpendingCategoryIdRoute
+  '/retirement/super/$personId': typeof AppRetirementSuperPersonIdRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -235,6 +243,7 @@ export interface FileRoutesByTo {
   '/merchants/$key': typeof AppMerchantsKeyRoute
   '/retirement/statement': typeof AppRetirementStatementRoute
   '/spending/$categoryId': typeof AppSpendingCategoryIdRoute
+  '/retirement/super/$personId': typeof AppRetirementSuperPersonIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -266,6 +275,7 @@ export interface FileRoutesById {
   '/_app/merchants_/$key': typeof AppMerchantsKeyRoute
   '/_app/retirement_/statement': typeof AppRetirementStatementRoute
   '/_app/spending_/$categoryId': typeof AppSpendingCategoryIdRoute
+  '/_app/retirement_/super/$personId': typeof AppRetirementSuperPersonIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -297,6 +307,7 @@ export interface FileRouteTypes {
     | '/merchants/$key'
     | '/retirement/statement'
     | '/spending/$categoryId'
+    | '/retirement/super/$personId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -326,6 +337,7 @@ export interface FileRouteTypes {
     | '/merchants/$key'
     | '/retirement/statement'
     | '/spending/$categoryId'
+    | '/retirement/super/$personId'
   id:
     | '__root__'
     | '/_app'
@@ -356,6 +368,7 @@ export interface FileRouteTypes {
     | '/_app/merchants_/$key'
     | '/_app/retirement_/statement'
     | '/_app/spending_/$categoryId'
+    | '/_app/retirement_/super/$personId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -562,6 +575,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSpendingCategoryIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/retirement_/super/$personId': {
+      id: '/_app/retirement_/super/$personId'
+      path: '/retirement/super/$personId'
+      fullPath: '/retirement/super/$personId'
+      preLoaderRoute: typeof AppRetirementSuperPersonIdRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
@@ -591,6 +611,7 @@ interface AppRouteChildren {
   AppMerchantsKeyRoute: typeof AppMerchantsKeyRoute
   AppRetirementStatementRoute: typeof AppRetirementStatementRoute
   AppSpendingCategoryIdRoute: typeof AppSpendingCategoryIdRoute
+  AppRetirementSuperPersonIdRoute: typeof AppRetirementSuperPersonIdRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -619,6 +640,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppMerchantsKeyRoute: AppMerchantsKeyRoute,
   AppRetirementStatementRoute: AppRetirementStatementRoute,
   AppSpendingCategoryIdRoute: AppSpendingCategoryIdRoute,
+  AppRetirementSuperPersonIdRoute: AppRetirementSuperPersonIdRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
