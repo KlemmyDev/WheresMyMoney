@@ -253,13 +253,17 @@ def test_set_your_goal_shows_the_dates_the_hub_will_once_saved(client: TestClien
 
 
 def test_on_track_needs_agree_with_the_freedom_date() -> None:
-    """Stopping at the freedom date works, so every part is on or ahead of its need; two years sooner doesn't, and
-    the part that's short says why. Each need, with the plan's own contributions, gets exactly to its job."""
+    """A goal works exactly when every year's money is on or above the combined need of super and outside super;
+    two years sooner than the freedom date doesn't, and the parts say where it's short."""
     from app.features.fire.need import checkpoints, closers
 
     h = sample()
-    at = checkpoints(h, THE_PLAN, 57)
-    assert at["result"]["ok"] and all(p["ahead"] >= 0 for p in at["parts"].values())
+    for plan in (Plan(), THE_PLAN):
+        for goal in range(54, 64):
+            cp = checkpoints(h, plan, goal)
+            behind = [y for y in cp["years"] if y["super"] + y["etfs"] < y["super_need"] + y["outside_need"] - 1]
+            ahead = cp["parts"]["super"]["ahead"] + cp["parts"]["outside"]["ahead"]
+            assert cp["result"]["ok"] == (not behind) == (ahead >= 0), (plan, goal)
     soon = checkpoints(h, THE_PLAN, 55)
     assert not soon["result"]["ok"]
     assert soon["parts"]["outside"]["ahead"] < 0 and soon["parts"]["super"]["ahead"] < 0
