@@ -1301,7 +1301,7 @@ function Followups({ spotted }: { spotted?: { suggestions: number; updates: numb
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-raised px-3.5 py-3 text-[13px]">
         <span>Sort what&apos;s left a merchant at a time, so it&apos;s remembered for next time.</span>
         <Link to="/sort" className="font-medium text-teal no-underline">
-          Sort by merchant
+          Sort what's new
         </Link>
       </div>
     </div>

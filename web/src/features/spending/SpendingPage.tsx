@@ -206,7 +206,7 @@ export function SpendingPage() {
             right={
               <span className="flex gap-4">
                 <Link to="/sort" className="font-medium text-teal no-underline">
-                  Sort by merchant
+                  Sort what's new
                 </Link>
                 <Link
                   to="/transactions"

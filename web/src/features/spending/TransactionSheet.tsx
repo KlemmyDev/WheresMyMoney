@@ -47,7 +47,6 @@ function Body({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
   const [cat, setCat] = useState(tx.category_id);
   const [always, setAlways] = useState(true);
   const [note, setNote] = useState(tx.note ?? "");
-  const [confirm, setConfirm] = useState(false);
   const [mode, setMode] = useState<"view" | "split">("view");
   const [splits, setSplits] = useState(tx.splits ?? []);
   const [excluded, setExcluded] = useState(!!tx.excluded);
@@ -81,8 +80,22 @@ function Body({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
     mutationFn: () => apiSend("DELETE", `transactions/${tx.id}`),
     onSuccess: () => {
       refresh(qc);
-      toast(`${tx.merchant || tx.description} deleted`);
       onClose();
+      // Only what was typed in can be deleted, so Undo types it in again.
+      const said = `Deleted ${money(Math.abs(tx.amount), { cents: true })} · ${tx.merchant || tx.description}`;
+      if (tx.kind !== "manual" && tx.kind !== "cash") return toast(said);
+      toast(said, async () => {
+        await apiSend("POST", "transactions", {
+          account_id: tx.account_id,
+          amount: tx.amount,
+          description: tx.description,
+          category_id: tx.category_id,
+          note: tx.note ?? "",
+          cash: tx.kind === "cash",
+          date: tx.date,
+        });
+        refresh(qc);
+      });
     },
   });
   const [how, tone] = tx.merged ? (["Matched", "good"] as const) : HOW[tx.kind];
@@ -377,35 +390,10 @@ function Body({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
         />
       </div>
       {(save.isError || del.isError) && <ErrorText>{errorMessage(save.error ?? del.error)}</ErrorText>}
-      {confirm ? (
-        <div
-          role="alertdialog"
-          aria-label="Delete this transaction?"
-          className="flex flex-col gap-2.5 rounded-2xl border border-bad/50 bg-bad/8 p-3.5"
-        >
-          <span className="font-semibold">
-            Delete {money(tx.amount, { cents: true, sign: true })} at {tx.merchant || tx.description}?
-          </span>
-          <span className="text-[13px] text-ink-3">
-            What you can spend and the balance update straight away. This can't be undone.
-          </span>
-          <div className="flex gap-2">
-            <Button className="flex-1" onClick={() => setConfirm(false)}>
-              Keep it
-            </Button>
-            <Button
-              className="flex-1 border-transparent bg-bad text-white enabled:hover:bg-bad"
-              disabled={del.isPending}
-              onClick={() => del.mutate()}
-            >
-              Delete
-            </Button>
-          </div>
-        </div>
-      ) : (
+      {
         <div className="flex flex-wrap items-center gap-2">
           {removable ? (
-            <Button className="text-bad" onClick={() => setConfirm(true)}>
+            <Button className="text-bad" disabled={del.isPending} onClick={() => del.mutate()}>
               Delete
             </Button>
           ) : (
@@ -415,11 +403,9 @@ function Body({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
           )}
           <span className="flex-1" />
           {tx.amount < 0 && <Button onClick={() => setMode("split")}>Split it</Button>}
-          <Button primary onClick={onClose}>
-            Done
-          </Button>
+          <Button onClick={onClose}>Done</Button>
         </div>
-      )}
+      }
     </div>
   );
 }

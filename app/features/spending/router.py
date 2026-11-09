@@ -123,6 +123,12 @@ async def businesses(svc: ServicesDep):
     return await run(svc.spending.businesses)
 
 
+@router.post("/merchants/sort/undo")
+async def unsort_merchant(svc: ServicesDep, body: JsonBody):
+    """Undo sorting a merchant: send back the `undo` that POST /merchants/sort returned."""
+    return await run(svc.spending.unsort_merchant, body.get("undo"))
+
+
 @router.post("/merchants/forget")
 async def forget_merchant(svc: ServicesDep, body: JsonBody):
     """Undo a mapping: {"text": "DOMINOS KEPERRA"} goes back to the merchant it gets by itself."""

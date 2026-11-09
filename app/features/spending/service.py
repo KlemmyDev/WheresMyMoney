@@ -142,9 +142,16 @@ def rule_for(rules: list[tuple[str, int]], merchant_text: str) -> int | None:
 RESORTABLE = ("rule", "suggest")
 
 
-def learn(conn: sqlite3.Connection, merchant_text: str, category_id: int, description: str = "") -> tuple[int, str]:
+def learn(
+    conn: sqlite3.Connection,
+    merchant_text: str,
+    category_id: int,
+    description: str = "",
+    changes: list[tuple[int, int | None, str | None]] | None = None,
+) -> tuple[int, str]:
     """Remember a merchant's category, and give it to that merchant's transactions that aren't sorted yet or were
-    sorted only by a suggestion or an earlier rule. Returns how many it changed, and the pattern remembered."""
+    sorted only by a suggestion or an earlier rule. Returns how many it changed, and the pattern remembered. Each
+    transaction changed is added to `changes`, with the category it had and what set it, so it can be put back."""
     taken = dict(conn.execute("SELECT pattern, category_id FROM merchant_rules").fetchall())
     pattern = merchants.learn_pattern(merchant_text, taken, category_id, description)
     if not pattern:
@@ -157,8 +164,9 @@ def learn(conn: sqlite3.Connection, merchant_text: str, category_id: int, descri
     # A longer pattern remembered for another category still wins for the merchants it covers.
     longer = [p for p in taken if p != pattern and merchants.matches(p, pattern) and taken[p] != category_id]
     changed = 0
-    for tx_id, m in conn.execute(
-        "SELECT id, merchant FROM transactions WHERE (merchant = ? OR merchant LIKE ?) AND kind != 'adjustment'"
+    for tx_id, m, was, was_by in conn.execute(
+        "SELECT id, merchant, category_id, category_by FROM transactions WHERE (merchant = ? OR merchant LIKE ?)"
+        " AND kind != 'adjustment'"
         " AND rule_id IS NULL AND bill_id IS NULL AND (category_id IS NULL OR category_by IS NULL"
         f" OR category_by IN ({','.join('?' * len(RESORTABLE))})) AND COALESCE(category_id, -1) != ?",
         (pattern, pattern + " %", *RESORTABLE, category_id),
@@ -166,6 +174,8 @@ def learn(conn: sqlite3.Connection, merchant_text: str, category_id: int, descri
         if any(merchants.matches(m, p) for p in longer):
             continue
         conn.execute("UPDATE transactions SET category_id = ?, category_by = 'rule' WHERE id = ?", (category_id, tx_id))
+        if changes is not None:
+            changes.append((tx_id, was, was_by))
         changed += 1
     return changed, pattern
 
@@ -620,8 +630,50 @@ class SpendingService:
                 raise LookupError("That transaction has gone.")
             if not conn.execute("SELECT 1 FROM categories WHERE id = ?", (category_id,)).fetchone():
                 raise ValueError("Choose one of your categories.")
-            changed, pattern = learn(conn, row[0], category_id, row[1])
-        return {"changed": changed, "pattern": pattern}
+            before = conn.execute(
+                "SELECT category_id FROM merchant_rules WHERE pattern = ?",
+                (
+                    merchants.learn_pattern(
+                        row[0],
+                        dict(conn.execute("SELECT pattern, category_id FROM merchant_rules")),
+                        category_id,
+                        row[1],
+                    ),
+                ),
+            ).fetchone()
+            changes: list[tuple[int, int | None, str | None]] = []
+            changed, pattern = learn(conn, row[0], category_id, row[1], changes)
+        return {
+            "changed": changed,
+            "pattern": pattern,
+            # What Undo needs to put it all back: the rule as it was, and each transaction as it was.
+            "undo": {
+                "pattern": pattern,
+                "rule_was": before[0] if before else None,
+                "transactions": [{"id": t, "category_id": c, "category_by": b} for t, c, b in changes],
+            },
+        }
+
+    def unsort_merchant(self, undo: Any) -> dict[str, Any]:
+        """Undo sort_merchant with what it returned as `undo`: the merchant's rule goes back to what it was (or away),
+        and each transaction it sorted goes back to its category before."""
+        if not isinstance(undo, dict) or not isinstance(undo.get("transactions"), list):
+            raise ValueError("Send back what sorting it returned as undo.")
+        pattern = str(undo.get("pattern") or "")
+        with self.db.writing() as conn:
+            if pattern:
+                if undo.get("rule_was") is None:
+                    conn.execute("DELETE FROM merchant_rules WHERE pattern = ?", (pattern,))
+                else:
+                    conn.execute(
+                        "UPDATE merchant_rules SET category_id = ? WHERE pattern = ?", (int(undo["rule_was"]), pattern)
+                    )
+            for t in undo["transactions"]:
+                conn.execute(
+                    "UPDATE transactions SET category_id = ?, category_by = ? WHERE id = ? AND category_by = 'rule'",
+                    (t.get("category_id"), t.get("category_by"), int(t["id"])),
+                )
+        return {"restored": len(undo["transactions"])}
 
     def remove_transaction(self, tx_id: int) -> bool:
         """Only what was typed in (or an adjustment) can be removed: a statement's rows are the bank's."""
