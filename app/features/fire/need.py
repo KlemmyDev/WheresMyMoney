@@ -83,6 +83,12 @@ def checkpoints(h: Household, plan: Plan, goal: int) -> dict[str, Any]:
                 "outside_need": max(out_need.get(age, 0.0), 0.0),
                 "owe_max": owe_max.get(age) if age <= goal else None,
                 "short": (x.get("paid") or {}).get("short", 0.0),
+                "put_in": {
+                    "super": x["in"]["super"],
+                    "etfs": x["in"]["etfs"],
+                    "lump": x["in"]["lump"],
+                    "offset": x["in"]["offset"],
+                },
                 "paid": x.get("paid"),
             }
         )

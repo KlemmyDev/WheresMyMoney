@@ -118,7 +118,7 @@ function Checkpoints({
     {
       key: "super",
       name: "Super",
-      to: "/retirement" as const,
+      to: "/early-retirement/super" as const,
       rule: `Both funds together: open from ${t.opens}, then last to ${t.goal.plan_to}`,
       colour: COLOUR.super,
       need: s.superNeed,

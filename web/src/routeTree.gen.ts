@@ -42,6 +42,7 @@ import { Route as AppEarlyRetirementNextRouteImport } from './routes/_app/early-
 import { Route as AppEarlyRetirementScenariosRouteImport } from './routes/_app/early-retirement_.scenarios'
 import { Route as AppEarlyRetirementSetupRouteImport } from './routes/_app/early-retirement_.setup'
 import { Route as AppEarlyRetirementStressRouteImport } from './routes/_app/early-retirement_.stress'
+import { Route as AppEarlyRetirementSuperRouteImport } from './routes/_app/early-retirement_.super'
 import { Route as AppGoalsGoalIdRouteImport } from './routes/_app/goals_.$goalId'
 import { Route as AppInvestmentsFundIdRouteImport } from './routes/_app/investments_.$fundId'
 import { Route as AppMerchantsKeyRouteImport } from './routes/_app/merchants_.$key'
@@ -220,6 +221,11 @@ const AppEarlyRetirementStressRoute =
     path: '/early-retirement/stress',
     getParentRoute: () => AppRoute,
   } as any)
+const AppEarlyRetirementSuperRoute = AppEarlyRetirementSuperRouteImport.update({
+  id: '/early-retirement_/super',
+  path: '/early-retirement/super',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppGoalsGoalIdRoute = AppGoalsGoalIdRouteImport.update({
   id: '/goals_/$goalId',
   path: '/goals/$goalId',
@@ -290,6 +296,7 @@ export interface FileRoutesByFullPath {
   '/early-retirement/scenarios': typeof AppEarlyRetirementScenariosRoute
   '/early-retirement/setup': typeof AppEarlyRetirementSetupRoute
   '/early-retirement/stress': typeof AppEarlyRetirementStressRoute
+  '/early-retirement/super': typeof AppEarlyRetirementSuperRoute
   '/goals/$goalId': typeof AppGoalsGoalIdRoute
   '/investments/$fundId': typeof AppInvestmentsFundIdRoute
   '/merchants/$key': typeof AppMerchantsKeyRoute
@@ -331,6 +338,7 @@ export interface FileRoutesByTo {
   '/early-retirement/scenarios': typeof AppEarlyRetirementScenariosRoute
   '/early-retirement/setup': typeof AppEarlyRetirementSetupRoute
   '/early-retirement/stress': typeof AppEarlyRetirementStressRoute
+  '/early-retirement/super': typeof AppEarlyRetirementSuperRoute
   '/goals/$goalId': typeof AppGoalsGoalIdRoute
   '/investments/$fundId': typeof AppInvestmentsFundIdRoute
   '/merchants/$key': typeof AppMerchantsKeyRoute
@@ -374,6 +382,7 @@ export interface FileRoutesById {
   '/_app/early-retirement_/scenarios': typeof AppEarlyRetirementScenariosRoute
   '/_app/early-retirement_/setup': typeof AppEarlyRetirementSetupRoute
   '/_app/early-retirement_/stress': typeof AppEarlyRetirementStressRoute
+  '/_app/early-retirement_/super': typeof AppEarlyRetirementSuperRoute
   '/_app/goals_/$goalId': typeof AppGoalsGoalIdRoute
   '/_app/investments_/$fundId': typeof AppInvestmentsFundIdRoute
   '/_app/merchants_/$key': typeof AppMerchantsKeyRoute
@@ -417,6 +426,7 @@ export interface FileRouteTypes {
     | '/early-retirement/scenarios'
     | '/early-retirement/setup'
     | '/early-retirement/stress'
+    | '/early-retirement/super'
     | '/goals/$goalId'
     | '/investments/$fundId'
     | '/merchants/$key'
@@ -458,6 +468,7 @@ export interface FileRouteTypes {
     | '/early-retirement/scenarios'
     | '/early-retirement/setup'
     | '/early-retirement/stress'
+    | '/early-retirement/super'
     | '/goals/$goalId'
     | '/investments/$fundId'
     | '/merchants/$key'
@@ -500,6 +511,7 @@ export interface FileRouteTypes {
     | '/_app/early-retirement_/scenarios'
     | '/_app/early-retirement_/setup'
     | '/_app/early-retirement_/stress'
+    | '/_app/early-retirement_/super'
     | '/_app/goals_/$goalId'
     | '/_app/investments_/$fundId'
     | '/_app/merchants_/$key'
@@ -748,6 +760,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppEarlyRetirementStressRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/early-retirement_/super': {
+      id: '/_app/early-retirement_/super'
+      path: '/early-retirement/super'
+      fullPath: '/early-retirement/super'
+      preLoaderRoute: typeof AppEarlyRetirementSuperRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/goals_/$goalId': {
       id: '/_app/goals_/$goalId'
       path: '/goals/$goalId'
@@ -831,6 +850,7 @@ interface AppRouteChildren {
   AppEarlyRetirementScenariosRoute: typeof AppEarlyRetirementScenariosRoute
   AppEarlyRetirementSetupRoute: typeof AppEarlyRetirementSetupRoute
   AppEarlyRetirementStressRoute: typeof AppEarlyRetirementStressRoute
+  AppEarlyRetirementSuperRoute: typeof AppEarlyRetirementSuperRoute
   AppGoalsGoalIdRoute: typeof AppGoalsGoalIdRoute
   AppInvestmentsFundIdRoute: typeof AppInvestmentsFundIdRoute
   AppMerchantsKeyRoute: typeof AppMerchantsKeyRoute
@@ -871,6 +891,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppEarlyRetirementScenariosRoute: AppEarlyRetirementScenariosRoute,
   AppEarlyRetirementSetupRoute: AppEarlyRetirementSetupRoute,
   AppEarlyRetirementStressRoute: AppEarlyRetirementStressRoute,
+  AppEarlyRetirementSuperRoute: AppEarlyRetirementSuperRoute,
   AppGoalsGoalIdRoute: AppGoalsGoalIdRoute,
   AppInvestmentsFundIdRoute: AppInvestmentsFundIdRoute,
   AppMerchantsKeyRoute: AppMerchantsKeyRoute,

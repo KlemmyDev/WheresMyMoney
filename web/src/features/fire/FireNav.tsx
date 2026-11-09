@@ -2,18 +2,19 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { cn } from "~/features/common/ui";
 
-/** The pages built so far, in the canvas's order. */
+/** The pages, the on-track ones first, then the older tools. */
 export const FIRE_PAGES = [
   { to: "/early-retirement", label: "On track?" },
   { to: "/early-retirement/checkpoints", label: "Checkpoints" },
+  { to: "/early-retirement/super", label: "Super" },
+  { to: "/early-retirement/bridge", label: "Outside super" },
+  { to: "/early-retirement/debt", label: "Home loan" },
   { to: "/early-retirement/drawdown", label: "Who pays each year" },
   { to: "/early-retirement/setup", label: "Set your goal" },
-  { to: "/early-retirement/scenarios", label: "Scenarios" },
-  { to: "/early-retirement/bridge", label: "Before super opens" },
-  { to: "/early-retirement/next", label: "Where the extra goes" },
-  { to: "/early-retirement/debt", label: "Loan or invest" },
-  { to: "/early-retirement/stress", label: "What could go wrong" },
   { to: "/early-retirement/assumptions", label: "Assumptions" },
+  { to: "/early-retirement/scenarios", label: "Scenarios" },
+  { to: "/early-retirement/next", label: "Where the extra goes" },
+  { to: "/early-retirement/stress", label: "What could go wrong" },
 ] as const;
 
 export function FireNav() {

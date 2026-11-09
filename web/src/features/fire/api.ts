@@ -125,6 +125,9 @@ export type TrackYear = {
   owe_max: number | null;
   short: number;
   paid?: { etfs: number; cash: number; offset: number; super: number; short: number };
+  /** Money going in that year (today's dollars): work and sacrifice into super, saving into ETFs, the offset's
+   * leftovers joining the ETFs when the loan goes, top-ups to the offset. */
+  put_in: { super: number; etfs: number; lump: number; offset: number };
 };
 
 export type Part = { need: number; have: number; ahead: number };
@@ -150,6 +153,7 @@ export type Track =
       ready: true;
       goal: { age: number; year: number; set: boolean; set_at: number | null; spend: number; plan_to: number };
       people: {
+        id: number | null;
         name: string;
         age: number;
         opens: number;

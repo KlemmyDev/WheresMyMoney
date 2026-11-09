@@ -1,239 +1,291 @@
 /**
- * Early retirement: Loan or invest (the uplift canvas's FiDebt). Extra a month into the offset (a sure saving, still
- * reachable) or into ETFs (likely more, with ups and downs), if the rate moves: when the loan's gone, what each
- * gains, the freedom age each way, and the race between them a quarter at a time.
+ * Early retirement: Home loan (the FIRE on track canvas's loan sub page). For stopping early the loan only has to be
+ * gone by the year you stop; after that its repayments can become investing money. What's owed past the offset
+ * against the most you can owe each year, and where a spare amount a month does the most for the goal: into super
+ * (salary sacrifice, the same take-home cost), outside super, or onto the loan. From the engine (/api/fire/track).
  */
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useQueries } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { FireNav } from "~/features/fire/FireNav";
-import { fireQuery } from "~/features/fire/api";
-import { apiSend } from "~/features/common/api";
+import type { Track, TrackReady } from "~/features/fire/api";
+import { COLOUR, CompareChart, Status, TONE, k, statusOf, useScrub, useTrack } from "~/features/fire/track";
+import { apiSend, errorMessage } from "~/features/common/api";
 import { Loading } from "~/features/common/brand";
-import { Card, CardHead, ChoiceChip, ROLE, Stat, Term } from "~/features/common/ds";
-import { money, monthYear, pct } from "~/features/common/format";
-import { ScrubChart } from "~/features/common/ScrubChart";
-import { Empty, Label, PageHead } from "~/features/common/ui";
-
-type Race = {
-  extra: number;
-  into: "off" | "inv";
-  rate: number;
-  months: number;
-  base_months: number;
-  interest_saved: number;
-  etf_extra: number;
-  retire_age: number | null;
-  loan_path: number[];
-  etf_path: number[];
-  gone: string;
-  base_gone: string;
-  start: string;
-};
-
-const quarterLabel = (start: string, i: number) => {
-  const [y, m] = start.split("-").map(Number);
-  const t = m - 1 + i * 3;
-  return monthYear(`${y + Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, "0")}`);
-};
+import { Card, Eyebrow } from "~/features/common/ds";
+import { money, pct } from "~/features/common/format";
+import { Empty, ErrorText, PageHead, cn } from "~/features/common/ui";
 
 export function FireDebt() {
-  const fire = useQuery(fireQuery);
-  const [extra, setExtra] = useState(500);
-  const [into, setInto] = useState<"off" | "inv">("off");
-  const [rd, setRd] = useState(0);
-  useEffect(() => {
-    document.title = "Loan or invest · Early retirement · WheresMyMoney";
-  }, []);
-  const ask = (i: "off" | "inv") => () =>
-    apiSend<Race>("POST", "fire/debt", { extra: extra * 100, into: i, rate_change: rd / 1000 });
-  const enabled = !!fire.data && fire.data.ready && !!fire.data.loan;
-  const cur = useQuery({
-    queryKey: ["fire", "debt", extra, into, rd],
-    queryFn: ask(into),
-    placeholderData: keepPreviousData,
-    enabled,
-  });
-  const other = into === "off" ? "inv" : "off";
-  const oth = useQuery({
-    queryKey: ["fire", "debt", extra, other, rd],
-    queryFn: ask(other),
-    placeholderData: keepPreviousData,
-    enabled,
-  });
-  const f = fire.data;
-  if (!f) return <Loading />;
-  if (!f.ready || !f.loan)
-    return (
-      <>
-        <PageHead over="Future · Early retirement" title="Loan or invest" />
-        <FireNav />
+  const q = useTrack();
+  if (q.isError && !q.data) return <ErrorText>{errorMessage(q.error)}</ErrorText>;
+  if (!q.data) return <Loading />;
+  const t = q.data;
+  return (
+    <>
+      <PageHead over="Future · Early retirement" title="Home loan" />
+      <p className="-mt-2 mb-0 max-w-[680px] text-[14px] text-ink-3">
+        For stopping early the loan only has to be gone by the year you stop. After that, its repayments can become
+        investing money.
+      </p>
+      <FireNav />
+      {!t.ready ? (
         <Empty
-          title={f.ready ? "No loan to race" : "Add your super first"}
+          title="Add your super first"
           action={
-            <Link to={f.ready ? "/early-retirement" : "/retirement"} className="text-teal">
-              Back
+            <Link to="/retirement" className="text-teal">
+              Go to Retirement
             </Link>
           }
         >
-          {f.ready ? "The offset already matches the loan, so there's nothing to pay off faster." : f.needs}
+          {t.needs}
         </Empty>
-      </>
-    );
-  const c = cur.data;
-  const o = oth.data;
-  const off = into === "off" ? c : o;
-  const inv = into === "inv" ? c : o;
-  const base = f.plan?.retire_age ?? f.today?.retire_age ?? null;
-  const n = c?.loan_path.length ?? 0;
+      ) : !t.loan || t.parts.loan.have <= 0 ? (
+        <Empty title="Nothing owed past the offset">
+          The offset covers the loan, so there&apos;s nothing to clear before you stop. Spare money goes to super or
+          investments.
+        </Empty>
+      ) : (
+        <Loan t={t} />
+      )}
+    </>
+  );
+}
 
+const AMOUNTS = [25_000, 50_000, 100_000];
+
+function Loan({ t }: { t: TrackReady }) {
+  const lead = t.people[0];
+  const loan = t.loan!;
+  const goalI = Math.min(t.goal.age - lead.age, t.years.length - 1);
+  const goneI = loan.gone_year != null ? loan.gone_year - t.years[0].year : goalI;
+  const end = Math.min(t.years.length - 1, Math.max(goalI, goneI) + 2);
+  const ys = t.years.slice(0, end + 1);
+  const { at, handlers } = useScrub(end, Math.max(0, Math.min(goneI - 4, end)));
+  const p = t.parts.loan;
+  const s = statusOf(p);
+  const y = ys[at];
+  const inRange = at <= goalI;
+  const d = (y.owe_max ?? 0) - y.owed;
+  const [amt, setAmt] = useState(50_000);
+  const sacGross = Math.round(amt / t.take_home / 5_000) * 5_000;
+  const tries = [
+    { key: "none", name: "Nothing extra", sub: "Today's plan", colour: "var(--color-ink-3)", body: null },
+    {
+      key: "super",
+      name: "Into super",
+      sub: `${money(sacGross)} salary sacrificed (costs ${money(amt)} take-home)`,
+      colour: COLOUR.super,
+      body: { extra_super: sacGross },
+    },
+    {
+      key: "etfs",
+      name: "Outside super",
+      sub: `${money(amt)} into investments`,
+      colour: COLOUR.outside,
+      body: { extra_etfs: amt },
+    },
+    {
+      key: "loan",
+      name: "Onto the loan",
+      sub: `${money(amt)} extra repayment`,
+      colour: COLOUR.loan,
+      body: { extra_loan: amt },
+    },
+  ];
+  const results = useQueries({
+    queries: tries.map((x) => ({
+      queryKey: ["fire", "track", x.body ?? {}],
+      queryFn: () => apiSend<Track>("POST", "fire/track", x.body ?? {}),
+    })),
+  });
+  const lo = 80;
+  const hi = 101;
+  const W = (age: number) => ((Math.min(age, hi) - lo) / (hi - lo)) * 100;
+  const rows = tries.map((x, i) => {
+    const r = results[i].data;
+    const ready = r && r.ready ? r : null;
+    const lasts = ready ? Math.min(ready.at_goal.lasts, hi) : null;
+    return { ...x, lasts, earliest: ready?.pace?.retire_age ?? null, gone: ready?.loan?.gone_year ?? null };
+  });
+  const loanRow = rows[3];
+  const ranked = rows.slice(1).filter((r) => r.lasts != null);
+  const best = ranked.reduce<(typeof rows)[number] | null>(
+    (b, r) => (!b || (r.lasts ?? 0) > (b.lasts ?? 0) ? r : b),
+    null,
+  );
+  const early = loan.gone_year != null && loan.gone_year < t.goal.year;
+  const marks = [
+    { i: goneI, label: `Gone ${loan.gone_year ?? ""}`, colour: COLOUR.loan },
+    { i: goalI, label: `Stop ${t.goal.age}`, colour: COLOUR.super },
+  ];
   return (
     <>
-      <PageHead over="Future · Early retirement" title="Loan or invest" />
-      <p className="-mt-2 mb-0 text-[14px] text-ink-3">
-        Pay the loan off faster, or invest the extra? The race between the two, and what each does to the day you could
-        stop.
-      </p>
-      <FireNav />
-
-      <Card lit tint="offset" aria-labelledby="fd-hero" className="flex flex-col gap-3">
-        <CardHead id="fd-hero" title="Loan or invest" />
-        {c && o && (
-          <>
-            <p className="m-0 text-[17px] leading-relaxed text-ink">
-              {extra === 0 ? (
-                <>
-                  As it is, the loan&apos;s gone in <b>{monthYear(c.base_gone)}</b> and you could stop at{" "}
-                  <b>{c.retire_age ?? "—"}</b>.
-                </>
-              ) : (
-                <>
-                  An extra {money(extra * 100)} a month gets you to <b>{c.retire_age ?? "—"}</b>
-                  {o.retire_age === c.retire_age ? " either way" : " this way"}.
-                </>
-              )}
-            </p>
-            {extra > 0 && off && inv && (
-              <p className="m-0 text-[15px] text-ink-2">
-                Into the offset it&apos;s a sure{" "}
-                <b className="text-ink">{money(Math.round(off.interest_saved / 10000) * 10000)}</b> of interest saved,
-                and the loan&apos;s gone in {monthYear(off.gone)}. Into ETFs it&apos;s likely about{" "}
-                <b className="text-ink">{money(Math.round(inv.etf_extra / 10000) * 10000)}</b> more by{" "}
-                {monthYear(off.base_gone)}, with ups and downs.
-              </p>
-            )}
-            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-              <Stat
-                label="Loan gone"
-                value={monthYear(c.gone)}
-                note={
-                  c.months < c.base_months
-                    ? `${((c.base_months - c.months) / 12).toFixed(1)} years sooner than ${monthYear(c.base_gone)}`
-                    : "as things are"
-                }
-                role="offset"
-              />
-              <Stat
-                label="You could stop at"
-                value={c.retire_age != null ? String(c.retire_age) : "Not by 70"}
-                note={base != null ? `with the plan it's ${base}` : ""}
-                role="offset"
-              />
-              <Stat
-                label={
-                  into === "off" ? "Interest saved, for sure" : `Extra in ETFs by ${monthYear(c.base_gone)}, likely`
-                }
-                value={
-                  extra === 0
-                    ? "$0"
-                    : money(Math.round((into === "off" ? c.interest_saved : c.etf_extra) / 10000) * 10000)
-                }
-                note={into === "off" ? "No tax, no swings" : "Could be more or less; gains taxed when sold"}
-                role="offset"
-              />
-            </div>
-          </>
-        )}
-      </Card>
-
-      <div className="grid gap-4 md:grid-cols-12 [&>*]:min-w-0">
-        <Card aria-labelledby="fd-levers" className="flex flex-col gap-4 md:col-span-5">
-          <CardHead id="fd-levers" title="Try it" />
-          <div className="flex flex-col gap-1.5">
-            <Label>Put the extra into</Label>
-            <div className="flex flex-wrap gap-2">
-              <ChoiceChip pressed={into === "off"} onClick={() => setInto("off")}>
-                Offset first
-              </ChoiceChip>
-              <ChoiceChip pressed={into === "inv"} onClick={() => setInto("inv")}>
-                Invest first
-              </ChoiceChip>
-            </div>
-            <span className="text-[12px] text-ink-3">
-              {into === "off"
-                ? "Same saving as an extra repayment, and you can still take it out."
-                : "Into ETFs outside super. Reachable, but it goes up and down."}
+      <Card lit className="gap-6">
+        <div className="flex flex-wrap items-stretch gap-6">
+          <div className="flex min-w-0 flex-[1_1_360px] flex-col gap-2">
+            <span className="self-start">
+              <Status tone={s.tone}>{s.label}</Status>
             </span>
+            <h2 className="m-0 font-brand text-[34px] leading-10 font-semibold tracking-[-0.02em] sm:text-[40px] sm:leading-[46px]">
+              {loan.gone_year == null
+                ? "Not gone by 70"
+                : early
+                  ? `Gone ${t.goal.year - loan.gone_year} years early`
+                  : loan.gone_year === t.goal.year
+                    ? "Gone the year you stop"
+                    : "Still owing when you stop"}
+            </h2>
+            <p className="m-0 max-w-[540px] text-ink-2">
+              {p.ahead >= 0
+                ? `You owe ${k(p.ahead)} less than the most you could. It isn't what's holding you back, so spare money usually does more elsewhere.`
+                : `On today's repayments it outlasts your stop date, and its repayments would come out of retirement money.`}
+            </p>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-baseline justify-between">
-              <Label htmlFor="fd-extra">Extra each month</Label>
-              <span className="num font-semibold">{money(extra * 100)}</span>
-            </div>
-            <input
-              id="fd-extra"
-              type="range"
-              min={0}
-              max={2000}
-              step={250}
-              value={extra}
-              onChange={(e) => setExtra(Number(e.target.value))}
-              className="w-full accent-[var(--color-offset-fill)]"
+          <div className="grid min-w-0 flex-[1_1_460px] grid-cols-2 gap-3 sm:grid-cols-4">
+            <Fig label="Owe at most" value={k(p.need)} />
+            <Fig label="Owe now" value={k(p.have)} colour={COLOUR.loan} />
+            <Fig label="In the offset" value={k(loan.offset)} />
+            <Fig
+              label="Gone in"
+              value={loan.gone_year ? String(loan.gone_year) : "After 70"}
+              colour={early ? TONE.good : TONE.warn}
             />
-            <span className="text-[12px] text-ink-3">On top of the {money(f.spare)} already going to the offset.</span>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <Label>If the rate moves</Label>
-            <div className="flex flex-wrap gap-2">
-              {[-5, 0, 5].map((v) => (
-                <ChoiceChip key={v} pressed={rd === v} onClick={() => setRd(v)}>
-                  {v === 0 ? "Today" : `${v > 0 ? "+" : "−"}0.5%`}
-                </ChoiceChip>
-              ))}
+        </div>
+      </Card>
+      <Card aria-labelledby="fd-path" className="gap-3.5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2 id="fd-path" className="m-0 text-[20px] leading-7 font-semibold">
+              Owing, year by year
+            </h2>
+            <div className="text-[12px] text-ink-3">
+              Dashed: the most you can owe and still be clear by {t.goal.year} · solid: on schedule · hover any year
             </div>
-            {c && <span className="text-[12px] text-ink-3">At {pct(c.rate, 2)}, repayments stay the same.</span>}
           </div>
-        </Card>
-
-        <Card aria-labelledby="fd-race" className="flex flex-col gap-3 md:col-span-7">
-          <CardHead id="fd-race" title="The race" />
-          {c && n > 1 && (
-            <ScrubChart
-              label="The loan left after the offset, and the ETFs, a quarter at a time"
-              lines={[
-                { name: "Loan left after the offset", values: c.loan_path, colour: ROLE.offset, fill: true },
-                { name: "ETFs outside super", values: c.etf_path, colour: ROLE.invest },
-              ]}
-              at={(i) => quarterLabel(c.start, i)}
-              axisAt={(i) => quarterLabel(c.start, i).slice(-4)}
-              format={(v) => money(v)}
-              floor={0}
-              height={200}
-              axis={[0, Math.round((n - 1) / 2), n - 1]}
-            />
-          )}
-          <p className="m-0 text-[13px] text-ink-2">
-            Offset or extra repayment? Both clear the loan on the same day and save the same interest. Money in the{" "}
-            <Term k="offset">offset</Term> can still pay for the years before super opens. Same saving, more freedom.
-          </p>
-        </Card>
-      </div>
-      <p className="m-0 text-[12px] text-ink-3">
-        Estimates to plan with, not advice. Loan figures at today&apos;s rate as charged; ETF growth after tax.{" "}
+          <div className="flex flex-wrap items-center gap-5" aria-live="polite">
+            <div>
+              <div className="text-[12px] text-ink-3">{y.year} · owe at most</div>
+              <div className="num text-[20px]">{inRange ? money(y.owe_max) : "—"}</div>
+            </div>
+            <div>
+              <div className="text-[12px] text-ink-3">On schedule</div>
+              <div className="num text-[20px]" style={{ color: COLOUR.loan }}>
+                {y.owed > 0 ? money(y.owed) : "Gone"}
+              </div>
+            </div>
+            <Status tone={!inRange || d >= 0 ? "good" : "warn"}>
+              {!inRange ? "Past the stop year" : `${d >= 0 ? "Ahead" : "Behind"} ${k(Math.abs(d))}`}
+            </Status>
+          </div>
+        </div>
+        <CompareChart
+          need={ys.map((x) => x.owe_max)}
+          pace={ys.map((x) => x.owed)}
+          end={goalI}
+          years={ys.map((x) => x.year)}
+          colour={COLOUR.loan}
+          lower
+          at={at}
+          handlers={handlers}
+          marks={marks}
+          label="Loan: pick a year"
+          height={280}
+        />
+      </Card>
+      <Card aria-labelledby="fd-spare" className="gap-4">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h2 id="fd-spare" className="m-0 text-[20px] leading-7 font-semibold">
+              Where should a spare {money(amt)} a month go?
+            </h2>
+            <p className="mt-1 mb-0 max-w-[720px] text-[14px] text-ink-2">
+              The same take-home money, three places. Bars show how long the money lasts if you stop at {t.goal.age}
+              (longer is better; the goal is {t.goal.plan_to}).
+            </p>
+          </div>
+          <div role="group" aria-label="Spare each month" className="flex flex-wrap gap-2">
+            {AMOUNTS.map((a) => (
+              <button
+                key={a}
+                type="button"
+                aria-pressed={a === amt}
+                onClick={() => setAmt(a)}
+                className={cn(
+                  "press min-h-11 cursor-pointer rounded-full border px-4 text-[14px] font-semibold",
+                  a === amt
+                    ? "border-teal bg-teal text-on-solid"
+                    : "border-line-2 bg-transparent text-ink-2 hover:text-ink",
+                )}
+              >
+                {money(a)}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-col gap-3">
+          {rows.map((r) => (
+            <div
+              key={r.key}
+              className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 sm:grid-cols-[minmax(180px,240px)_minmax(0,1fr)_110px]"
+            >
+              <div>
+                <div className="font-semibold">{r.name}</div>
+                <div className="text-[13px] leading-[18px] text-ink-2">
+                  {r.sub}
+                  {r.key === "loan" && r.gone ? `, gone in ${r.gone}` : ""}
+                </div>
+              </div>
+              <div
+                className="relative col-span-2 h-7 rounded-lg border border-line bg-sunken sm:col-span-1 sm:col-start-2 sm:row-start-1"
+                aria-hidden
+              >
+                {r.lasts != null && (
+                  <div
+                    className="absolute inset-y-0 left-0 rounded-lg"
+                    style={{ width: `${W(r.lasts)}%`, background: r.colour, opacity: 0.85 }}
+                  />
+                )}
+                <div className="absolute -inset-y-1 w-0.5 bg-ink" style={{ left: `${W(t.goal.plan_to)}%` }} />
+              </div>
+              <div className="text-right sm:col-start-3 sm:row-start-1">
+                <div className="num font-semibold">
+                  {r.lasts == null ? "…" : r.lasts >= hi ? "Past 100" : `Until ${r.lasts}`}
+                </div>
+                <div className="text-[12px] text-ink-3">earliest {r.earliest ?? "70+"}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="rounded-2xl border border-line bg-sunken px-4 py-3.5 text-[14px] leading-5 text-ink-2">
+          {best == null
+            ? "Working it out…"
+            : best.key === "loan"
+              ? "The loan comes out best here: it goes sooner, and the bigger repayment then keeps working as investments."
+              : `${best.name} does the most for this goal. ${early ? `The loan's already gone ${t.goal.year - (loan.gone_year ?? t.goal.year)} years before you stop, so extra repayments only help once they become investing money` : "Extra repayments help most when the loan would otherwise still be there when you stop"}; they're the safe choice (a sure ${pct(loan.rate)}), not the fastest.${loanRow.lasts != null && best.lasts != null && best.lasts - loanRow.lasts <= 1 ? " At this amount the gap is small." : ""}`}
+          {!t.levers.keep &&
+            " Today's plan stops the loan's repayments going anywhere once it's gone; keeping them working (on the hub) makes the loan option stronger."}
+        </div>
+      </Card>
+      <p className="m-0 text-[13px] text-ink-3">
+        Loan at {pct(loan.rate, 2)} on what&apos;s owed after the {money(loan.offset)} offset, {money(loan.repayment)} a
+        month. Everything that offsets the loan counts. An estimate, not advice.{" "}
         <Link to="/loan" className="text-teal">
-          Open the loan&apos;s page
+          The loan itself
         </Link>
       </p>
     </>
+  );
+}
+
+function Fig({ label, value, colour }: { label: string; value: string; colour?: string }) {
+  return (
+    <div className="rounded-2xl border border-line bg-sunken p-3.5">
+      <Eyebrow>{label}</Eyebrow>
+      <div className="num mt-1 text-[20px] leading-[26px]" style={colour ? { color: colour } : undefined}>
+        {value}
+      </div>
+    </div>
   );
 }
