@@ -213,6 +213,22 @@ class BillsService:
         with self.db.writing() as conn:
             return conn.execute("UPDATE bills SET active = 0 WHERE id = ? AND active = 1", (bill_id,)).rowcount > 0
 
+    def restore(self, bill_id: int) -> None:
+        """Undo a remove: the bill comes back as it was, with its payments still linked."""
+        with self.db.writing() as conn:
+            if not conn.execute("UPDATE bills SET active = 1 WHERE id = ? AND active = 0", (bill_id,)).rowcount:
+                raise LookupError("That bill can't be brought back.")
+
+    def due_now(self, bill_id: int) -> dict[str, Any] | None:
+        """The due date to mark paid on the bill's page: the first one from a fortnight ago to its next due date that
+        hasn't been paid, or else the latest of them (paid)."""
+        bill = self.get(bill_id)
+        if bill is None:
+            return None
+        today = dates.today()
+        items = [d for d in self.due(today - dt.timedelta(days=14), bill.next_due()) if d["bill_id"] == bill_id]
+        return next((d for d in items if d["paid"] is None), items[-1] if items else None)
+
     # -- what they add up to --------------------------------------------------------
 
     def per_month(self, account_id: int | None = None) -> float:

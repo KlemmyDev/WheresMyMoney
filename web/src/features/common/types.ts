@@ -295,6 +295,8 @@ export type BillDetail = {
   share: number;
   /** The payments as transactions, newest first. */
   transactions: Transaction[];
+  /** The due date to mark paid: the first unpaid one up to the next due date, or else the latest (paid). */
+  due: Due | null;
 };
 
 /** A budget for each spending category from what was actually spent in the last few whole months. */

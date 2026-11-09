@@ -13,7 +13,7 @@ import { Button, Input, Pill } from "~/features/common/ui";
 
 type Paid = { transaction_id: number; amount: number };
 
-export function MarkPaid({ due }: { due: Due }) {
+export function MarkPaid({ due, primary }: { due: Due; primary?: boolean }) {
   const qc = useQueryClient();
   const toast = useToast();
   const varies = due.how === "estimate";
@@ -49,7 +49,12 @@ export function MarkPaid({ due }: { due: Due }) {
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && cents && pay.mutate(cents)}
         />
-        <Button small disabled={!cents || pay.isPending} onClick={() => cents && pay.mutate(cents)}>
+        <Button
+          small={!primary}
+          primary={primary}
+          disabled={!cents || pay.isPending}
+          onClick={() => cents && pay.mutate(cents)}
+        >
           Paid
         </Button>
       </span>
@@ -57,7 +62,8 @@ export function MarkPaid({ due }: { due: Due }) {
   }
   return (
     <Button
-      small
+      small={!primary}
+      primary={primary}
       disabled={pay.isPending}
       onClick={() => (varies ? setAsking(true) : pay.mutate(due.amount))}
       aria-label={`Mark ${due.name} paid`}
