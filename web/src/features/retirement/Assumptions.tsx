@@ -5,8 +5,9 @@
  * statement shows them. Percentages are typed as percentages and kept as fractions.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { apiSend, apiUpload, errorMessage } from "~/features/common/api";
+import { apiSend, errorMessage } from "~/features/common/api";
 import { ChoiceChip } from "~/features/common/ds";
 import { longDate, money } from "~/features/common/format";
 import {
@@ -17,7 +18,7 @@ import {
   type RetirementSettings,
   type SuperAccount,
 } from "~/features/common/queries";
-import { Button, ErrorText, Input, Switch, Tile, TileTitle } from "~/features/common/ui";
+import { Button, ErrorText, Input, Tile, TileTitle } from "~/features/common/ui";
 import { fundTerms, type Assumptions, type Fee, type Option } from "~/features/retirement/model";
 
 /** 0.0725 → "7.25"; and back. */
@@ -269,7 +270,19 @@ function FundTile({ p, s, fund }: { p: SuperAccount; s: RetirementSettings; fund
         <b className="text-ink">{money(feeDollars)}</b> a year in fees ({pctText(feeDollars / (p.balance || 1))} of the
         balance).
       </p>
-      <StatementReader p={p} />
+      <Link
+        to="/retirement/statement"
+        search={{ person: p.id }}
+        className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-dashed border-line-2 p-3.5 text-ink no-underline hover:bg-tile-2"
+      >
+        <span className="min-w-0">
+          <span className="block text-[14px] font-semibold">Add a super statement</span>
+          <span className="block text-[12px] text-ink-3">
+            The PDF your fund sends, read here on your server. You check what&apos;s found first.
+          </span>
+        </span>
+        <span className="text-[13px] font-semibold text-teal">Add →</span>
+      </Link>
       {fund && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-sunken p-3.5">
           <span className="min-w-0 flex-1">
@@ -505,143 +518,5 @@ function FundTile({ p, s, fund }: { p: SuperAccount; s: RetirementSettings; fund
         </Button>
       </div>
     </Tile>
-  );
-}
-
-type Found = {
-  balance: number | null;
-  as_of: string | null;
-  period: [string, string] | null;
-  fees: Fee[];
-  options: Option[];
-  notes: string[];
-  /** The known fund whose published fees these are, if any. */
-  fund: string | null;
-};
-
-/** Read the fund's statement (a PDF, read on the server) and choose which of what it found to keep. */
-function StatementReader({ p }: { p: SuperAccount }) {
-  const qc = useQueryClient();
-  const [found, setFound] = useState<Found | null>(null);
-  const [use, setUse] = useState({ balance: true, fees: true, options: true });
-  const read = useMutation({
-    mutationFn: (f: File) => apiUpload<Found>(`retirement/people/${p.id}/statement`, f),
-    onSuccess: (r) => {
-      setFound(r);
-      setUse({ balance: r.balance != null, fees: r.fees.length > 0, options: r.options.length > 0 });
-    },
-  });
-  const save = useMutation({
-    mutationFn: () =>
-      apiSend("PUT", `retirement/people/${p.id}`, {
-        ...(use.balance && found?.balance != null ? { balance: found.balance, as_of: found.as_of } : {}),
-        ...(use.fees ? { fees: found!.fees } : {}),
-        ...(use.options ? { options: found!.options } : {}),
-      }),
-    onSuccess: () => {
-      setFound(null);
-      refresh(qc);
-    },
-  });
-  const nothing = found && found.balance == null && !found.fees.length && !found.options.length;
-  return (
-    <div className="flex flex-col gap-2.5 rounded-2xl border border-dashed border-line-2 p-3.5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="min-w-0">
-          <span className="block text-[14px] font-semibold">Read a statement</span>
-          <span className="block text-[12px] text-ink-3">
-            The PDF your fund sends. It's read here, on your server, and you check what's found first.
-          </span>
-        </span>
-        <label className="press inline-flex min-h-[34px] cursor-pointer items-center rounded-[10px] px-3 text-[13px] font-medium text-ink shadow-[inset_0_0_0_1px_var(--color-line-2)]">
-          {read.isPending ? "Reading…" : "Choose PDF"}
-          <input
-            type="file"
-            accept="application/pdf,.pdf"
-            className="sr-only"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) read.mutate(f);
-              e.target.value = "";
-            }}
-          />
-        </label>
-      </div>
-      {read.isError && <ErrorText>{errorMessage(read.error)}</ErrorText>}
-      {nothing && (
-        <p className="m-0 text-[13px] text-bills">
-          Nothing could be picked out of that statement. Type the figures in below.
-        </p>
-      )}
-      {found && !nothing && (
-        <div className="flex flex-col gap-2">
-          {found.period && (
-            <p className="m-0 text-[12px] text-ink-3">
-              Statement for {longDate(found.period[0])} to {longDate(found.period[1])}
-            </p>
-          )}
-          {found.balance != null && (
-            <label className="flex items-center gap-3 rounded-xl bg-sunken p-3">
-              <span className="min-w-0 flex-1 text-[14px]">
-                Balance <b className="num">{money(found.balance, { cents: true })}</b>
-                {found.as_of ? ` at ${longDate(found.as_of)}` : ""}
-                <span className="block text-[12px] text-ink-3">Now {money(p.balance)}</span>
-              </span>
-              <Switch
-                checked={use.balance}
-                onChange={(v) => setUse((u) => ({ ...u, balance: v }))}
-                label="Use the balance"
-              />
-            </label>
-          )}
-          {found.fees.length > 0 && (
-            <label className="flex items-center gap-3 rounded-xl bg-sunken p-3">
-              <span className="min-w-0 flex-1 text-[14px]">
-                Fees, in place of the ones below
-                <span className="block text-[12px] text-ink-3">
-                  {found.fees.map((f) => `${f.name} ${feeText(f)}`).join(" · ")}
-                </span>
-              </span>
-              <Switch checked={use.fees} onChange={(v) => setUse((u) => ({ ...u, fees: v }))} label="Use the fees" />
-            </label>
-          )}
-          {found.options.length > 0 && (
-            <label className="flex items-center gap-3 rounded-xl bg-sunken p-3">
-              <span className="min-w-0 flex-1 text-[14px]">
-                How it's invested
-                <span className="block text-[12px] text-ink-3">
-                  {found.options.map((o) => `${o.name} ${pctText(o.share, 1)}`).join(" · ")} (
-                  {found.fund ? "add each option's return after" : "add each option's return and fee after"})
-                </span>
-              </span>
-              <Switch
-                checked={use.options}
-                onChange={(v) => setUse((u) => ({ ...u, options: v }))}
-                label="Use the options"
-              />
-            </label>
-          )}
-          {found.notes.map((n) => (
-            <p key={n} className="m-0 text-[12px] text-ink-3">
-              {n}
-            </p>
-          ))}
-          {save.isError && <ErrorText>{errorMessage(save.error)}</ErrorText>}
-          <div className="flex justify-end gap-2">
-            <Button small onClick={() => setFound(null)}>
-              Not these
-            </Button>
-            <Button
-              small
-              primary
-              disabled={!(use.balance || use.fees || use.options) || save.isPending}
-              onClick={() => save.mutate()}
-            >
-              Use these
-            </Button>
-          </div>
-        </div>
-      )}
-    </div>
   );
 }
