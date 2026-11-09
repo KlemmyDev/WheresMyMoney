@@ -26,6 +26,9 @@ export type Account = {
   goal_date: string | null;
   /** The mark the household picked (null: its job's mark). */
   icon?: string | null;
+  /** The home loan's lender and rate type, as said when it was refinanced. */
+  lender?: string | null;
+  rate_type?: string | null;
   balance: number;
   ledger: number;
   gap: number;

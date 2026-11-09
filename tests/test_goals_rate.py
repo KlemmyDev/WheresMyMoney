@@ -124,3 +124,49 @@ def test_a_reached_goal_says_what_happened_to_the_money(client: TestClient, hous
     assert client.post(f"/api/goals/{goal['id']}/reached", json={"outcome": "lottery"}).status_code == 422
     undone = ok(client.post(f"/api/goals/{goal['id']}/reached", json={"outcome": None}))
     assert undone["reached_at"] is None and undone["outcome"] is None
+
+
+def test_a_lump_sum_from_the_offset_lowers_both_and_undo_puts_them_back(client: TestClient, household: dict) -> None:
+    before = ok(client.get("/api/loan"))
+    offset = next(a for a in ok(client.get("/api/accounts"))["accounts"] if a["name"] == "Offset")
+    done = ok(
+        client.post(
+            "/api/loan/change", json={"kind": "lump", "amount": dollars(20000), "from_account": household["Offset"]}
+        )
+    )
+    assert done["loan"]["balance"] == before["loan"]["balance"] - dollars(20000)
+    after = next(a for a in ok(client.get("/api/accounts"))["accounts"] if a["name"] == "Offset")
+    assert after["balance"] == offset["balance"] - dollars(20000)
+    lump = next(c for c in ok(client.get("/api/loan"))["changes"] if c["field"] == "lump")
+    assert lump["value"] == dollars(20000) and lump["description"] == "Lump sum from Offset"
+
+    ok(client.post("/api/loan/change/undo", json={"undo": done["undo"]}))
+    assert ok(client.get("/api/loan"))["loan"]["balance"] == before["loan"]["balance"]
+    back = next(a for a in ok(client.get("/api/accounts"))["accounts"] if a["name"] == "Offset")
+    assert back["balance"] == offset["balance"]
+    assert all(c["field"] != "lump" for c in ok(client.get("/api/loan"))["changes"])
+
+
+def test_refinancing_sets_the_lender_and_rate_and_undo_restores_them(client: TestClient, household: dict) -> None:
+    before = ok(client.get("/api/loan"))["loan"]
+    done = ok(
+        client.post(
+            "/api/loan/change",
+            json={"kind": "refinance", "lender": "Bank Two", "rate_bp": 599, "rate_type": "fixed", "costs": 35000},
+        )
+    )
+    loan = done["loan"]
+    assert loan["rate_bp"] == 599 and loan["lender"] == "Bank Two" and loan["rate_type"] == "fixed"
+    fields = {c["field"] for c in ok(client.get("/api/loan"))["changes"]}
+    assert {"refinance", "rate"} <= fields
+    ok(client.post("/api/loan/change/undo", json={"undo": done["undo"]}))
+    loan = ok(client.get("/api/loan"))["loan"]
+    assert loan["rate_bp"] == before["rate_bp"] and loan["lender"] is None
+    assert client.post("/api/loan/change", json={"kind": "refinance", "rate_bp": 0}).status_code == 422
+
+
+def test_a_new_repayment_is_kept_in_the_loans_history(client: TestClient, household: dict) -> None:
+    done = ok(client.post("/api/loan/change", json={"kind": "repayment", "repayment": dollars(4000)}))
+    assert done["loan"]["repayment"] == dollars(4000)
+    change = next(c for c in ok(client.get("/api/loan"))["changes"] if c["field"] == "repayment")
+    assert change["value"] == dollars(4000) and change["was"] == dollars(3770)

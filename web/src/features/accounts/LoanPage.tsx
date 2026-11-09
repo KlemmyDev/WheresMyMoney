@@ -14,7 +14,7 @@ import { loanQuery, type LoanView } from "~/features/common/queries";
 import { Dot, Empty, ErrorText, Segmented, Tile, TileTitle } from "~/features/common/ui";
 import { EntityHeader, EntityHero, Legend, MonthBars } from "~/features/common/entity";
 import { EditButton, ROLE_GLYPH, ROLE_TONE } from "~/features/accounts/AccountsPage";
-import { EditAccountPanel } from "~/features/accounts/EditAccountPanel";
+import { LoanChangePanel } from "~/features/accounts/LoanChangePanel";
 import { LoanSimulator } from "~/features/accounts/LoanSimulator";
 import { RateChangeSheet, type Spotted } from "~/features/accounts/RateChange";
 import { Banner, Card, CardHead, Details, Term } from "~/features/common/ds";
@@ -63,7 +63,8 @@ export function LoanPage() {
         mark={<Chip g={ROLE_GLYPH.loan} tone={ROLE_TONE.loan} size="xl" />}
         title={lo.name}
         sub={[
-          lo.rate_bp != null ? `${(lo.rate_bp / 100).toFixed(2)}% variable` : null,
+          lo.lender ?? null,
+          lo.rate_bp != null ? `${(lo.rate_bp / 100).toFixed(2)}% ${lo.rate_type ?? "variable"}` : null,
           lo.repayment ? `${money(lo.repayment)} a month` : null,
           v.by_account.length
             ? `${v.by_account.length === 1 ? "one account offsets" : `${v.by_account.length} accounts offset`} it`
@@ -81,11 +82,15 @@ export function LoanPage() {
           </>
         }
       />
-      <EditAccountPanel
+      <LoanChangePanel
         key={String(!!search.edit)}
-        account={lo}
+        v={v}
         open={!!search.edit}
         onClose={() => navigate({ to: "/loan", search: {}, replace: true })}
+        onRateChanged={() => {
+          navigate({ to: "/loan", search: {}, replace: true });
+          setRateOpen(true);
+        }}
       />
       {spotted && (
         <Banner
@@ -154,6 +159,7 @@ export function LoanPage() {
           </Details>
         ) : null}
       </EntityHero>
+      {v.changes.length > 0 && <Changes changes={v.changes} />}
       {v.interest_charged && <InterestCharged c={v.interest_charged} estimate={v.charged_per_month} />}
       <Tile i={5} aria-labelledby="ln-proj">
         <TileTitle
@@ -260,6 +266,39 @@ export function LoanPage() {
         </Tile>
       </div>
     </>
+  );
+}
+
+/** The loan's changes, newest first, kept with its history: rates, repayments, lump sums and refinances. */
+function Changes({ changes }: { changes: LoanView["changes"] }) {
+  const said = (c: LoanView["changes"][number]) =>
+    c.field === "lump"
+      ? `${money(c.value)} paid in`
+      : c.field === "repayment"
+        ? `Repayment ${c.was != null ? `${money(c.was)} → ` : ""}${money(c.value)}`
+        : `Rate ${c.was != null ? `${(c.was / 100).toFixed(2)}% → ` : ""}${(c.value / 100).toFixed(2)}%`;
+  return (
+    <Card aria-labelledby="ln-changes" className="flex flex-col gap-1">
+      <CardHead
+        id="ln-changes"
+        title="Changes to the loan"
+        right={<span className="text-[13px] text-ink-3">kept with its history</span>}
+      />
+      <ul className="m-0 flex list-none flex-col p-0">
+        {changes.map((c, i) => (
+          <li
+            key={`${c.date}-${c.field}-${i}`}
+            className="flex min-h-11 items-center justify-between gap-3 border-b border-line text-[14px] last:border-b-0"
+          >
+            <span className="min-w-0">
+              <span className="block text-ink">{said(c)}</span>
+              <span className="block truncate text-[12px] text-ink-3">{c.description}</span>
+            </span>
+            <span className="flex-none text-[13px] text-ink-3">{longDate(c.date)}</span>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
 

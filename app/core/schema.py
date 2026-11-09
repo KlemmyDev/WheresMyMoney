@@ -403,6 +403,13 @@ def _account_icon(conn: sqlite3.Connection) -> None:
     conn.execute("ALTER TABLE accounts ADD COLUMN icon TEXT")
 
 
+def _loan_lender(conn: sqlite3.Connection) -> None:
+    """accounts.lender: who the home loan is with, and rate_type: variable or fixed (both as the household said,
+    when it refinanced). loan_changes gains two kinds of row: a lump sum paid in, and a refinance."""
+    conn.execute("ALTER TABLE accounts ADD COLUMN lender TEXT")
+    conn.execute("ALTER TABLE accounts ADD COLUMN rate_type TEXT")
+
+
 MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _baseline,
     _money,
@@ -431,4 +438,5 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _bill_pause_and_varies,
     _goal_reached_and_removed,
     _account_icon,
+    _loan_lender,
 ]

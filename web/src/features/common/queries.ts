@@ -203,7 +203,13 @@ export type LoanView = {
     interest_saved: number;
   }[];
   by_account: { id: number; name: string; colour: string; balance: number; share: number }[];
-  changes: { date: string; field: "rate" | "repayment"; value: number; was: number | null; description: string }[];
+  changes: {
+    date: string;
+    field: "rate" | "repayment" | "lump" | "refinance";
+    value: number;
+    was: number | null;
+    description: string;
+  }[];
 };
 
 export const loanQuery = queryOptions({
