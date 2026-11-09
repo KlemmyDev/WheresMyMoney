@@ -1,8 +1,7 @@
 /**
- * Accounts (design: direction E on the accounts canvas, in the dashboard's look): three figures across the top (what's
- * offsetting the loan, the last 30 days, the interest saved), a card for each account and the loan, and the one chosen
- * in detail: its balance with what moved it, a month to a year (Activity.tsx); its transactions, to sort them; and its
- * job and settings.
+ * Accounts (from the uplift canvas, MnAccounts): the accounts in a sentence with the totals behind it, and a card for
+ * each account and the loan that opens its own page (AccountPage.tsx): its balance with what moved it, its
+ * transactions, and its job and settings.
  *
  * When the transactions don't add up to the balance (only about two years are imported), it says so, and setting the
  * exact balance adds a "Balance adjustment" for the difference: as an opening balance before the history starts, so
@@ -13,7 +12,6 @@ import { Chip, I, type Glyph, type Tone } from "~/features/common/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState, type CSSProperties } from "react";
-import { AccountTransactions, ActivityChart, type Bucket, type Range } from "~/features/accounts/Activity";
 import { apiSend, errorMessage } from "~/features/common/api";
 import { Count } from "~/features/common/charts";
 import { Card, Details, Term } from "~/features/common/ds";
@@ -64,16 +62,13 @@ export function roleBadge(a: Account, goals: Goal[]): string {
   return "Just tracked";
 }
 
-export function AccountsPage({ selected }: { selected?: number }) {
+export function AccountsPage() {
   const q = useQuery(accountsQuery);
   const navigate = useNavigate();
   const actions = useActions();
   const [adding, setAdding] = useState(false);
-  const [range, setRange] = useState<Range>("1m");
-  const [picked, setPicked] = useState<Bucket | null>(null);
   const data = q.data;
   const all = data ? [...data.accounts, ...(data.loan ? [data.loan] : [])] : [];
-  const sel = all.find((a) => a.id === selected) ?? data?.accounts[0];
   if (q.isError) return <ErrorText>{errorMessage(q.error)}</ErrorText>;
   if (!data) return <Loading />;
   const last = data.accounts
@@ -81,6 +76,7 @@ export function AccountsPage({ selected }: { selected?: number }) {
     .filter(Boolean)
     .sort()
     .pop();
+  const open = (id: number) => navigate({ to: "/accounts/$accountId", params: { accountId: String(id) } });
   return (
     <>
       <PageHead
@@ -89,7 +85,6 @@ export function AccountsPage({ selected }: { selected?: number }) {
         actions={
           <>
             <Button onClick={() => setAdding(true)}>Add account</Button>
-            <Button onClick={() => navigate({ to: "/import" })}>Import CSV</Button>
             <Button primary onClick={actions.checkin}>
               Check in balances
             </Button>
@@ -103,46 +98,20 @@ export function AccountsPage({ selected }: { selected?: number }) {
             key={a.id}
             a={a}
             i={i}
-            on={sel?.id === a.id}
+            on={false}
             offsetting={data.offsetting}
             goals={data.goals}
-            onPick={() => {
-              setPicked(null);
-              navigate({ to: "/accounts", search: { id: a.id }, replace: true });
-            }}
+            onPick={() => open(a.id)}
           />
         ))}
       </section>
       <RemovedAccounts />
-      {sel && (
-        <ActivityChart key={sel.id} account={sel} range={range} onRange={setRange} picked={picked} onPick={setPicked} />
-      )}
-      {sel && (
-        <div className="flex flex-wrap items-start gap-4">
-          <div className="flex min-w-0 flex-[1.4_1_560px] flex-col">
-            <AccountTransactions
-              key={sel.id}
-              account={sel}
-              range={range}
-              picked={picked}
-              onClearPick={() => setPicked(null)}
-            />
-          </div>
-          <div className="flex min-w-0 flex-[1_1_380px] flex-col">
-            {sel.kind === "loan" ? (
-              <LoanDetail key={`${sel.id}-${sel.balance}`} account={sel} accounts={data.accounts} />
-            ) : (
-              <Detail key={sel.id} account={sel} goals={data.goals} />
-            )}
-          </div>
-        </div>
-      )}
       <AddAccount
         open={adding}
         onClose={() => setAdding(false)}
         hasLoan={!!data.loan}
         accounts={data.accounts}
-        onAdded={(id) => navigate({ to: "/accounts", search: { id }, replace: true })}
+        onAdded={open}
       />
     </>
   );
@@ -166,7 +135,7 @@ function Summary({ data }: { data: AccountsOverview }) {
           <>
             Our accounts hold <b>{money(data.offsetting)}</b>. Because they{" "}
             <Term k="offset">sit against the home loan</Term>, they save about{" "}
-            <b>{money(perDay, { cents: true })} a day</b> in interest, about {money(perDay * 365)} a year.
+            <b>{money((perDay * 365) / 12)} a month</b> in interest, about {money(perDay * 365)} a year.
           </>
         ) : (
           <>
@@ -177,7 +146,7 @@ function Summary({ data }: { data: AccountsOverview }) {
           ? `In the last 30 days they went up by ${money(moved)}.`
           : `In the last 30 days they went down by ${money(-moved)}.`}
       </p>
-      <p className="m-0 text-[14px] text-ink-3">Each account below has a job. Tap one to see what's moved in it.</p>
+      <p className="m-0 text-[14px] text-ink-3">Each account below has a job. Open one to see what's moved in it.</p>
       <Details label="See the totals">
         <Readouts data={data} />
       </Details>
@@ -261,9 +230,9 @@ function Readouts({ data }: { data: AccountsOverview }) {
           </TileTitle>
           <div className="flex items-baseline gap-2">
             <span className="mono text-[34px] leading-10 font-semibold tracking-[-0.04em]">
-              <Count k="acct:int" value={perDay} format={(v) => money(v, { cents: true })} />
+              <Count k="acct:int" value={(perDay * 365) / 12} format={(v) => money(v)} />
             </span>
-            <span className="text-[13px] text-ink-3">a day</span>
+            <span className="text-[13px] text-ink-3">a month</span>
           </div>
           <div className="text-[12.5px] text-ink-3">
             About <span className="mono text-ink">{money(perDay * 365)}</span> a year, and the money is still ours to
@@ -276,7 +245,7 @@ function Readouts({ data }: { data: AccountsOverview }) {
 }
 
 /** What an account's job comes to now, as a line and a share for its bar. */
-function job(a: Account, offsetting: number): { text: string; share: number } {
+export function job(a: Account, offsetting: number): { text: string; share: number } {
   if (a.kind === "loan")
     return {
       text: `Our accounts cover ${pct(a.balance ? offsetting / a.balance : 0)} of it`,
@@ -395,7 +364,7 @@ const ROLE_FILL: Record<string, string> = {
   savings: "var(--color-savings-fill)",
   track: "var(--color-ink-3)",
 };
-const ROLE_TONE: Record<string, Tone> = {
+export const ROLE_TONE: Record<string, Tone> = {
   offset: "offset",
   bills: "bills",
   spending: "spending",
@@ -403,7 +372,7 @@ const ROLE_TONE: Record<string, Tone> = {
   track: "neutral",
   loan: "loan",
 };
-const ROLE_GLYPH: Record<string, Glyph> = {
+export const ROLE_GLYPH: Record<string, Glyph> = {
   offset: I.offset,
   bills: I.bills,
   spending: I.accounts,
@@ -412,7 +381,7 @@ const ROLE_GLYPH: Record<string, Glyph> = {
   loan: I.loan,
 };
 
-function Detail({ account, goals }: { account: Account; goals: Goal[] }) {
+export function Detail({ account, goals }: { account: Account; goals: Goal[] }) {
   const qc = useQueryClient();
   const toast = useToast();
   const detail = useQuery(accountQuery(account.id));
@@ -608,7 +577,7 @@ function Detail({ account, goals }: { account: Account; goals: Goal[] }) {
 }
 
 /** The pencil by an account's name: opens Edit account. */
-function EditButton({ account }: { account: Account }) {
+export function EditButton({ account }: { account: Account }) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -654,14 +623,17 @@ function EditAccount({ account, onClose }: { account: Account; onClose: () => vo
   });
   const restore = useMutation({
     mutationFn: () => apiSend<Account>("POST", `accounts/${account.id}/restore`),
-    onSuccess: () => (refresh(qc), navigate({ to: "/accounts", search: { id: account.id }, replace: true })),
+    onSuccess: () => (
+      refresh(qc),
+      navigate({ to: "/accounts/$accountId", params: { accountId: String(account.id) }, replace: true })
+    ),
     onError: (e) => toast(errorMessage(e)),
   });
   const remove = useMutation({
     mutationFn: () => apiSend("DELETE", `accounts/${account.id}`),
     onSuccess: () => {
       onClose();
-      navigate({ to: "/accounts", search: {}, replace: true });
+      navigate({ to: "/accounts", replace: true });
       refresh(qc);
       toast(`${account.name} removed`, () => restore.mutate());
     },
@@ -786,7 +758,7 @@ function RemovedAccounts() {
     onSuccess: (a) => {
       refresh(qc);
       toast(`${a.name} is back`);
-      navigate({ to: "/accounts", search: { id: a.id }, replace: true });
+      navigate({ to: "/accounts/$accountId", params: { accountId: String(a.id) } });
     },
     onError: (e) => toast(errorMessage(e)),
   });
@@ -903,7 +875,7 @@ function Goals({ account, goals }: { account: Account; goals: Goal[] }) {
   );
 }
 
-function LoanDetail({ account, accounts }: { account: Account; accounts: Account[] }) {
+export function LoanDetail({ account, accounts }: { account: Account; accounts: Account[] }) {
   const qc = useQueryClient();
   const toast = useToast();
   const detail = useQuery(accountQuery(account.id));

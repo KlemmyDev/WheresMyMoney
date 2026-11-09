@@ -28,6 +28,7 @@ import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppSortRouteImport } from './routes/_app/sort'
 import { Route as AppSpendingRouteImport } from './routes/_app/spending'
 import { Route as AppTransactionsRouteImport } from './routes/_app/transactions'
+import { Route as AppAccountsAccountIdRouteImport } from './routes/_app/accounts_.$accountId'
 import { Route as AppBillsBillIdRouteImport } from './routes/_app/bills_.$billId'
 import { Route as AppMerchantsKeyRouteImport } from './routes/_app/merchants_.$key'
 import { Route as AppSpendingCategoryIdRouteImport } from './routes/_app/spending_.$categoryId'
@@ -126,6 +127,11 @@ const AppTransactionsRoute = AppTransactionsRouteImport.update({
   path: '/transactions',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAccountsAccountIdRoute = AppAccountsAccountIdRouteImport.update({
+  id: '/accounts_/$accountId',
+  path: '/accounts/$accountId',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppBillsBillIdRoute = AppBillsBillIdRouteImport.update({
   id: '/bills_/$billId',
   path: '/bills/$billId',
@@ -161,6 +167,7 @@ export interface FileRoutesByFullPath {
   '/sort': typeof AppSortRoute
   '/spending': typeof AppSpendingRoute
   '/transactions': typeof AppTransactionsRoute
+  '/accounts/$accountId': typeof AppAccountsAccountIdRoute
   '/bills/$billId': typeof AppBillsBillIdRoute
   '/merchants/$key': typeof AppMerchantsKeyRoute
   '/spending/$categoryId': typeof AppSpendingCategoryIdRoute
@@ -184,6 +191,7 @@ export interface FileRoutesByTo {
   '/spending': typeof AppSpendingRoute
   '/transactions': typeof AppTransactionsRoute
   '/': typeof AppIndexRoute
+  '/accounts/$accountId': typeof AppAccountsAccountIdRoute
   '/bills/$billId': typeof AppBillsBillIdRoute
   '/merchants/$key': typeof AppMerchantsKeyRoute
   '/spending/$categoryId': typeof AppSpendingCategoryIdRoute
@@ -209,6 +217,7 @@ export interface FileRoutesById {
   '/_app/spending': typeof AppSpendingRoute
   '/_app/transactions': typeof AppTransactionsRoute
   '/_app/': typeof AppIndexRoute
+  '/_app/accounts_/$accountId': typeof AppAccountsAccountIdRoute
   '/_app/bills_/$billId': typeof AppBillsBillIdRoute
   '/_app/merchants_/$key': typeof AppMerchantsKeyRoute
   '/_app/spending_/$categoryId': typeof AppSpendingCategoryIdRoute
@@ -234,6 +243,7 @@ export interface FileRouteTypes {
     | '/sort'
     | '/spending'
     | '/transactions'
+    | '/accounts/$accountId'
     | '/bills/$billId'
     | '/merchants/$key'
     | '/spending/$categoryId'
@@ -257,6 +267,7 @@ export interface FileRouteTypes {
     | '/spending'
     | '/transactions'
     | '/'
+    | '/accounts/$accountId'
     | '/bills/$billId'
     | '/merchants/$key'
     | '/spending/$categoryId'
@@ -281,6 +292,7 @@ export interface FileRouteTypes {
     | '/_app/spending'
     | '/_app/transactions'
     | '/_app/'
+    | '/_app/accounts_/$accountId'
     | '/_app/bills_/$billId'
     | '/_app/merchants_/$key'
     | '/_app/spending_/$categoryId'
@@ -427,6 +439,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppTransactionsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/accounts_/$accountId': {
+      id: '/_app/accounts_/$accountId'
+      path: '/accounts/$accountId'
+      fullPath: '/accounts/$accountId'
+      preLoaderRoute: typeof AppAccountsAccountIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/bills_/$billId': {
       id: '/_app/bills_/$billId'
       path: '/bills/$billId'
@@ -468,6 +487,7 @@ interface AppRouteChildren {
   AppSpendingRoute: typeof AppSpendingRoute
   AppTransactionsRoute: typeof AppTransactionsRoute
   AppIndexRoute: typeof AppIndexRoute
+  AppAccountsAccountIdRoute: typeof AppAccountsAccountIdRoute
   AppBillsBillIdRoute: typeof AppBillsBillIdRoute
   AppMerchantsKeyRoute: typeof AppMerchantsKeyRoute
   AppSpendingCategoryIdRoute: typeof AppSpendingCategoryIdRoute
@@ -490,6 +510,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppSpendingRoute: AppSpendingRoute,
   AppTransactionsRoute: AppTransactionsRoute,
   AppIndexRoute: AppIndexRoute,
+  AppAccountsAccountIdRoute: AppAccountsAccountIdRoute,
   AppBillsBillIdRoute: AppBillsBillIdRoute,
   AppMerchantsKeyRoute: AppMerchantsKeyRoute,
   AppSpendingCategoryIdRoute: AppSpendingCategoryIdRoute,
