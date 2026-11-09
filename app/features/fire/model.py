@@ -103,6 +103,9 @@ class Plan:
     growth_change: float = 0.0  # added to the real growth every year (a high-inflation shock is -0.01)
     save_until: int | None = None  # stop putting money away from this age (still working, pay covering today)
     buffer_years: float = 0.0  # years of spending moved from the ETFs to cash on stopping, drawn first in a bad year
+    extra_super: float = 0.0  # a month more salary sacrificed (before tax), on top of the split, while working
+    extra_etfs: float = 0.0  # a month more into the ETFs while working
+    extra_loan: float = 0.0  # a month more onto the loan while it's on (and, kept working, after it's gone)
 
 
 def project(h: Household, plan: Plan, retire_age: int) -> dict[str, Any]:
@@ -114,7 +117,8 @@ def project(h: Household, plan: Plan, retire_age: int) -> dict[str, Any]:
     spare = (plan.spare if plan.spare is not None else h.spare) * 12
     spend = plan.spend if plan.spend is not None else h.spend
     after = (0.0, 0.5, 0.5) if plan.keep else (0.0, 0.0, 0.0)
-    loan_year = h.repayment * 12
+    repayment = h.repayment + plan.extra_loan
+    loan_year = repayment * 12
     monthly = h.loan_rate / 12
     opens = rules.PRESERVATION_AGE
     pension = rules.AGE_PENSION_COUPLE * (1 if len(h.people) > 1 else 0.66)
@@ -137,8 +141,12 @@ def project(h: Household, plan: Plan, retire_age: int) -> dict[str, Any]:
                 "etfs": max(etf, 0.0),
                 "offset": offset / (1 + inf) ** k if loan else 0.0,
                 "cash": cash,
+                "owed": max(owed - offset, 0.0) if loan else 0.0,  # what's owed past the offset, dollars of the day
+                "growth": growth,
+                "in": {"super": 0.0, "etfs": 0.0, "lump": 0.0, "offset": 0.0},  # money in this year (today's dollars)
             }
         )
+        flows = rows[-1]["in"]
         working = age < retire_age
         saving = working and (plan.save_until is None or age < plan.save_until)
         surplus = (spare if loan else spare + loan_year) if saving else 0.0
@@ -150,15 +158,17 @@ def project(h: Household, plan: Plan, retire_age: int) -> dict[str, Any]:
         if loan:
             for _ in range(12):
                 interest = max(owed - offset, 0) * monthly
-                owed -= h.repayment - interest
+                owed -= repayment - interest
                 if working:
                     offset += to_offset * (1 + inf) ** k / 12
+                    flows["offset"] += to_offset * (1 + inf) ** k / 12
                 if owed <= offset:
                     break
             if owed <= offset:
                 loan = False
                 loan_age = age + 1
                 etf += (offset - owed) / (1 + inf) ** (k + 1)
+                flows["lump"] = (offset - owed) / (1 + inf) ** (k + 1)
                 offset = owed = 0.0
         if age == retire_age and plan.buffer_years:
             cash = min(etf, (plan.spend if plan.spend is not None else h.spend) * plan.buffer_years)
@@ -169,8 +179,11 @@ def project(h: Household, plan: Plan, retire_age: int) -> dict[str, Any]:
             etf = max(0.0, etf + plan.one_off[1])
         if working:
             if saving:
-                sup += h.super_in + sacrifice * (1 - rules.CONTRIBUTIONS_TAX)
-                etf += h.etf_saving + to_etfs
+                extra_sup = min(plan.extra_super * 12, max(h.room - sacrifice, 0.0))
+                flows["super"] = h.super_in + (sacrifice + extra_sup) * (1 - rules.CONTRIBUTIONS_TAX)
+                flows["etfs"] = h.etf_saving + to_etfs + plan.extra_etfs * 12
+                sup += flows["super"]
+                etf += flows["etfs"]
             continue
         part = plan.part_time
         in_part = part is not None and part[0] <= age < part[1]
@@ -179,6 +192,7 @@ def project(h: Household, plan: Plan, retire_age: int) -> dict[str, Any]:
         if in_part and part:
             sup += part[2] * rules.SUPER_GUARANTEE
         need = max(0.0, need)
+        rows[-1]["need"] = need
         paid = {"etfs": 0.0, "cash": 0.0, "offset": 0.0, "super": 0.0, "short": 0.0}
         if growth < 0:  # a bad year: the cash buffer pays first, so nothing's sold while prices are down
             take = min(cash, need)
