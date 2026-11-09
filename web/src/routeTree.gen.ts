@@ -30,6 +30,7 @@ import { Route as AppSpendingRouteImport } from './routes/_app/spending'
 import { Route as AppTransactionsRouteImport } from './routes/_app/transactions'
 import { Route as AppAccountsAccountIdRouteImport } from './routes/_app/accounts_.$accountId'
 import { Route as AppBillsBillIdRouteImport } from './routes/_app/bills_.$billId'
+import { Route as AppGoalsGoalIdRouteImport } from './routes/_app/goals_.$goalId'
 import { Route as AppMerchantsKeyRouteImport } from './routes/_app/merchants_.$key'
 import { Route as AppSpendingCategoryIdRouteImport } from './routes/_app/spending_.$categoryId'
 
@@ -137,6 +138,11 @@ const AppBillsBillIdRoute = AppBillsBillIdRouteImport.update({
   path: '/bills/$billId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppGoalsGoalIdRoute = AppGoalsGoalIdRouteImport.update({
+  id: '/goals_/$goalId',
+  path: '/goals/$goalId',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppMerchantsKeyRoute = AppMerchantsKeyRouteImport.update({
   id: '/merchants_/$key',
   path: '/merchants/$key',
@@ -169,6 +175,7 @@ export interface FileRoutesByFullPath {
   '/transactions': typeof AppTransactionsRoute
   '/accounts/$accountId': typeof AppAccountsAccountIdRoute
   '/bills/$billId': typeof AppBillsBillIdRoute
+  '/goals/$goalId': typeof AppGoalsGoalIdRoute
   '/merchants/$key': typeof AppMerchantsKeyRoute
   '/spending/$categoryId': typeof AppSpendingCategoryIdRoute
 }
@@ -193,6 +200,7 @@ export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
   '/accounts/$accountId': typeof AppAccountsAccountIdRoute
   '/bills/$billId': typeof AppBillsBillIdRoute
+  '/goals/$goalId': typeof AppGoalsGoalIdRoute
   '/merchants/$key': typeof AppMerchantsKeyRoute
   '/spending/$categoryId': typeof AppSpendingCategoryIdRoute
 }
@@ -219,6 +227,7 @@ export interface FileRoutesById {
   '/_app/': typeof AppIndexRoute
   '/_app/accounts_/$accountId': typeof AppAccountsAccountIdRoute
   '/_app/bills_/$billId': typeof AppBillsBillIdRoute
+  '/_app/goals_/$goalId': typeof AppGoalsGoalIdRoute
   '/_app/merchants_/$key': typeof AppMerchantsKeyRoute
   '/_app/spending_/$categoryId': typeof AppSpendingCategoryIdRoute
 }
@@ -245,6 +254,7 @@ export interface FileRouteTypes {
     | '/transactions'
     | '/accounts/$accountId'
     | '/bills/$billId'
+    | '/goals/$goalId'
     | '/merchants/$key'
     | '/spending/$categoryId'
   fileRoutesByTo: FileRoutesByTo
@@ -269,6 +279,7 @@ export interface FileRouteTypes {
     | '/'
     | '/accounts/$accountId'
     | '/bills/$billId'
+    | '/goals/$goalId'
     | '/merchants/$key'
     | '/spending/$categoryId'
   id:
@@ -294,6 +305,7 @@ export interface FileRouteTypes {
     | '/_app/'
     | '/_app/accounts_/$accountId'
     | '/_app/bills_/$billId'
+    | '/_app/goals_/$goalId'
     | '/_app/merchants_/$key'
     | '/_app/spending_/$categoryId'
   fileRoutesById: FileRoutesById
@@ -453,6 +465,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppBillsBillIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/goals_/$goalId': {
+      id: '/_app/goals_/$goalId'
+      path: '/goals/$goalId'
+      fullPath: '/goals/$goalId'
+      preLoaderRoute: typeof AppGoalsGoalIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/merchants_/$key': {
       id: '/_app/merchants_/$key'
       path: '/merchants/$key'
@@ -489,6 +508,7 @@ interface AppRouteChildren {
   AppIndexRoute: typeof AppIndexRoute
   AppAccountsAccountIdRoute: typeof AppAccountsAccountIdRoute
   AppBillsBillIdRoute: typeof AppBillsBillIdRoute
+  AppGoalsGoalIdRoute: typeof AppGoalsGoalIdRoute
   AppMerchantsKeyRoute: typeof AppMerchantsKeyRoute
   AppSpendingCategoryIdRoute: typeof AppSpendingCategoryIdRoute
 }
@@ -512,6 +532,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppIndexRoute: AppIndexRoute,
   AppAccountsAccountIdRoute: AppAccountsAccountIdRoute,
   AppBillsBillIdRoute: AppBillsBillIdRoute,
+  AppGoalsGoalIdRoute: AppGoalsGoalIdRoute,
   AppMerchantsKeyRoute: AppMerchantsKeyRoute,
   AppSpendingCategoryIdRoute: AppSpendingCategoryIdRoute,
 }

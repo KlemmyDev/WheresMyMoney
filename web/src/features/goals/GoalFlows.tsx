@@ -33,7 +33,7 @@ export function goalLook(g: Goal, i = 0) {
   return GOAL_ICON[(g.icon as GoalIcon | null) ?? FALLBACK[i % FALLBACK.length]] ?? GOAL_ICON.shield;
 }
 
-const PER_YEAR: Record<Every, number> = {
+export const PER_YEAR: Record<Every, number> = {
   weekly: 52,
   fortnightly: 26,
   monthly: 12,
@@ -44,7 +44,7 @@ const PER_YEAR: Record<Every, number> = {
 };
 
 /** The household's payday: the pay rule's schedule, or fortnightly from today. */
-function payday(rules: Rule[] | undefined): { every: Every; next: string } {
+export function payday(rules: Rule[] | undefined): { every: Every; next: string } {
   const pay = rules?.find((r) => r.kind === "pay" && r.enabled);
   return pay
     ? { every: pay.every, next: pay.next_run }
@@ -59,7 +59,7 @@ const firstOfMonthIn = (m: number) => {
 };
 
 /** The description to give the uBank transfer, so the import can match it to the goal. */
-const goalRef = (name: string) =>
+export const goalRef = (name: string) =>
   `GOAL ${
     name
       .toUpperCase()
@@ -69,7 +69,7 @@ const goalRef = (name: string) =>
   }`;
 
 /** Where goal money comes from: the offset account(s) and the spending account. */
-function sources(accounts: Account[]): Account[] {
+export function sources(accounts: Account[]): Account[] {
   return accounts.filter((a) => a.kind === "bank" && (a.role === "offset" || a.role === "spending"));
 }
 

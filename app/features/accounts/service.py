@@ -130,6 +130,10 @@ def _clean(body: dict[str, Any], kind: str) -> dict[str, Any]:
 GOAL_ICONS = ("plane", "car", "shield", "home", "kids", "play")
 
 
+# What happened to a reached goal's money: still in the account, spent on the thing, or moved to the offset.
+GOAL_OUTCOMES = ("kept", "spent", "offset")
+
+
 def goal_ref(name: str) -> str:
     """The description to give a goal's transfers so imports can match them: GOAL and the first ten letters and
     numbers of its name (the app shows the same)."""
@@ -331,7 +335,8 @@ class AccountsService:
                     continue
                 out.append(item)
             goals = conn.execute(
-                "SELECT id, account_id, name, target, saved, icon, by_date FROM goals ORDER BY sort, id"
+                "SELECT id, account_id, name, target, saved, icon, by_date, reached_at, outcome FROM goals"
+                " WHERE removed_at IS NULL ORDER BY sort, id"
             ).fetchall()
             planned: dict[int, list[dict[str, Any]]] = {}
             for move_id, goal_id, amount, day in conn.execute(
@@ -358,6 +363,8 @@ class AccountsService:
                     "by_date": g[6],
                     "ref": goal_ref(g[2]),
                     "planned": planned.get(g[0], []),
+                    "reached_at": g[7],
+                    "outcome": g[8],
                 }
                 for g in goals
             ],
@@ -539,7 +546,7 @@ class AccountsService:
         statement shows it). A negative amount takes money out (it won't go below nothing)."""
         today = dates.today().isoformat()
         with self.db.writing() as conn:
-            if not conn.execute("SELECT 1 FROM goals WHERE id = ?", (goal_id,)).fetchone():
+            if not conn.execute("SELECT 1 FROM goals WHERE id = ? AND removed_at IS NULL", (goal_id,)).fetchone():
                 raise LookupError("That goal has gone.")
             if moved:
                 conn.execute("UPDATE goals SET saved = MAX(saved + ?, 0) WHERE id = ?", (amount, goal_id))
@@ -574,7 +581,7 @@ class AccountsService:
         counted again; a planned one is counted now. Returns how many were matched."""
         matched = 0
         with self.db.writing() as conn:
-            goals = conn.execute("SELECT id, account_id, name FROM goals").fetchall()
+            goals = conn.execute("SELECT id, account_id, name FROM goals WHERE removed_at IS NULL").fetchall()
             if not goals:
                 return 0
             since = (dates.today() - dt.timedelta(days=400)).isoformat()
@@ -616,8 +623,36 @@ class AccountsService:
         return matched
 
     def remove_goal(self, goal_id: int) -> bool:
+        """Take a goal off the list: what it saved stays in the account, just not in a goal. Undo brings it back."""
         with self.db.writing() as conn:
-            return conn.execute("DELETE FROM goals WHERE id = ?", (goal_id,)).rowcount > 0
+            return (
+                conn.execute(
+                    "UPDATE goals SET removed_at = ? WHERE id = ? AND removed_at IS NULL",
+                    (dates.today().isoformat(), goal_id),
+                ).rowcount
+                > 0
+            )
+
+    def restore_goal(self, goal_id: int) -> dict[str, Any]:
+        with self.db.writing() as conn:
+            if not conn.execute(
+                "UPDATE goals SET removed_at = NULL WHERE id = ? AND removed_at IS NOT NULL", (goal_id,)
+            ).rowcount:
+                raise LookupError("That goal can't be brought back.")
+        return next(g for g in self.overview()["goals"] if g["id"] == goal_id)
+
+    def reach_goal(self, goal_id: int, outcome: str | None) -> dict[str, Any]:
+        """Say a goal is reached and what happened to the money (kept in the account, spent, or moved to the offset),
+        or with no outcome, that it isn't reached after all."""
+        if outcome is not None and outcome not in GOAL_OUTCOMES:
+            raise ValueError("Say what happened to the money.")
+        with self.db.writing() as conn:
+            if not conn.execute(
+                "UPDATE goals SET reached_at = ?, outcome = ? WHERE id = ? AND removed_at IS NULL",
+                (dates.today().isoformat() if outcome else None, outcome, goal_id),
+            ).rowcount:
+                raise LookupError("That goal has gone.")
+        return next(g for g in self.overview()["goals"] if g["id"] == goal_id)
 
     # -- the loan ---------------------------------------------------------------------------
 
