@@ -9,11 +9,11 @@
  * card as a sheet; + opens the things you record. Every target is at least 44px.
  */
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { CheckinDialog } from "~/features/checkins/CheckinDialog";
 import { Logo } from "~/features/common/brand";
 import { Chip, I, type Glyph, type Tone } from "~/features/common/icons";
-import { Sheet } from "~/features/common/ds";
+import { Banner, Sheet } from "~/features/common/ds";
 import { Button, cn } from "~/features/common/ui";
 import { NewGoalSheet } from "~/features/goals/GoalFlows";
 import { AddSpending } from "~/features/spending/AddSpending";
@@ -81,6 +81,22 @@ export const SECTIONS: readonly Section[] = [
   },
 ];
 
+/** Whether this device has a network connection, kept up to date. */
+function useOnline(): boolean {
+  return useSyncExternalStore(
+    (onChange) => {
+      window.addEventListener("online", onChange);
+      window.addEventListener("offline", onChange);
+      return () => {
+        window.removeEventListener("online", onChange);
+        window.removeEventListener("offline", onChange);
+      };
+    },
+    () => navigator.onLine,
+    () => true,
+  );
+}
+
 const on = (path: string, to: string) => (to === "/" ? path === "/" : path === to || path.startsWith(`${to}/`));
 
 /** The section and page a path belongs to, or nulls for a page outside the menu. */
@@ -103,6 +119,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [goal, setGoal] = useState(false);
   const [sheet, setSheet] = useState<string | null>(null);
   const { section, page } = locate(path);
+  const online = useOnline();
   // A route change closes any open sheet.
   const [seenPath, setSeenPath] = useState(path);
   if (seenPath !== path) {
@@ -163,6 +180,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           key={page?.to ?? path}
           className="screen mx-auto flex max-w-[1360px] flex-col gap-4 px-4 pt-4 pb-14 sm:px-7 sm:pt-6"
         >
+          {!online && (
+            <Banner g={I.shield} tone="bad" title="You're offline">
+              Showing what you saw last. Nothing can be saved until you're back online.
+            </Banner>
+          )}
           {section > 0 && <SectionPages section={SECTIONS[section]} path={path} />}
           {children}
         </main>

@@ -3,7 +3,8 @@
  * the months ahead as a heat strip, and every bill with how often, when next, and how it's paid.
  */
 import { Loading } from "~/features/common/brand";
-import { Bar, BigNumber, Card, Details, Eyebrow, Stat, Term } from "~/features/common/ds";
+import { Bar, BigNumber, Card, Details, EmptyState, Eyebrow, Stat, Term } from "~/features/common/ds";
+import { I } from "~/features/common/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState, type CSSProperties } from "react";
@@ -259,7 +260,18 @@ export function BillsPage() {
             </tbody>
           </table>
           {!b.bills.length && (
-            <div className="py-4 text-ink-3">No bills yet. Add the ones that come out regularly, once each.</div>
+            <EmptyState
+              g={I.bills}
+              tone="bills"
+              title="No bills yet"
+              action={
+                <Button primary onClick={() => setEditing("new")}>
+                  Add a bill
+                </Button>
+              }
+            >
+              Add the ones that come out regularly, once each: the amount and how often.
+            </EmptyState>
           )}
         </div>
       </Tile>
