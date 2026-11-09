@@ -74,6 +74,8 @@ class FireService:
         etfs = sum(f["value"] for f in funds if f.get("kind") != "crypto" or settings.get("count_crypto"))
         _, planned = self.dashboard.growth(ov)
         fee, fee_from = fund_fee(people)
+        if settings.get("super_fee") is not None:
+            fee, fee_from = float(settings["super_fee"]), "set"
         today = dates.today()
         h = Household(
             people=[
@@ -298,6 +300,66 @@ class FireService:
             }
         return out
 
+    def drawdown(self, buffer_years: float, pension: bool) -> dict[str, Any]:
+        """Once stopped at the plan's age: which pot pays each year, how long it lasts in typical years and after a
+        rough start, with a cash buffer and the age pension as asked, and what's in each pot when stopping."""
+        built = self.household()
+        if built is None:
+            raise ValueError("Add each person's super first, on Retirement.")
+        h, _ = built
+        if not 0 <= buffer_years <= 3:
+            raise ValueError("A cash buffer of up to three years.")
+        base = freedom(h, THE_PLAN) or freedom(h, Plan())
+        age = base["retire_age"] if base else 60
+        plan = replace(THE_PLAN if freedom(h, THE_PLAN) else Plan(), buffer_years=buffer_years, pension=pension)
+        typical = project(h, plan, age)
+        rough = shocks.shocked(h, plan, age, "rough")
+        at = next(r for r in typical["rows"] if r["age"] == age)
+        total_super = sum(p.super_balance for p in h.people) or 1
+        return {
+            "retire_age": age,
+            "retire_year": h.year_at(age),
+            "lasts": typical["lasts"],
+            "rough": rough["lasts"],
+            "spend": round(h.spend * 100),
+            "at_stop": {
+                "etfs": round((at["etfs"] + at["cash"]) * 100),
+                "supers": [
+                    {
+                        "name": p.name,
+                        "balance": round(at["super"] * p.super_balance / total_super * 100),
+                        "opens": h.year + max(h.rules.PRESERVATION_AGE - p.age, 0),
+                    }
+                    for p in h.people
+                ],
+            },
+            "rows": [_row(x) for x in typical["rows"] if age <= x["age"] <= max(h.plan_to, 92)],
+        }
+
+    def assume(self, body: dict[str, Any]) -> dict[str, Any]:
+        """The dates with other guesses (super return, fee, inflation, plan-to age), before saving them."""
+        built = self.household()
+        if built is None:
+            raise ValueError("Add each person's super first, on Retirement.")
+        h, notes = built
+        try:
+            h = replace(
+                h,
+                super_return=float(body.get("super_return", h.super_return)),
+                super_fee=float(body["super_fee"]) if body.get("super_fee") is not None else h.super_fee,
+                inflation=float(body.get("inflation", h.inflation)),
+                plan_to=int(body.get("plan_to", h.plan_to)),
+            )
+        except (TypeError, ValueError):
+            raise ValueError("Those guesses aren't numbers we can use.") from None
+        return {
+            "real_growth": h.real_growth,
+            "today": _summary(freedom(h, Plan())),
+            "plan": _summary(freedom(h, THE_PLAN)),
+            "fee_from": notes["fee_from"],
+            "funds_fee": fund_fee(self.retirement.people())[0],
+        }
+
     def saved(self) -> dict[str, Any] | None:
         with self.db.reading() as conn:
             row = conn.execute("SELECT value FROM kv WHERE key = ?", (SAVED,)).fetchone()
@@ -414,6 +476,8 @@ def _summary(r: dict[str, Any] | None) -> dict[str, Any] | None:
 
 def _row(r: dict[str, Any]) -> dict[str, Any]:
     out = {"age": r["age"], "year": r["year"], **{k: round(r[k] * 100) for k in ("super", "etfs", "offset")}}
+    if r.get("cash"):
+        out["cash"] = round(r["cash"] * 100)
     if "paid" in r:
         out["paid"] = {k: round(v * 100) for k, v in r["paid"].items()}
     return out
