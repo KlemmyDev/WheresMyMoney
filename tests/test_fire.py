@@ -224,3 +224,29 @@ def test_the_plan_path_runs_a_year_a_step_from_the_day_it_was_saved() -> None:
     assert _expected(saved, dt.date(2026, 7, 1)) == 100
     assert _expected(saved, dt.date(2026, 12, 30)) == 150
     assert _expected(saved, dt.date(2030, 1, 1)) == 200
+
+
+def test_set_your_goal_moves_the_dates_with_spending_and_fixed_balances(client: TestClient, household: dict) -> None:
+    for name, born, balance, salary in (("Alex", 1988, 112600, 120000), ("Sam", 1990, 73800, 85000)):
+        body = {"person": name, "born": born, "balance": dollars(balance), "salary": dollars(salary), "rate": 0.12}
+        ok(client.post("/api/retirement/people", json=body))
+    base = ok(client.post("/api/fire/goal", json={"spend": dollars(80000)}))
+    more = ok(client.post("/api/fire/goal", json={"spend": dollars(100000)}))
+    richer = ok(client.post("/api/fire/goal", json={"spend": dollars(80000), "supers": {"Alex": dollars(400000)}}))
+    assert base["essentials"] == dollars(55200) and base["lean"]["retire_age"] <= base["plan"]["retire_age"]
+    assert more["plan"]["retire_age"] >= base["plan"]["retire_age"]
+    assert richer["plan"]["retire_age"] <= base["plan"]["retire_age"]
+    assert client.post("/api/fire/goal", json={"spend": dollars(5000)}).status_code == 422
+
+
+def test_set_your_goal_shows_the_dates_the_hub_will_once_saved(client: TestClient, household: dict) -> None:
+    body = {"person": "Alex", "born": 1988, "balance": dollars(112600), "salary": dollars(120000), "rate": 0.12}
+    alex = ok(client.post("/api/retirement/people", json=body))
+    body = {"person": "Sam", "born": 1990, "balance": dollars(73800), "salary": dollars(85000), "rate": 0.12}
+    body["fees"] = [{"name": "Admin", "kind": "pct", "amount": 0.012}]
+    ok(client.post("/api/retirement/people", json=body))
+    pre = ok(client.post("/api/fire/goal", json={"spend": dollars(100000), "supers": {"Alex": dollars(400000)}}))
+    ok(client.put("/api/retirement/settings", json={"spending": dollars(100000)}))
+    ok(client.put(f"/api/retirement/people/{alex['id']}", json={"balance": dollars(400000)}))
+    hub = ok(client.get("/api/fire"))
+    assert (pre["today"], pre["plan"]) == (hub["today"], hub["plan"])

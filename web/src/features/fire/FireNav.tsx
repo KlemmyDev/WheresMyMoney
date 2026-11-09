@@ -5,6 +5,7 @@ import { cn } from "~/features/common/ui";
 /** The pages built so far, in the canvas's order. */
 export const FIRE_PAGES = [
   { to: "/early-retirement", label: "Freedom" },
+  { to: "/early-retirement/setup", label: "Set your goal" },
   { to: "/early-retirement/scenarios", label: "Scenarios" },
   { to: "/early-retirement/bridge", label: "Before super opens" },
   { to: "/early-retirement/next", label: "Where the extra goes" },
