@@ -474,7 +474,10 @@ export function CompareChart({
   marks = [],
   label,
   height = 250,
+  ghost,
 }: {
+  /** A dotted line for comparison (the pace without a change being tried). */
+  ghost?: number[];
   need: (number | null)[];
   pace: number[];
   end: number;
@@ -521,6 +524,15 @@ export function CompareChart({
         <path d={`${pathOf(P.concat([...B].reverse()))} Z`} style={{ fill: colour, fillOpacity: 0.12 }} />
         <path d={lower ? below : above} style={{ fill: TONE.good, fillOpacity: 0.26 }} />
         <path d={lower ? above : below} style={{ fill: TONE.warn, fillOpacity: 0.3 }} />
+        {ghost && (
+          <path
+            d={pathOf(ghost.slice(0, n + 1).map((v, i) => [xs(i), yv(v)]))}
+            fill="none"
+            style={{ stroke: "var(--color-ink-3)" }}
+            strokeWidth={1.5}
+            strokeDasharray="2 4"
+          />
+        )}
         <path d={pathOf(N)} fill="none" style={{ stroke: "var(--color-ink)" }} strokeWidth={2} strokeDasharray="7 5" />
         <path d={pathOf(P)} fill="none" style={{ stroke: colour }} strokeWidth={2.6} strokeLinecap="round" />
         {marks.map((m) => (

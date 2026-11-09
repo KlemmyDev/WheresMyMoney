@@ -270,7 +270,7 @@ function PartCard({
   colour: string;
   spark: ReactNode;
   note: ReactNode;
-  to: "/early-retirement/debt" | "/early-retirement/bridge" | "/retirement";
+  to: "/early-retirement/debt" | "/early-retirement/bridge" | "/early-retirement/super";
   link: string;
 }) {
   const mx = Math.max(need, have, 1) * 1.15;
@@ -444,7 +444,7 @@ function SuperCard({ t }: { t: TrackReady }) {
           ? ` Outside super's spare ${k(t.parts.outside.ahead)} covers the difference.`
           : "")
       }
-      to="/retirement"
+      to="/early-retirement/super"
       link="Super details"
     />
   );

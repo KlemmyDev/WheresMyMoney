@@ -553,6 +553,7 @@ class FireService:
             raise ValueError("Choose an age to stop between now and 75.")
         cp = need.checkpoints(h, plan, goal)
         r = cp["result"]
+        ids = {p["person"]: p["id"] for p in self.retirement.people()}
         c = lambda v: round(v * 100) if v is not None else None  # noqa: E731
         return {
             "ready": True,
@@ -566,6 +567,7 @@ class FireService:
             },
             "people": [
                 {
+                    "id": ids.get(p.name),
                     "name": p.name,
                     "age": p.age,
                     "opens": h.year + max(h.rules.PRESERVATION_AGE - p.age, 0),
@@ -585,6 +587,7 @@ class FireService:
                     "age": y["age"],
                     "year": y["year"],
                     **{k: c(y[k]) for k in ("super", "etfs", "owed", "super_need", "outside_need", "owe_max", "short")},
+                    "put_in": {k: c(v) for k, v in y["put_in"].items()},
                     **({"paid": {k: c(v) for k, v in y["paid"].items()}} if y["paid"] else {}),
                 }
                 for y in cp["years"]
