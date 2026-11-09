@@ -81,7 +81,9 @@ export function RetirementPage() {
       ) : (
         <Plan
           r={r}
-          etfs={inv.data?.total ?? 0}
+          etfs={(inv.data?.funds ?? [])
+            .filter((f) => f.kind !== "crypto" || r.settings.count_crypto)
+            .reduce((t, f) => t + f.value, 0)}
           etfPerYear={etfPace(inv.data?.trades ?? [])}
           etfFee={etfFeeOf(inv.data?.funds, r.settings.etf_fee)}
           loanEnds={loan.data ? Number((loan.data.recent.date ?? "").slice(0, 4)) || null : null}

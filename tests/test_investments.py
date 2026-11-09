@@ -167,3 +167,19 @@ def test_one_holdings_history(client: TestClient) -> None:
     one = ok(client.get("/api/investments/history", params={"range": "1y", "fund": vgs}))
     assert one[0]["date"] == "2026-07-01" and one[-1]["cost"] == dollars(1000)
     assert both[-1]["cost"] == dollars(2000)
+
+
+def test_the_crypto_history_leaves_the_etfs_out(client: TestClient) -> None:
+    vas = fund(client)
+    btc = int(
+        ok(
+            client.post(
+                "/api/investments/funds", json={"ticker": "BTC", "name": "Bitcoin", "group": "intl", "kind": "crypto"}
+            )
+        )["id"]
+    )
+    ok(trade(client, vas, "buy", 10, 100, "2026-06-01"))
+    ok(trade(client, btc, "buy", 0.01, 150000, "2026-07-01"))
+    only = ok(client.get("/api/investments/history", params={"range": "1y", "crypto": "true"}))
+    rest = ok(client.get("/api/investments/history", params={"range": "1y", "crypto": "false"}))
+    assert only[-1]["cost"] == dollars(1500) and rest[-1]["cost"] == dollars(1000)

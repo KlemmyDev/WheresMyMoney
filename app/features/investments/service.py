@@ -575,15 +575,21 @@ class InvestmentsService:
             "parcels": parcels,
         }
 
-    def history(self, span: str, fund_id: int | None = None) -> list[dict[str, Any]]:
+    def history(self, span: str, fund_id: int | None = None, crypto: bool | None = None) -> list[dict[str, Any]]:
         """The portfolio's value and what had been put in (its cost), sampled across the span: daily for a month,
-        weekly up to a year, fortnightly for five. With `fund_id`, that one holding's."""
+        weekly up to a year, fortnightly for five. With `fund_id`, that one holding's; with `crypto`, only crypto
+        (True) or everything but (False)."""
         days = RANGES.get(span, 366)
         step = 1 if days <= 31 else 7 if days <= 366 else 14
         today = dates.today()
         with self.db.reading() as conn:
-            funds = [f for f in self._funds(conn) if fund_id is None or f["id"] == fund_id]
-            trades = {k: v for k, v in self._trades(conn).items() if fund_id is None or k == fund_id}
+            funds = [
+                f
+                for f in self._funds(conn)
+                if (fund_id is None or f["id"] == fund_id) and (crypto is None or (f["kind"] == "crypto") == crypto)
+            ]
+            ids = {f["id"] for f in funds}
+            trades = {k: v for k, v in self._trades(conn).items() if k in ids}
             first = min((t[0][0] for t in trades.values() if t), default=None)
             if first is None:
                 return []

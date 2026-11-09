@@ -386,7 +386,7 @@ function Owned({ n, home, onEdit }: { n: NetWorth; home: boolean; onEdit: (a: As
           value={n.crypto.value}
           badge={{ text: "Live price", tone: "good" }}
           share={n.crypto.value / owned}
-          to="/investments"
+          to="/crypto"
         />
       )}
       {n.accounts.map((a) => (
