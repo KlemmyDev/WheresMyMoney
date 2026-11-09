@@ -37,26 +37,20 @@ export const SECTIONS: readonly Section[] = [
     label: "Money",
     g: I.accounts,
     pages: [
-      // "Sort by merchant" is reached from Spending, so it keeps Spending lit.
+      { to: "/accounts", label: "Accounts", sub: "Each account and its job", g: I.accounts, tone: "" },
+      { to: "/loan", label: "Loan and offset", sub: "What our accounts save on it", g: I.loan, tone: "loan" },
+      { to: "/bills", label: "Bills", sub: "What's due, and what's set aside", g: I.bills, tone: "bills" },
+      // Sorting and every transaction are reached from Spending, so they keep Spending lit.
       {
         to: "/spending",
         label: "Spending",
         sub: "This month, by category",
         g: I.spending,
         tone: "spending",
-        also: ["/sort"],
+        also: ["/sort", "/transactions"],
       },
-      {
-        to: "/transactions",
-        label: "Transactions",
-        sub: "Every account, month by month",
-        g: I.list,
-        tone: "neutral",
-      },
+      { to: "/budgets", label: "Budgets", sub: "A month for each category", g: I.list, tone: "spending" },
       { to: "/merchants", label: "Merchants", sub: "Where it goes, shop by shop", g: I.shop, tone: "spending" },
-      { to: "/bills", label: "Bills", sub: "What's due, and what's set aside", g: I.bills, tone: "bills" },
-      { to: "/accounts", label: "Accounts", sub: "Each account and its job", g: I.accounts, tone: "" },
-      { to: "/loan", label: "Home loan", sub: "What our accounts save on it", g: I.loan, tone: "loan" },
     ],
   },
   {
@@ -534,7 +528,7 @@ function SectionPages({ section, path }: { section: Section; path: string }) {
             className="chip-host press flex h-14 min-w-0 flex-auto flex-col items-center justify-center gap-1 rounded-[14px] px-1 text-[12px] font-semibold whitespace-nowrap text-ink-3 no-underline aria-[current=page]:bg-teal/12 aria-[current=page]:text-ink"
           >
             <Chip g={p.g} tone={p.tone} size="sm" />
-            {p.label === "Home loan" ? "Loan" : p.label}
+            {p.label === "Loan and offset" ? "Loan" : p.label}
           </Link>
         ))}
       </div>
