@@ -41,6 +41,23 @@ def _who(event: dict[str, Any], names: dict[int, str]) -> str:
     )
 
 
+def is_move(event: dict[str, Any]) -> bool:
+    """A rule's transfer from one of the household's accounts to another (not pay, not a bill)."""
+    return (
+        event.get("rule_id") is not None
+        and event["kind"] in ("transfer", "top_up", "sweep")
+        and bool(event.get("amount"))
+        and event.get("from") is not None
+        and event.get("to") is not None
+    )
+
+
+def move_key(event: dict[str, Any]) -> str:
+    """A move's name in the check-in: its rule and the day it ran, e.g. "4:2026-10-31"."""
+    day = event["date"].isoformat() if isinstance(event["date"], dt.date) else str(event["date"])
+    return f"{event.get('rule_id')}:{day}"
+
+
 class CheckinService:
     def __init__(
         self,
@@ -75,7 +92,11 @@ class CheckinService:
             row = conn.execute("SELECT MIN(date) FROM balances").fetchone()
         return dates.parse(row[0]) if row and row[0] else dates.today()
 
-    def _simulate(self, since: dt.date, today: dt.date) -> tuple[dict[int, int], Simulation]:
+    def _simulate(
+        self, since: dt.date, today: dt.date, skipped: frozenset[str] = frozenset()
+    ) -> tuple[dict[int, int], Simulation]:
+        """What each account held at `since`, and what the rules and bills should have done since. A move in
+        `skipped` (see moves()) didn't happen: its amount stays where it started, and it's out of the events."""
         rows = self.accounts.rows()
         with self.db.reading() as conn:
             start = {a["id"]: ledger.balance(conn, a["id"], since.isoformat()) for a in rows}
@@ -83,7 +104,42 @@ class CheckinService:
         per_month = {a["id"]: self.bills.per_month(a["id"]) for a in rows if a["role"] == "bills"}
         spending = {a["id"] for a in rows if a["role"] == "spending"}
         sim = self.rules.simulate({k: float(v) for k, v in start.items()}, since, today, bills, per_month, spending)
+        if skipped:
+            kept = []
+            for e in sim.events:
+                if move_key(e) in skipped:
+                    if e.get("from") is not None:
+                        sim.balances[e["from"]] = sim.balances.get(e["from"], 0) + e["amount"]
+                    if e.get("to") is not None:
+                        sim.balances[e["to"]] = sim.balances.get(e["to"], 0) - e["amount"]
+                else:
+                    kept.append(e)
+            sim.events = kept
         return start, sim
+
+    def moves(self, sim: Simulation, names: dict[int, str]) -> list[dict[str, Any]]:
+        """The transfers between the household's accounts the rules should have made since the last check-in, to ask
+        about before saving: each one happened, or was skipped this time."""
+        out = []
+        for e in sim.events:
+            if not is_move(e):
+                continue
+            rule = self.rules.get(e["rule_id"])
+            out.append(
+                {
+                    "key": move_key(e),
+                    "rule_id": e["rule_id"],
+                    "label": (rule.label if rule and rule.label else "")
+                    or f"{names.get(e['from'], '?')} to {names.get(e['to'], '?')}",
+                    "amount": e["amount"],
+                    "from": e["from"],
+                    "to": e["to"],
+                    "from_name": names.get(e["from"], "?"),
+                    "to_name": names.get(e["to"], "?"),
+                    "date": e["date"].isoformat() if isinstance(e["date"], dt.date) else str(e["date"]),
+                }
+            )
+        return out
 
     def prepare(self) -> dict[str, Any]:
         """The check-in form: each account with its last balance and what it should hold now."""
@@ -124,6 +180,7 @@ class CheckinService:
             "tolerance": self.tolerance(),
             "next_reminder": self.next_reminder().isoformat(),
             "flags": self.flags(),
+            "moves": self.moves(sim, names),
         }
 
     def _loan_due(self) -> dt.date | None:
@@ -144,11 +201,12 @@ class CheckinService:
             return pay.next_run(today + dt.timedelta(days=1))
         return today + dt.timedelta(days=14)
 
-    def check(self, balances: dict[int, int], exact: bool) -> dict[str, Any]:
-        """What a check-in with these balances would say, account by account, without saving it."""
+    def check(self, balances: dict[int, int], exact: bool, skipped: frozenset[str] = frozenset()) -> dict[str, Any]:
+        """What a check-in with these balances would say, account by account, without saving it. Moves in `skipped`
+        didn't happen, so the accounts they'd have changed are expected to hold what they did before."""
         today = dates.today()
         since = self._since()
-        start, sim = self._simulate(since, today)
+        start, sim = self._simulate(since, today, skipped)
         tolerance = self.tolerance()
         rows_by_id = {a["id"]: a for a in self.accounts.rows()}
         names = {k: v["name"] for k, v in rows_by_id.items()}
@@ -226,15 +284,17 @@ class CheckinService:
             ),
         }
 
-    def save(self, balances: dict[int, int], exact: bool, user_id: int | None) -> dict[str, Any]:
+    def save(
+        self, balances: dict[int, int], exact: bool, user_id: int | None, skipped: frozenset[str] = frozenset()
+    ) -> dict[str, Any]:
         """Save a check-in: each balance as known today (exact, with adjustments, if ticked), its flags, and how
-        each rule went."""
+        each rule went (a move said to be skipped is noted as skipped)."""
         if not balances:
             raise ValueError("Enter at least one balance.")
         known = {a["id"] for a in self.accounts.rows()}
         if any(k not in known for k in balances):
             raise ValueError("One of those accounts has gone. Reload and try again.")
-        result = self.check(balances, exact)
+        result = self.check(balances, exact, skipped)
         today = dates.today().isoformat()
         now = int(time.time())
         with self.db.writing() as conn:
@@ -276,7 +336,11 @@ class CheckinService:
         # How each rule went: a transfer whose accounts both added up went as planned.
         statuses = {i["id"]: i["status"] for i in result["accounts"]}
         flagged = {i.get("rule_id") for i in result["accounts"] if i.get("rule_id")}
-        _, sim = self._simulate(dates.parse(result["since"]), dates.today())
+        for key in skipped:
+            skipped_rule = key.split(":", 1)[0]
+            if skipped_rule.isdigit():
+                self.rules.note(int(skipped_rule), "skipped", today)
+        _, sim = self._simulate(dates.parse(result["since"]), dates.today(), skipped)
         for event in sim.events:
             rule_id = event.get("rule_id")
             if not rule_id:
@@ -288,6 +352,34 @@ class CheckinService:
             elif all(statuses.get(x) in ("ok", "spent", None) for x in (event.get("from"), event.get("to")) if x):
                 self.rules.note(rule_id, "ok", today)
         return {"id": checkin_id, **result, "flags": self.flags(), "next_reminder": self.next_reminder().isoformat()}
+
+    def undo(self, checkin_id: int) -> None:
+        """Take back the latest check-in, as if it was never saved: its balances, the adjustments it made to match
+        exact ones, its flags, and the flags it settled (open again)."""
+        with self.db.writing() as conn:
+            row = conn.execute("SELECT id, created_at FROM checkins ORDER BY date DESC, id DESC LIMIT 1").fetchone()
+            if not row or row[0] != checkin_id:
+                raise ValueError("Only the latest check-in can be undone.")
+            created = row[1]
+            accounts = [
+                r[0]
+                for r in conn.execute("SELECT DISTINCT account_id FROM balances WHERE checkin_id = ?", (checkin_id,))
+            ]
+            if accounts:
+                marks = ",".join("?" * len(accounts))
+                conn.execute(
+                    f"DELETE FROM transactions WHERE kind = 'adjustment' AND description = ? AND created_at = ?"
+                    f" AND account_id IN ({marks})",
+                    (ledger.ADJUSTMENT, created, *accounts),
+                )
+                conn.execute(
+                    f"UPDATE checkin_flags SET status = 'open', resolved_at = NULL WHERE status = 'resolved'"
+                    f" AND resolved_at = ? AND account_id IN ({marks})",
+                    (created, *accounts),
+                )
+            conn.execute("DELETE FROM balances WHERE checkin_id = ?", (checkin_id,))
+            conn.execute("DELETE FROM checkin_flags WHERE checkin_id = ?", (checkin_id,))
+            conn.execute("DELETE FROM checkins WHERE id = ?", (checkin_id,))
 
     # -- flags ----------------------------------------------------------------------------
 

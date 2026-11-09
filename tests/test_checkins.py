@@ -95,3 +95,40 @@ def test_an_exact_check_in_adjusts_the_ledger_to_match(client: TestClient, house
 
 def test_the_next_reminder_is_the_next_payday(client: TestClient, household: dict) -> None:
     assert ok(client.get("/api/checkins"))["next_reminder"] == "2026-11-26"
+
+
+def test_the_form_asks_about_each_move_since_the_last_check_in(client: TestClient, household: dict) -> None:
+    moves = {m["label"]: m for m in ok(client.get("/api/checkins"))["moves"]}
+    assert moves["Payday to Savings"]["amount"] == dollars(300)
+    assert moves["Payday to Savings"]["from_name"] == "Offset" and moves["Payday to Savings"]["to_name"] == "Savings"
+    assert moves["Payday to Bills"]["amount"] == dollars(1200)
+
+
+def test_a_skipped_move_changes_what_is_expected(client: TestClient, household: dict) -> None:
+    ids = household
+    skip = next(m["key"] for m in ok(client.get("/api/checkins"))["moves"] if m["label"] == "Payday to Savings")
+    # Savings never got its $300, and Offset kept it: both add up once the move is said to be skipped.
+    balances = {ids["Offset"]: dollars(100350), ids["Savings"]: dollars(22850)}
+    result = ok(client.post("/api/checkins/check", json={"balances": balances, "skipped": [skip]}))
+    by_name = {a["name"]: a for a in result["accounts"]}
+    assert by_name["Savings"]["status"] == "ok" and by_name["Offset"]["status"] == "ok"
+    saved = ok(client.post("/api/checkins", json={"balances": balances, "skipped": [skip]}))
+    assert saved["flags"] == []
+    rules = {r["label"]: r for r in ok(client.get("/api/rules"))["rules"]}
+    assert rules["Payday to Savings"]["last_status"] == "skipped"
+
+
+def test_the_latest_check_in_can_be_undone(client: TestClient, household: dict) -> None:
+    ids = household
+    saved = ok(client.post("/api/checkins", json={"balances": {ids["Offset"]: dollars(100050)}, "exact": True}))
+    assert len(ok(client.get(f"/api/transactions?account_id={ids['Offset']}"))) == 1
+    ok(client.delete(f"/api/checkins/{saved['id']}"))
+    assert ok(client.get(f"/api/transactions?account_id={ids['Offset']}")) == []
+    assert saved["id"] not in {c["id"] for c in ok(client.get("/api/checkins/history"))}
+
+
+def test_only_the_latest_check_in_can_be_undone(client: TestClient, household: dict) -> None:
+    ids = household
+    first = ok(client.post("/api/checkins", json={"balances": {ids["Offset"]: dollars(100050)}}))
+    ok(client.post("/api/checkins", json={"balances": {ids["Offset"]: dollars(100060)}}))
+    assert client.delete(f"/api/checkins/{first['id']}").status_code == 422
