@@ -20,6 +20,19 @@ def test_a_new_household_is_shown_the_guide_until_it_finishes(client: TestClient
     assert done["done"] is True and done["show"] is False and done["settings"]["reminder"] == "weekly"
 
 
+def test_the_reminders_step_ticks_off_without_finishing_the_guide(client: TestClient) -> None:
+    state = ok(client.post("/api/setup/reminders", json={"reminder": "monthly", "detail": "balances"}))
+    assert state["steps"]["reminders"] is True and state["done"] is False and state["show"] is True
+    assert state["settings"]["reminder"] == "monthly" and state["settings"]["detail"] == "balances"
+
+
+def test_the_first_check_in_ticks_off_its_step(client: TestClient) -> None:
+    offset = ok(client.post("/api/accounts", json={"name": "Offset", "role": "offset", "balance": 100}))
+    assert ok(client.get("/api/setup"))["steps"]["checkin"] is False
+    ok(client.post("/api/checkins", json={"balances": {offset["id"]: 20000}}))
+    assert ok(client.get("/api/setup"))["steps"]["checkin"] is True
+
+
 def test_settings_are_checked(client: TestClient) -> None:
     assert client.put("/api/settings", json={"reminder": "hourly"}).status_code == 422
     assert client.put("/api/settings", json={"nonsense": 1}).status_code == 422

@@ -17,8 +17,9 @@ DEFAULTS: dict[str, Any] = {
     "reminder": "payday",
     # Spending detail: import statements now and then ("statements"), or balances only ("balances").
     "detail": "statements",
-    # Whether the set-up guide has been finished (or put off).
+    # Whether the set-up guide has been finished (or put off), and whether its reminders step has been done.
     "setup_done": False,
+    "reminders_set": False,
     # Ask GitHub every few hours whether there's a newer version (Settings → Updates).
     "update_check": True,
     # A check-in's figure is taken as matching what the rules expected when it's within this many dollars.

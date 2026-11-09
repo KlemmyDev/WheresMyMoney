@@ -1,7 +1,8 @@
 /**
- * The set-up guide (designs: Setup1 to Setup5). No bank login: each account's name and today's balance with a job,
- * the home loan and what offsets it, the bills (which size the bills buffer), pay and the payday rules, and how often
- * to check in. Each step saves as it goes, through the same routes the rest of the app uses.
+ * The set-up guide, a checklist from the uplift canvas (OvFirstRun): five jobs, done in any order. Your accounts and
+ * the loan (the accounts with their jobs, the home loan and what offsets it, then pay and the payday rules), bills
+ * (which size the bills buffer), the first check-in, an optional statement import, and reminders. No bank login. Each
+ * step saves as it goes, through the same routes the rest of the app uses; Go to your overview finishes or puts it off.
  */
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -10,12 +11,13 @@ import { apiSend, errorMessage } from "~/features/common/api";
 import { CoverageRing } from "~/features/common/charts";
 import { EVERY_LABEL, colour, editable, money, parseMoney, pct, ROLE_LABEL, todayIso } from "~/features/common/format";
 import { Loading, Logo } from "~/features/common/brand";
-import { accountsQuery, billsQuery, refresh } from "~/features/common/queries";
+import { accountsQuery, billsQuery, refresh, setupQuery } from "~/features/common/queries";
+import { CheckinDialog } from "~/features/checkins/CheckinDialog";
+import { Chip, I, type Glyph, type Tone } from "~/features/common/icons";
 import type { Account, Every, Role } from "~/features/common/types";
 import { JobArt, JobPicker, StepFlow, useStep } from "~/features/common/steps";
-import { Button, Choice, Dot, ErrorText, Input, Label, Option, Select, Tile, cn } from "~/features/common/ui";
+import { Button, Choice, Dot, ErrorText, Input, Label, Option, Pill, Select, Tile, cn } from "~/features/common/ui";
 
-const STEPS = ["Accounts", "Loan", "Bills", "Pay and spending", "Keeping it current"];
 const COMMON_BILLS: [string, Every][] = [
   ["Council rates", "quarterly"],
   ["Water", "quarterly"],
@@ -36,107 +38,221 @@ const COMMON_BILLS: [string, Every][] = [
   ["Strata", "quarterly"],
 ];
 
+/** The checklist's jobs, in the order they're usually done (any order works). */
+type Job = "accounts" | "bills" | "checkin" | "import" | "reminders";
+// The accounts job runs three of the step screens in a row: the accounts, the loan, and pay.
+const ACCOUNT_STEPS = ["Accounts", "Loan", "Pay and spending"];
+
 export function SetupPage() {
-  const flow = useStep(STEPS.length);
-  const step = flow.step;
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
   const qc = useQueryClient();
   const navigate = useNavigate();
   const accounts = useQuery(accountsQuery);
+  const setup = useQuery(setupQuery);
+  const [job, setJob] = useState<Job | null>(null);
+  const flow = useStep(ACCOUNT_STEPS.length);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [checkin, setCheckin] = useState(false);
+  const steps = setup.data?.steps;
+  const done: Record<Job, boolean> = {
+    accounts: !!steps && steps.accounts && steps.loan && steps.pay,
+    bills: !!steps?.bills,
+    checkin: !!steps?.checkin,
+    import: !!steps?.import,
+    reminders: !!steps?.reminders,
+  };
+  const count = Object.values(done).filter(Boolean).length;
+  const home = () => {
+    setJob(null);
+    flow.go(0);
+    void refresh(qc);
+    void qc.invalidateQueries({ queryKey: setupQuery.queryKey });
+  };
+  // Save a step, then go on to the next screen of the job, or back to the checklist when it's the last.
   const next = async (save?: () => Promise<void>) => {
     setError(null);
     setBusy(true);
     try {
       if (save) await save();
       await refresh(qc);
-      if (step === STEPS.length - 1) navigate({ to: "/" });
-      else flow.next();
+      if (job === "accounts" && flow.step < ACCOUNT_STEPS.length - 1) flow.next();
+      else home();
     } catch (e) {
       setError(errorMessage(e));
     } finally {
       setBusy(false);
     }
   };
+  const back = () => (job === "accounts" && flow.step > 0 ? flow.back() : home());
+  const finish = async () => {
+    await apiSend("POST", "setup/finish", {});
+    await qc.invalidateQueries();
+    navigate({ to: "/" });
+  };
   const props = {
     accounts: accounts.data?.accounts ?? [],
     loan: accounts.data?.loan ?? null,
     next,
-    back: flow.back,
+    back,
     busy,
   };
+  const haveAccounts = (accounts.data?.accounts.length ?? 0) > 0;
+
+  const rows: {
+    key: Job;
+    title: string;
+    sub: string;
+    mins: string;
+    g: Glyph;
+    tone: Tone;
+    open: () => void;
+    off?: string;
+  }[] = [
+    {
+      key: "accounts",
+      title: "Your accounts and the loan",
+      sub: "The four accounts and their jobs, the home loan, and pay",
+      mins: "4 min",
+      g: I.accounts,
+      tone: "offset",
+      open: () => setJob("accounts"),
+    },
+    {
+      key: "bills",
+      title: "Bills",
+      sub: "Each one once: the amount and how often",
+      mins: "3 min",
+      g: I.bills,
+      tone: "bills",
+      open: () => setJob("bills"),
+    },
+    {
+      key: "checkin",
+      title: "First check-in",
+      sub: "Type in what uBank shows for each account",
+      mins: "1 min",
+      g: I.offset,
+      tone: "savings",
+      open: () => setCheckin(true),
+      off: haveAccounts ? undefined : "Add the accounts first",
+    },
+    {
+      key: "import",
+      title: "Import a statement",
+      sub: "Optional: a uBank CSV, sorted into categories",
+      mins: "2 min",
+      g: I.import,
+      tone: "neutral",
+      open: () => navigate({ to: "/import" }),
+      off: haveAccounts ? undefined : "Add the accounts first",
+    },
+    {
+      key: "reminders",
+      title: "Reminders",
+      sub: "How often to check in, and how much detail",
+      mins: "1 min",
+      g: I.settings,
+      tone: "spending",
+      open: () => setJob("reminders"),
+    },
+  ];
+
   return (
     <div className="mx-auto flex min-h-screen max-w-[1100px] flex-col gap-6 px-4 py-8 sm:px-7">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <span className="flex items-center gap-2.5">
-          <Logo />
-        </span>
-        <ol className="relative m-0 flex list-none flex-wrap gap-4 p-0 text-[13px]" aria-label="Set-up steps">
-          {STEPS.map((s, i) => (
-            <li
-              key={s}
-              aria-current={i === step ? "step" : undefined}
-              className={cn(
-                "flex items-center gap-2 transition-colors duration-[240ms]",
-                i === step ? "text-ink" : i < step ? "text-ink-2" : "text-ink-3",
-              )}
-            >
-              <span
-                className={cn(
-                  "mono flex size-6 items-center justify-center rounded-full border text-xs transition-[background-color,border-color,color,transform] duration-[240ms]",
-                  i === step && "scale-110",
-                  i < step ? "border-teal bg-teal text-page" : i === step ? "border-teal text-teal" : "border-line",
-                )}
-              >
-                {i < step ? (
-                  <svg
-                    viewBox="0 0 24 24"
-                    width="13"
-                    height="13"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="3"
-                    aria-hidden
-                  >
-                    <path
-                      d="M5 12.5l4.5 4.5L19 7.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="draw"
-                      style={{ strokeDasharray: 22, ["--len" as string]: 22, animationDuration: "320ms" }}
-                    />
-                  </svg>
-                ) : (
-                  i + 1
-                )}
-              </span>
-              {s}
-            </li>
-          ))}
-        </ol>
-      </div>
-      <div className="h-1 overflow-hidden rounded-full bg-line" aria-hidden>
-        <div
-          className="h-full rounded-full bg-teal transition-[width] duration-[480ms] ease-[var(--ease-move)]"
-          style={{ width: `${((step + 1) / STEPS.length) * 100}%` }}
-        />
+        <Logo />
+        {job !== null && (
+          <button
+            type="button"
+            onClick={home}
+            className="press min-h-11 cursor-pointer border-0 bg-transparent text-[14px] font-semibold text-teal"
+          >
+            ← The checklist
+          </button>
+        )}
+        {job === "accounts" && (
+          <span className="text-[13px] text-ink-3">
+            {ACCOUNT_STEPS[flow.step]} · {flow.step + 1} of {ACCOUNT_STEPS.length}
+          </span>
+        )}
       </div>
       {error && <ErrorText>{error}</ErrorText>}
-      {/* Each step starts from what's already saved, so wait for it: otherwise the first step would offer the four
-          starter accounts again on a reload and add them twice. */}
-      {accounts.data ? (
-        <StepFlow step={step} dir={flow.dir}>
-          {step === 0 && <StepAccounts {...props} />}
-          {step === 1 && <StepLoan {...props} />}
-          {step === 2 && <StepBills {...props} />}
-          {step === 3 && <StepPay {...props} />}
-          {step === 4 && <StepCurrent {...props} />}
-        </StepFlow>
-      ) : accounts.isError ? (
-        <ErrorText>{errorMessage(accounts.error)}</ErrorText>
+      {!accounts.data || !setup.data ? (
+        accounts.isError || setup.isError ? (
+          <ErrorText>{errorMessage(accounts.error ?? setup.error)}</ErrorText>
+        ) : (
+          <Loading label="Loading your household" />
+        )
+      ) : job === null ? (
+        <div className="flex flex-col gap-5">
+          <div>
+            <h1 className="m-0 text-[30px] leading-9 font-semibold tracking-tight">Let's set up your household</h1>
+            <p className="mt-1 mb-0 text-ink-2">Five steps, about ten minutes. Tick them off in any order.</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-raised" aria-hidden>
+              <div
+                className="h-full rounded-full bg-savings-fill transition-[width] duration-300"
+                style={{ width: `${(count / rows.length) * 100}%` }}
+              />
+            </div>
+            <span className="text-[13px] text-ink-3">
+              {count} of {rows.length} done
+            </span>
+          </div>
+          <ol className="m-0 flex list-none flex-col gap-2.5 p-0">
+            {rows.map((r) => (
+              <li
+                key={r.key}
+                className="flex flex-wrap items-center gap-3.5 rounded-[20px] border border-line bg-tile px-4 py-3.5"
+              >
+                <Chip g={r.g} tone={r.tone} size="lg" />
+                <span className="min-w-0 flex-1">
+                  <span className="block font-semibold">{r.title}</span>
+                  <span className="block text-[13px] text-ink-3">{r.off ?? r.sub}</span>
+                </span>
+                <span className="rounded-full bg-raised px-2 py-0.5 text-[12px] text-ink-3">{r.mins}</span>
+                {done[r.key] ? (
+                  <span className="flex items-center gap-2">
+                    <Pill tone="good">Done</Pill>
+                    <Button small onClick={r.open} disabled={!!r.off}>
+                      Change
+                    </Button>
+                  </span>
+                ) : (
+                  <Button small onClick={r.open} disabled={!!r.off}>
+                    Start
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ol>
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            {count === rows.length ? (
+              <Button primary onClick={() => void finish()}>
+                Go to your overview
+              </Button>
+            ) : (
+              <Button onClick={() => void finish()}>Skip for now, go to the overview</Button>
+            )}
+          </div>
+        </div>
       ) : (
-        <Loading label="Loading your accounts" />
+        <StepFlow step={`${job}-${flow.step}`} dir={flow.dir}>
+          {job === "accounts" && flow.step === 0 && <StepAccounts {...props} />}
+          {job === "accounts" && flow.step === 1 && <StepLoan {...props} />}
+          {job === "accounts" && flow.step === 2 && <StepPay {...props} />}
+          {job === "bills" && <StepBills {...props} />}
+          {job === "reminders" && <StepCurrent {...props} />}
+        </StepFlow>
       )}
+      <CheckinDialog
+        open={checkin}
+        onClose={() => {
+          setCheckin(false);
+          home();
+        }}
+      />
     </div>
   );
 }
@@ -881,8 +997,8 @@ function StepCurrent({ accounts, next, back, busy }: StepProps) {
       <Footer
         back={back}
         busy={busy}
-        label="Finish and open the dashboard"
-        onNext={() => next(async () => void (await apiSend("POST", "setup/finish", { reminder, detail })))}
+        label="Save"
+        onNext={() => next(async () => void (await apiSend("POST", "setup/reminders", { reminder, detail })))}
       />
     </Tile>
   );
