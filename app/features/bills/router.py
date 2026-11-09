@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import datetime as dt
+
 from fastapi import APIRouter
 
 from app.core import dates
@@ -17,14 +19,32 @@ async def _overview(svc: ServicesDep):
     # What the rules move into the bills account in a usual month, to set against what the bills come to.
     if acct:
         rules = await run(svc.rules.all)
-        out["into_account"] = round(
-            sum(
-                r.amount * dates.PER_YEAR[r.every] / 12
-                for r in rules
-                if r.enabled and r.kind == "transfer" and r.to_account == acct["id"]
-            )
-        )
+        into = [r for r in rules if r.enabled and r.kind == "transfer" and r.to_account == acct["id"]]
+        out["into_account"] = round(sum(r.amount * dates.PER_YEAR[r.every] / 12 for r in into))
+        out["before_pay"] = await run(_before_pay, svc, acct, into)
     return out
+
+
+def _before_pay(svc: ServicesDep, acct: dict, into: list) -> dict | None:
+    """What's due from the bills account before money next comes in (the next run of a rule moving money into it,
+    after today): the bills still to pay until then (late ones from the last fortnight included), what they come to, and whether the balance covers them."""
+    today = dates.today()
+    tomorrow = today + dt.timedelta(days=1)
+    if not into:
+        return None
+    pay = min(r.next_run(tomorrow) for r in into)
+    moves_in = sum(r.amount for r in into if r.next_run(tomorrow) == pay)
+    items = [d for d in svc.bills.due(today - dt.timedelta(days=14), pay - dt.timedelta(days=1)) if d["paid"] is None]
+    total = sum(int(d["amount"]) for d in items)
+    balance = int(acct.get("balance") or 0)
+    return {
+        "pay_day": pay.isoformat(),
+        "moves_in": moves_in,
+        "items": items,
+        "total": total,
+        "covered": balance >= total,
+        "leaves": balance - total,
+    }
 
 
 @router.get("")

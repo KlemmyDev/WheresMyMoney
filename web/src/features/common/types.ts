@@ -105,6 +105,9 @@ export type Bill = {
   category_id: number | null;
   per_year: number;
   share?: number;
+  /** On the Bills page's list: where it stands, and the due date that's about. */
+  status?: "paid" | "late" | "soon" | "later";
+  status_date?: string | null;
 };
 
 /** A bill spotted in the imported statements: regular payments to one merchant. */
@@ -394,6 +397,17 @@ export type BillsOverview = {
   per_month: number;
   next30: { total: number; count: number; by_hand: number; items: Due[] };
   by_month: { month: string; total: number; count: number }[];
+  /** This calendar month's due dates ("2026-11"), paid or not. */
+  calendar: { month: string; items: Due[] };
+  /** What's due from the bills account before money next comes in, when a rule moves money in. */
+  before_pay?: {
+    pay_day: string;
+    moves_in: number;
+    items: Due[];
+    total: number;
+    covered: boolean;
+    leaves: number;
+  } | null;
   account: Account | null;
   /** The bills that come a few times a year or less, and setting money aside for them. */
   set_aside: {

@@ -52,3 +52,28 @@ def test_a_removed_bill_comes_back_with_undo(client: TestClient, household: dict
     back = ok(client.post(f"/api/bills/{bill_id}/restore"))
     assert bill_id in [b["id"] for b in back["bills"]]
     assert client.post(f"/api/bills/{bill_id}/restore").status_code == 404
+
+
+def test_the_bills_page_says_whats_due_before_pay_and_where_each_bill_stands(
+    client: TestClient, household: dict
+) -> None:
+    page = ok(client.get("/api/bills"))
+    before = page["before_pay"]
+    # Today is 12 November and pay moves $1,200 in on the 26th. Rates were due on the 10th and are late; internet
+    # (12th) and water (15th) come before pay.
+    assert before["pay_day"] == "2026-11-26" and before["moves_in"] == dollars(1200)
+    assert [d["name"] for d in before["items"]] == ["Council rates", "Internet", "Water"]
+    assert before["total"] == dollars(787) and before["covered"] and before["leaves"] == dollars(8120 - 787)
+    assert page["calendar"]["month"] == "2026-11"
+    assert {b["name"]: b["status"] for b in page["bills"]} == {
+        "Council rates": "late",
+        "Internet": "soon",
+        "Water": "soon",
+    }
+
+    due = first_due(client)
+    ok(client.post(f"/api/bills/{due['bill_id']}/pay", json={}))
+    page = ok(client.get("/api/bills"))
+    [bill] = [b for b in page["bills"] if b["id"] == due["bill_id"]]
+    assert bill["status"] == "paid"
+    assert due["name"] not in [d["name"] for d in page["before_pay"]["items"]]
