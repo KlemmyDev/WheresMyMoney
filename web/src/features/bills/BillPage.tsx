@@ -7,9 +7,10 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { BillFields, type BillDraft } from "~/features/bills/BillsPage";
 import { MarkPaid } from "~/features/bills/MarkPaid";
+import { PER_YEAR, monthsOn, stepDate } from "~/features/bills/BillsParts";
 import { Loading } from "~/features/common/brand";
 import { PaymentBars } from "~/features/common/charts";
-import { Card, CardHead, Details } from "~/features/common/ds";
+import { Card, CardHead, ChoiceChip, Details } from "~/features/common/ds";
 import { EditPanel, EntityHeader, EntityHero } from "~/features/common/entity";
 import {
   EVERY_LABEL,
@@ -33,8 +34,16 @@ import { TransactionSheet, TxRow } from "~/features/spending/TransactionSheet";
 const HOW = {
   auto: ["Comes out automatically", "info"],
   manual: ["Paid by hand", "warn"],
-  estimate: ["Amount varies", "good"],
 } as const;
+
+/** How long a pause can be, from the menu. */
+const PAUSES = [
+  { value: "", label: "Not paused" },
+  { value: "1", label: "A month" },
+  { value: "2", label: "2 months" },
+  { value: "3", label: "3 months" },
+  { value: "6", label: "6 months" },
+] as const;
 
 /** How many payments show before "Show all". */
 const FIRST = 12;
@@ -82,13 +91,24 @@ export function BillPage({ id }: { id: number }) {
         back={{ to: "/bills", label: "Bills" }}
         mark={<Chip g={I.bills} tone="bills" size="xl" />}
         title={b.name}
-        sub={`${HOW[b.how][0]} · every ${every}${from ? ` · from ${from}` : ""}`}
+        sub={[
+          b.paused_until ? `Paused until ${dayDate(b.paused_until)}` : HOW[b.how][0],
+          b.varies ? "amount varies" : null,
+          `every ${every}`,
+          from ? `from ${from}` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ")}
         actions={
           <>
             <Button onClick={() => setEditing((e) => !e)} aria-expanded={editing}>
               Change
             </Button>
-            {d.due && (d.due.paid || b.how !== "auto") && <MarkPaid due={d.due} primary />}
+            {b.paused_until ? (
+              <EndPause bill={b} />
+            ) : (
+              d.due && (d.due.paid || b.how !== "auto") && <MarkPaid due={d.due} primary />
+            )}
           </>
         }
       />
@@ -114,11 +134,13 @@ export function BillPage({ id }: { id: number }) {
       >
         <p className="m-0 text-[17px] leading-relaxed text-ink">
           {b.name} is <b>{money(b.amount, { cents: true })}</b> every {every}
-          {b.how === "estimate" ? ", give or take" : ""}, about <b>{money(b.per_year)} a year</b>. That's{" "}
-          {pct(d.share, 0)} of all our bills.
+          {b.varies ? ", give or take" : ""}, about <b>{money(b.per_year)} a year</b>. That's {pct(d.share, 0)} of all
+          our bills.
         </p>
         <p className="m-0 text-[15px] text-ink-2">
-          {dueSentence(d, from)}{" "}
+          {b.paused_until
+            ? `Paused: nothing's due until it comes back on ${dayDate(b.paused_until)}, and the next is ${dayDate(b.next_due)}.`
+            : dueSentence(d, from)}{" "}
           {d.count && d.first
             ? `We've paid ${money(d.total)} for it since ${monthYear(d.first.slice(0, 7))}, over ${d.count} ${d.count === 1 ? "payment" : "payments"}.`
             : "No payments are linked to it yet. They're matched when a statement with it is imported."}
@@ -243,11 +265,25 @@ function EditBill({ bill, open, onClose }: { bill: Bill; open: boolean; onClose:
     next_due: bill.next_due,
     account_id: String(bill.account_id ?? ""),
     how: bill.how,
+    varies: bill.varies,
     category_id: String(bill.category_id ?? ""),
     match: bill.match,
   });
   const [f, setF] = useState(start);
-  const changed = JSON.stringify(f) !== JSON.stringify(start());
+  // The pause: how many months from today ("" for none, "keep" for the one it has).
+  const [pause, setPause] = useState<string>(bill.paused_until ? "keep" : "");
+  const today = todayIso();
+  const pausedUntil = pause === "keep" ? bill.paused_until : pause ? monthsOn(today, Number(pause)) : null;
+  const changed = JSON.stringify(f) !== JSON.stringify(start()) || pausedUntil !== bill.paused_until;
+  const amount = parseMoney(f.amount);
+  // The next few due dates as they'd be, with any falling in the pause skipped.
+  const preview = f.next_due
+    ? Array.from({ length: 4 }, (_, i) => stepDate(f.next_due, f.every, i)).map((date) => ({
+        date,
+        skipped: !!pausedUntil && date < pausedUntil,
+      }))
+    : [];
+  const perYear = amount != null ? amount * PER_YEAR[f.every] : null;
   const save = useMutation({
     mutationFn: () =>
       apiSend("PUT", `bills/${bill.id}`, {
@@ -255,6 +291,7 @@ function EditBill({ bill, open, onClose }: { bill: Bill; open: boolean; onClose:
         amount: parseMoney(f.amount),
         account_id: f.account_id || null,
         category_id: f.category_id || null,
+        paused_until: pausedUntil,
       }),
     onSuccess: () => {
       refresh(qc);
@@ -268,7 +305,7 @@ function EditBill({ bill, open, onClose }: { bill: Bill; open: boolean; onClose:
       refresh(qc);
       navigate({ to: "/bills" });
       // Undo outlives this panel (gone once the page goes back to Bills), so it's a plain call, not a mutation here.
-      toast(`${bill.name} removed`, () =>
+      toast(`${bill.name} stopped`, () =>
         apiSend("POST", `bills/${bill.id}/restore`)
           .then(() => {
             refresh(qc);
@@ -286,11 +323,81 @@ function EditBill({ bill, open, onClose }: { bill: Bill; open: boolean; onClose:
       onSave={() => save.mutate()}
       canSave={changed && !!f.name && parseMoney(f.amount) != null}
       saving={save.isPending || remove.isPending}
-      remove={{ label: "Remove bill", onClick: () => remove.mutate() }}
+      remove={{ label: "Stop this bill", onClick: () => remove.mutate() }}
       error={save.isError || remove.isError ? errorMessage(save.error ?? remove.error) : undefined}
     >
+      <p className="m-0 text-[13px] text-ink-3">
+        Past payments stay as they were. The next due dates update as you go.
+      </p>
       <BillFields f={f} onChange={setF} />
+      <div className="flex flex-col gap-2">
+        <div>
+          <div className="text-[14px] text-ink">Pause for a while</div>
+          <div className="text-[13px] text-ink-3">Moving house, a credit on the account, a break from the gym</div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {bill.paused_until && (
+            <ChoiceChip pressed={pause === "keep"} onClick={() => setPause("keep")}>
+              Until {dayDate(bill.paused_until)}
+            </ChoiceChip>
+          )}
+          {PAUSES.map((o) => (
+            <ChoiceChip key={o.value} pressed={pause === o.value} onClick={() => setPause(o.value)}>
+              {o.label}
+            </ChoiceChip>
+          ))}
+        </div>
+        {pausedUntil && <div className="text-[13px] text-ink-2">Back on {dayDate(pausedUntil)}.</div>}
+      </div>
+      {preview.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <div className="text-[14px] text-ink">Next due</div>
+          <ul className="m-0 flex list-none flex-wrap gap-2 p-0" aria-label="The next due dates">
+            {preview.map((x) => (
+              <li
+                key={x.date}
+                className={
+                  "rounded-xl border px-3 py-2 text-[13px] " +
+                  (x.skipped ? "border-dashed border-line-2 text-ink-3" : "border-line-2 text-ink")
+                }
+              >
+                <span className="block font-semibold">{dayDate(x.date)}</span>
+                <span className="num block">
+                  {x.skipped ? "Skipped, paused" : amount != null ? `${f.varies ? "about " : ""}${money(amount)}` : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {perYear != null && perYear !== bill.per_year && (
+        <div className="text-[13px] text-ink-2">
+          A year: {money(bill.per_year)} → <b className="text-ink">{money(perYear)}</b>.
+        </div>
+      )}
+      <p className="m-0 text-[13px] text-ink-3">
+        Stopping takes it off the bills and keeps its payments on the merchant page and in Spending.
+      </p>
     </EditPanel>
+  );
+}
+
+/** End a pause now: its due dates come back from today. The toast offers Undo, which pauses it again. */
+function EndPause({ bill }: { bill: Bill }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const end = useMutation({
+    mutationFn: (until: string | null) => apiSend("PUT", `bills/${bill.id}`, { paused_until: until }),
+    onSuccess: (_r, until) => {
+      refresh(qc);
+      if (until == null) toast(`${bill.name} is back on`, () => end.mutate(bill.paused_until));
+    },
+    onError: (e) => toast(errorMessage(e)),
+  });
+  return (
+    <Button primary disabled={end.isPending} onClick={() => end.mutate(null)}>
+      End the pause
+    </Button>
   );
 }
 

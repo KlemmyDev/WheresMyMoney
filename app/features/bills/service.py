@@ -22,7 +22,7 @@ from app.core.database import Database
 from app.features.bills import detect
 from app.features.spending import merchants
 
-HOW = ("auto", "manual", "estimate")
+HOW = ("auto", "manual")
 DISMISSED = "bill_dismissed:"  # kv: a suggestion (or update) the household said no to
 LOOK_BACK_MONTHS = 25
 OCCASIONAL = ("quarterly", "term", "half-yearly", "yearly")  # a few times a year or less: worth setting aside for
@@ -40,16 +40,27 @@ class Bill:
     how: str
     match: str
     category_id: int | None
+    varies: bool = False  # the amount changes each time, so it's an estimate
+    paused_until: str | None = None  # no due dates before this day
 
     @property
     def per_year(self) -> int:
         return self.amount * dates.PER_YEAR[self.every]
 
     def next_due(self, on_or_after: dt.date | None = None) -> dt.date:
-        return dates.next_on_or_after(dates.parse(self.anchor), self.every, on_or_after or dates.today())
+        day = on_or_after or dates.today()
+        if self.paused_until:
+            day = max(day, dates.parse(self.paused_until))
+        return dates.next_on_or_after(dates.parse(self.anchor), self.every, day)
 
     def due_between(self, start: dt.date, end: dt.date) -> list[dt.date]:
-        return list(dates.occurrences(dates.parse(self.anchor), self.every, start, end))
+        if self.paused_until:
+            start = max(start, dates.parse(self.paused_until))
+        return list(dates.occurrences(dates.parse(self.anchor), self.every, start, end)) if start <= end else []
+
+    @property
+    def paused(self) -> bool:
+        return bool(self.paused_until) and dates.parse(self.paused_until or "") > dates.today()
 
     def view(self) -> dict[str, Any]:
         return {
@@ -60,17 +71,19 @@ class Bill:
             "next_due": self.next_due().isoformat(),
             "account_id": self.account_id,
             "how": self.how,
+            "varies": self.varies,
+            "paused_until": self.paused_until if self.paused else None,
             "match": self.match,
             "category_id": self.category_id,
             "per_year": self.per_year,
         }
 
 
-_COLUMNS = "id, name, amount, every, next_due, account_id, how, match, category_id"
+_COLUMNS = "id, name, amount, every, next_due, account_id, how, match, category_id, varies, paused_until"
 
 
 def _row(r: tuple[Any, ...]) -> Bill:
-    return Bill(*r)
+    return Bill(r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], bool(r[9]), r[10])
 
 
 def clean(body: dict[str, Any]) -> dict[str, Any]:
@@ -92,8 +105,19 @@ def clean(body: dict[str, Any]) -> dict[str, Any]:
     except ValueError:
         raise ValueError("Enter when the bill is next due.") from None
     how = str(body.get("how") or "auto")
+    # "estimate" was once a way of paying: an amount that changes, coming out automatically.
+    varies = bool(body.get("varies")) or how == "estimate"
+    if how == "estimate":
+        how = "auto"
     if how not in HOW:
-        raise ValueError("Say whether it's paid automatically, by hand or is an estimate.")
+        raise ValueError("Say whether it's paid automatically or by hand.")
+    paused = body.get("paused_until") or None
+    if paused:
+        try:
+            pause_day = dates.parse(str(paused))
+        except ValueError:
+            raise ValueError("Enter the day the bill comes back.") from None
+        paused = pause_day.isoformat() if pause_day > dates.today() else None
     account = body.get("account_id")
     category = body.get("category_id")
     return {
@@ -103,6 +127,8 @@ def clean(body: dict[str, Any]) -> dict[str, Any]:
         "next_due": due.isoformat(),
         "account_id": int(account) if account not in (None, "") else None,
         "how": how,
+        "varies": int(varies),
+        "paused_until": paused,
         "match": " ".join(str(body.get("match") or "").upper().split())[:60],
         "category_id": int(category) if category not in (None, "") else None,
     }
@@ -186,8 +212,9 @@ class BillsService:
         f = clean(body)
         with self.db.writing() as conn:
             cur = conn.execute(
-                "INSERT INTO bills (name, amount, every, next_due, account_id, how, match, category_id, created_at)"
-                " VALUES (:name, :amount, :every, :next_due, :account_id, :how, :match, :category_id, :now)",
+                "INSERT INTO bills (name, amount, every, next_due, account_id, how, varies, paused_until, match,"
+                " category_id, created_at) VALUES (:name, :amount, :every, :next_due, :account_id, :how, :varies,"
+                " :paused_until, :match, :category_id, :now)",
                 {**f, "now": int(time.time())},
             )
         bill = self.get(int(cur.lastrowid or 0))
@@ -198,11 +225,12 @@ class BillsService:
         current = self.get(bill_id)
         if current is None:
             raise LookupError("That bill has gone.")
-        f = clean({**current.view(), **body})
+        f = clean({**current.view(), "paused_until": current.paused_until, **body})
         with self.db.writing() as conn:
             conn.execute(
                 "UPDATE bills SET name = :name, amount = :amount, every = :every, next_due = :next_due,"
-                " account_id = :account_id, how = :how, match = :match, category_id = :category_id WHERE id = :id",
+                " account_id = :account_id, how = :how, varies = :varies, paused_until = :paused_until, match = :match,"
+                " category_id = :category_id WHERE id = :id",
                 {**f, "id": bill_id},
             )
         bill = self.get(bill_id)
@@ -221,7 +249,10 @@ class BillsService:
 
     def status(self, bill_id: int) -> dict[str, Any]:
         """Where a bill stands, for the list: "paid" (its latest due date is paid), "late" (a due date has passed
-        unpaid), "soon" (due within a week) or "later", with the due date it's about."""
+        unpaid), "soon" (due within a week), "later", or "paused" (with the day it comes back), with the due date it's about."""
+        bill = self.get(bill_id)
+        if bill is not None and bill.paused:
+            return {"status": "paused", "status_date": bill.paused_until}
         d = self.due_now(bill_id)
         if d is None:
             return {"status": "later", "status_date": None}
@@ -291,6 +322,7 @@ class BillsService:
                         "date": day.isoformat(),
                         "amount": b.amount,
                         "how": b.how,
+                        "varies": b.varies,
                         "paid": paid,
                     }
                 )
@@ -373,6 +405,7 @@ class BillsService:
                     "amount": b.amount,
                     "every": b.every,
                     "how": b.how,
+                    "varies": b.varies,
                     "account_id": b.account_id,
                     "next_due": nxt.isoformat(),
                     "days": (nxt - today).days,
@@ -436,7 +469,7 @@ class BillsService:
             ids = [tx_id] + [
                 r["id"]
                 for r in _unlinked(conn, exclude=tx_id)
-                if _alike(r, merchant, sig) and (bill.how == "estimate" or abs(r["amount"] - amount) <= near)
+                if _alike(r, merchant, sig) and (bill.varies or abs(r["amount"] - amount) <= near)
             ]
             self._attach(conn, bill, ids)
         return len(ids)
@@ -494,7 +527,7 @@ class BillsService:
                     why = f"Has {bill.name.split()[0]} in it"
                 if why is None:
                     continue
-                if bill.how != "estimate" and abs(r["amount"] - bill.amount) > near:
+                if not bill.varies and abs(r["amount"] - bill.amount) > near:
                     continue
                 out.append({**r, "why": why})
         out.sort(key=lambda r: (r["date"], r["id"]), reverse=True)
@@ -550,7 +583,7 @@ class BillsService:
             return abs(a - b) > max(detect.CHANGED_CENTS, round(max(a, b) * detect.CHANGED))
 
         changes = []
-        if bill.how != "estimate":
+        if not bill.varies:
             for i in range(1, len(amounts)):
                 was, now = amounts[i - 1], amounts[i]
                 stayed = i == len(amounts) - 1 or not moved(amounts[i + 1], now)

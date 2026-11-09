@@ -77,3 +77,47 @@ def test_the_bills_page_says_whats_due_before_pay_and_where_each_bill_stands(
     [bill] = [b for b in page["bills"] if b["id"] == due["bill_id"]]
     assert bill["status"] == "paid"
     assert due["name"] not in [d["name"] for d in page["before_pay"]["items"]]
+
+
+def test_a_paused_bill_skips_its_due_dates_until_it_comes_back(client: TestClient, household: dict) -> None:
+    bill = next(b for b in ok(client.get("/api/bills"))["bills"] if b["name"] == "Internet")
+    assert bill["next_due"] == "2026-11-12" and bill["paused_until"] is None
+    ok(client.put(f"/api/bills/{bill['id']}", json={"paused_until": "2027-01-01"}))
+    page = ok(client.get("/api/bills"))
+    paused = next(b for b in page["bills"] if b["id"] == bill["id"])
+    assert paused["paused_until"] == "2027-01-01" and paused["next_due"] == "2027-01-12"
+    assert all(d["bill_id"] != bill["id"] for d in page["calendar"]["items"])
+    # Ending the pause brings its dates back; other changes keep a pause.
+    ok(client.put(f"/api/bills/{bill['id']}", json={"paused_until": "2027-01-01"}))
+    ok(client.put(f"/api/bills/{bill['id']}", json={"amount": 9900}))
+    assert next(b for b in ok(client.get("/api/bills"))["bills"] if b["id"] == bill["id"])["paused_until"]
+    ok(client.put(f"/api/bills/{bill['id']}", json={"paused_until": None}))
+    back = next(b for b in ok(client.get("/api/bills"))["bills"] if b["id"] == bill["id"])
+    assert back["paused_until"] is None and back["next_due"] == "2026-11-12"
+
+
+def test_an_amount_that_varies_is_apart_from_how_its_paid(client: TestClient, household: dict) -> None:
+    bill = next(b for b in ok(client.get("/api/bills"))["bills"] if b["name"] == "Water")
+    ok(client.put(f"/api/bills/{bill['id']}", json={"varies": True, "how": "manual"}))
+    water = next(b for b in ok(client.get("/api/bills"))["bills"] if b["id"] == bill["id"])
+    assert water["varies"] is True and water["how"] == "manual"
+    # The old way of saying it still works: an estimate that comes out by itself.
+    ok(client.put(f"/api/bills/{bill['id']}", json={"how": "estimate"}))
+    water = next(b for b in ok(client.get("/api/bills"))["bills"] if b["id"] == bill["id"])
+    assert water["varies"] is True and water["how"] == "auto"
+
+
+def test_an_older_estimate_bill_becomes_one_that_varies(tmp_path) -> None:
+    import sqlite3
+
+    from app.core.schema import MIGRATIONS
+
+    conn = sqlite3.connect(tmp_path / "old.db")
+    for step in MIGRATIONS[:-1]:
+        step(conn)
+    conn.execute(
+        "INSERT INTO bills (name, amount, every, next_due, how, match, created_at)"
+        " VALUES ('Power', 20000, 'quarterly', '2026-12-01', 'estimate', '', 0)"
+    )
+    MIGRATIONS[-1](conn)
+    assert conn.execute("SELECT how, varies, paused_until FROM bills").fetchone() == ("auto", 1, None)

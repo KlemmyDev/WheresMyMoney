@@ -100,13 +100,17 @@ export type Bill = {
   every: Every;
   next_due: string;
   account_id: number | null;
-  how: "auto" | "manual" | "estimate";
+  how: "auto" | "manual";
+  /** The amount changes each time, so it's an estimate. */
+  varies: boolean;
+  /** Paused: no due dates before this day. */
+  paused_until: string | null;
   match: string;
   category_id: number | null;
   per_year: number;
   share?: number;
   /** On the Bills page's list: where it stands, and the due date that's about. */
-  status?: "paid" | "late" | "soon" | "later";
+  status?: "paid" | "late" | "soon" | "later" | "paused";
   status_date?: string | null;
 };
 
@@ -409,6 +413,7 @@ export type Due = {
   date: string;
   amount: number;
   how: string;
+  varies: boolean;
   paid: { transaction_id: number; date: string; amount: number } | null;
 };
 
@@ -438,6 +443,7 @@ export type BillsOverview = {
       amount: number;
       every: Every;
       how: Bill["how"];
+      varies: boolean;
       account_id: number | null;
       next_due: string;
       days: number;
