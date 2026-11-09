@@ -102,6 +102,7 @@ class Plan:
     returns: dict[int, float] = field(default_factory=dict)  # real growth by age, where it differs
     growth_change: float = 0.0  # added to the real growth every year (a high-inflation shock is -0.01)
     save_until: int | None = None  # stop putting money away from this age (still working, pay covering today)
+    buffer_years: float = 0.0  # years of spending moved from the ETFs to cash on stopping, drawn first in a bad year
 
 
 def project(h: Household, plan: Plan, retire_age: int) -> dict[str, Any]:
@@ -124,6 +125,7 @@ def project(h: Household, plan: Plan, retire_age: int) -> dict[str, Any]:
     gap: int | None = None
     out: int | None = None
     loan_age: int | None = None if loan else h.lead.age
+    cash = 0.0  # the cash buffer, from stopping (no growth after inflation)
     rows: list[dict[str, Any]] = []
     for k, age in enumerate(range(h.lead.age, LAST + 1)):
         growth = plan.returns.get(age, h.real_growth) + plan.growth_change
@@ -134,6 +136,7 @@ def project(h: Household, plan: Plan, retire_age: int) -> dict[str, Any]:
                 "super": max(sup, 0.0),
                 "etfs": max(etf, 0.0),
                 "offset": offset / (1 + inf) ** k if loan else 0.0,
+                "cash": cash,
             }
         )
         working = age < retire_age
@@ -157,6 +160,9 @@ def project(h: Household, plan: Plan, retire_age: int) -> dict[str, Any]:
                 loan_age = age + 1
                 etf += (offset - owed) / (1 + inf) ** (k + 1)
                 offset = owed = 0.0
+        if age == retire_age and plan.buffer_years:
+            cash = min(etf, (plan.spend if plan.spend is not None else h.spend) * plan.buffer_years)
+            etf -= cash
         sup *= 1 + growth
         etf *= 1 + growth
         if plan.one_off and plan.one_off[0] == age:
@@ -173,11 +179,21 @@ def project(h: Household, plan: Plan, retire_age: int) -> dict[str, Any]:
         if in_part and part:
             sup += part[2] * rules.SUPER_GUARANTEE
         need = max(0.0, need)
-        paid = {"etfs": 0.0, "offset": 0.0, "super": 0.0, "short": 0.0}
+        paid = {"etfs": 0.0, "cash": 0.0, "offset": 0.0, "super": 0.0, "short": 0.0}
+        if growth < 0:  # a bad year: the cash buffer pays first, so nothing's sold while prices are down
+            take = min(cash, need)
+            cash -= take
+            need -= take
+            paid["cash"] = take
         take = min(etf, need)
         etf -= take
         need -= take
         paid["etfs"] = take
+        if need > 1 and cash > 0:
+            take = min(cash, need)
+            cash -= take
+            need -= take
+            paid["cash"] += take
         if loan and need > 1:
             reachable = offset / (1 + inf) ** k
             take = min(reachable, need)

@@ -181,3 +181,30 @@ def test_each_shock_has_its_cheapest_fixes() -> None:
     assert spend[0]["age"] == 58 and spend[0]["lasts"] == 92
     fan = shocks.fan(h, THE_PLAN, 57)
     assert fan["bad"]["lasts"] < fan["typical"]["lasts"] == 94 < fan["good"]["lasts"]
+
+
+def test_a_cash_buffer_pays_in_bad_years_and_barely_helps_a_rough_start() -> None:
+    from dataclasses import replace
+
+    h = sample()
+    two = replace(THE_PLAN, buffer_years=2)
+    assert project(h, two, 57)["lasts"] == 92  # cash doesn't grow, so typical years end a little sooner
+    rough = shocks.shocked(h, two, 57, "rough")
+    assert rough["lasts"] == 79  # 78 without it: most of the money is in super and takes the fall anyway
+    hit = next(r for r in rough["rows"] if r["age"] == 57)
+    assert hit["paid"]["cash"] > 0 and hit["paid"]["etfs"] == 0
+
+
+def test_drawdown_and_assumptions_answer_for_the_household(client: TestClient, household: dict) -> None:
+    for name, born, balance, salary in (("Alex", 1988, 112600, 120000), ("Sam", 1990, 73800, 85000)):
+        body = {"person": name, "born": born, "balance": dollars(balance), "salary": dollars(salary), "rate": 0.12}
+        ok(client.post("/api/retirement/people", json=body))
+    d = ok(client.post("/api/fire/drawdown", json={"buffer_years": 1, "pension": False}))
+    assert [s["name"] for s in d["at_stop"]["supers"]] == ["Alex", "Sam"] and d["rows"][0]["age"] == d["retire_age"]
+    assert client.post("/api/fire/drawdown", json={"buffer_years": 9}).status_code == 422
+    a = ok(client.post("/api/fire/assume", json={"super_fee": 0.0073}))
+    b = ok(client.post("/api/fire/assume", json={"super_fee": 0.006}))
+    assert a["real_growth"] < b["real_growth"]
+    ok(client.put("/api/retirement/settings", json={"super_fee": 0.0073}))
+    assert ok(client.get("/api/fire"))["assumptions"]["fee_from"] == "set"
+    assert client.put("/api/retirement/settings", json={"super_fee": 0.2}).status_code == 422

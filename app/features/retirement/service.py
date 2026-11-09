@@ -35,6 +35,8 @@ DEFAULTS: dict[str, Any] = {
     # The household's own cap, so a small bet stays small: crypto under this share of the investments or net worth.
     "crypto_cap": 0.05,
     "crypto_cap_of": "investments",
+    # Super fees a year as a share of the balance, to plan with in place of each fund's own (None: the funds').
+    "super_fee": None,
     "plan_to": 92,
     # Assumptions, a year, as fractions (0.07 is 7%).
     "super_return": 0.07,  # before fees
@@ -154,6 +156,8 @@ class RetirementService:
                 out["crypto_cap"] = float(body["crypto_cap"])
             if "crypto_cap_of" in body:
                 out["crypto_cap_of"] = str(body["crypto_cap_of"])
+            if "super_fee" in body:
+                out["super_fee"] = None if body["super_fee"] in (None, "") else float(body["super_fee"])
             for key in RANGES:
                 if key in body:
                     out[key] = float(body[key])
@@ -169,6 +173,8 @@ class RetirementService:
             if not lo <= out[key] <= hi:
                 name = key.replace("_", " ").replace("etf", "ETF").replace("contrib", "contributions")
                 raise ValueError(f"The {name} should be between {lo:.0%} and {hi:.0%} a year.")
+        if out["super_fee"] is not None and not 0 <= out["super_fee"] <= 0.03:
+            raise ValueError("Super fees to plan with should be between 0% and 3% a year.")
         if not 0 <= out["crypto_cap"] <= 0.5:
             raise ValueError("Keep the crypto cap between 0% and 50%.")
         if out["crypto_cap_of"] not in ("investments", "networth"):

@@ -10,6 +10,8 @@ export const FIRE_PAGES = [
   { to: "/early-retirement/next", label: "Where the extra goes" },
   { to: "/early-retirement/debt", label: "Loan or invest" },
   { to: "/early-retirement/stress", label: "What could go wrong" },
+  { to: "/early-retirement/drawdown", label: "Spending it" },
+  { to: "/early-retirement/assumptions", label: "Assumptions" },
 ] as const;
 
 export function FireNav() {

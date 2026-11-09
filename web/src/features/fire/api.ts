@@ -18,7 +18,7 @@ export type FireRow = {
   etfs: number;
   offset: number;
   /** Once stopped: what each pot paid that year, and what fell short. */
-  paid?: { etfs: number; offset: number; super: number; short: number };
+  paid?: { etfs: number; cash: number; offset: number; super: number; short: number };
 };
 
 export type Bridge = { years: number; opens_year: number; outside: number; need: number; covered: boolean };

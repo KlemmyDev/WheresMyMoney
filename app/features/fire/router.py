@@ -77,3 +77,21 @@ async def debt_race(svc: ServicesDep, body: JsonBody):
 async def stress(svc: ServicesDep, body: JsonBody):
     """{"shock": "rough" | "inflation" | "spend" | "income" | null}: the plan against bad luck, and the fixes."""
     return await run(svc.fire.stress, body.get("shock") or None)
+
+
+@router.post("/drawdown")
+async def drawdown(svc: ServicesDep, body: JsonBody):
+    """{"buffer_years": 1, "pension": false}: once stopped, which pot pays each year, and how long it lasts."""
+    try:
+        years = float(body.get("buffer_years") or 0)
+    except (TypeError, ValueError):
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=422, detail="Enter a number of years.") from None
+    return await run(svc.fire.drawdown, years, bool(body.get("pension")))
+
+
+@router.post("/assume")
+async def assume(svc: ServicesDep, body: JsonBody):
+    """{"super_return": 0.07, "super_fee": 0.006, "inflation": 0.03, "plan_to": 92}: the dates with these guesses."""
+    return await run(svc.fire.assume, body)

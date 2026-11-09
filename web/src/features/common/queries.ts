@@ -386,6 +386,7 @@ export type RetirementSettings = {
   etf_fee: number;
   inflation: number;
   contrib_tax: number;
+  super_fee: number | null;
 };
 
 export type RetirementData = {
