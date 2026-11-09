@@ -33,6 +33,7 @@ import { Route as AppBillsBillIdRouteImport } from './routes/_app/bills_.$billId
 import { Route as AppBillsSpottedRouteImport } from './routes/_app/bills_.spotted'
 import { Route as AppGoalsGoalIdRouteImport } from './routes/_app/goals_.$goalId'
 import { Route as AppMerchantsKeyRouteImport } from './routes/_app/merchants_.$key'
+import { Route as AppRetirementStatementRouteImport } from './routes/_app/retirement_.statement'
 import { Route as AppSpendingCategoryIdRouteImport } from './routes/_app/spending_.$categoryId'
 
 const AppRoute = AppRouteImport.update({
@@ -154,6 +155,11 @@ const AppMerchantsKeyRoute = AppMerchantsKeyRouteImport.update({
   path: '/merchants/$key',
   getParentRoute: () => AppRoute,
 } as any)
+const AppRetirementStatementRoute = AppRetirementStatementRouteImport.update({
+  id: '/retirement_/statement',
+  path: '/retirement/statement',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppSpendingCategoryIdRoute = AppSpendingCategoryIdRouteImport.update({
   id: '/spending_/$categoryId',
   path: '/spending/$categoryId',
@@ -184,6 +190,7 @@ export interface FileRoutesByFullPath {
   '/bills/spotted': typeof AppBillsSpottedRoute
   '/goals/$goalId': typeof AppGoalsGoalIdRoute
   '/merchants/$key': typeof AppMerchantsKeyRoute
+  '/retirement/statement': typeof AppRetirementStatementRoute
   '/spending/$categoryId': typeof AppSpendingCategoryIdRoute
 }
 export interface FileRoutesByTo {
@@ -210,6 +217,7 @@ export interface FileRoutesByTo {
   '/bills/spotted': typeof AppBillsSpottedRoute
   '/goals/$goalId': typeof AppGoalsGoalIdRoute
   '/merchants/$key': typeof AppMerchantsKeyRoute
+  '/retirement/statement': typeof AppRetirementStatementRoute
   '/spending/$categoryId': typeof AppSpendingCategoryIdRoute
 }
 export interface FileRoutesById {
@@ -238,6 +246,7 @@ export interface FileRoutesById {
   '/_app/bills_/spotted': typeof AppBillsSpottedRoute
   '/_app/goals_/$goalId': typeof AppGoalsGoalIdRoute
   '/_app/merchants_/$key': typeof AppMerchantsKeyRoute
+  '/_app/retirement_/statement': typeof AppRetirementStatementRoute
   '/_app/spending_/$categoryId': typeof AppSpendingCategoryIdRoute
 }
 export interface FileRouteTypes {
@@ -266,6 +275,7 @@ export interface FileRouteTypes {
     | '/bills/spotted'
     | '/goals/$goalId'
     | '/merchants/$key'
+    | '/retirement/statement'
     | '/spending/$categoryId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -292,6 +302,7 @@ export interface FileRouteTypes {
     | '/bills/spotted'
     | '/goals/$goalId'
     | '/merchants/$key'
+    | '/retirement/statement'
     | '/spending/$categoryId'
   id:
     | '__root__'
@@ -319,6 +330,7 @@ export interface FileRouteTypes {
     | '/_app/bills_/spotted'
     | '/_app/goals_/$goalId'
     | '/_app/merchants_/$key'
+    | '/_app/retirement_/statement'
     | '/_app/spending_/$categoryId'
   fileRoutesById: FileRoutesById
 }
@@ -498,6 +510,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppMerchantsKeyRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/retirement_/statement': {
+      id: '/_app/retirement_/statement'
+      path: '/retirement/statement'
+      fullPath: '/retirement/statement'
+      preLoaderRoute: typeof AppRetirementStatementRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/spending_/$categoryId': {
       id: '/_app/spending_/$categoryId'
       path: '/spending/$categoryId'
@@ -530,6 +549,7 @@ interface AppRouteChildren {
   AppBillsSpottedRoute: typeof AppBillsSpottedRoute
   AppGoalsGoalIdRoute: typeof AppGoalsGoalIdRoute
   AppMerchantsKeyRoute: typeof AppMerchantsKeyRoute
+  AppRetirementStatementRoute: typeof AppRetirementStatementRoute
   AppSpendingCategoryIdRoute: typeof AppSpendingCategoryIdRoute
 }
 
@@ -555,6 +575,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppBillsSpottedRoute: AppBillsSpottedRoute,
   AppGoalsGoalIdRoute: AppGoalsGoalIdRoute,
   AppMerchantsKeyRoute: AppMerchantsKeyRoute,
+  AppRetirementStatementRoute: AppRetirementStatementRoute,
   AppSpendingCategoryIdRoute: AppSpendingCategoryIdRoute,
 }
 
