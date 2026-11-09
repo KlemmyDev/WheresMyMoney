@@ -403,14 +403,38 @@ export const retirementQuery = queryOptions({
   queryFn: ({ signal }) => apiGet<RetirementData>("retirement", undefined, { signal }),
 });
 
+export type AssetKind = "home" | "property" | "land" | "car" | "vehicle" | "valuables" | "cash" | "other";
+/** The group a kind counts in on Net worth: the home goes with "Count the home"; the rest always count. */
+export type AssetGroup = "home" | "property" | "vehicles" | "things";
+export type AssetEntry = { id: number; date: string; value: number; note: string };
+export type OwedEntry = { id: number; date: string; amount: number; note: string };
+
 export type Asset = {
   id: number;
   name: string;
-  kind: "home" | "car" | "other";
+  kind: AssetKind;
+  group: AssetGroup;
+  /** What it's worth now: the latest value given. */
   value: number;
   as_of: string | null;
-  values: { date: string; value: number }[];
+  values: AssetEntry[];
+  /** Anything owed against it (a car loan): `amount` is the latest given, 0 with none. */
+  owed: { name: string; rate_bp: number | null; amount: number; as_of: string | null; entries: OwedEntry[] };
+  /** What it's worth less what's owed against it. */
+  equity: number;
 };
+
+export type AssetPage = Asset & {
+  range: string;
+  history: { date: string; value: number; owed: number }[];
+  kinds: Record<AssetKind, string>;
+};
+
+export const assetQuery = (id: number, range: string) =>
+  queryOptions({
+    queryKey: ["networth", "asset", id, range],
+    queryFn: ({ signal }) => apiGet<AssetPage>(`networth/assets/${id}`, { range }, { signal }),
+  });
 
 export type NetWorthPoint = {
   date: string;
@@ -420,14 +444,29 @@ export type NetWorthPoint = {
   crypto: number;
   super: number;
   home: number;
+  /** Everything owned besides the home: property, vehicles and things together. */
   other: number;
+  property?: number;
+  vehicles?: number;
+  things?: number;
   loan: number;
+  /** Owed against things owned: against the home (goes with it) and against everything else. */
+  home_owed?: number;
+  owed?: number;
 };
 
 /** Net worth at a point: everything owned less the home loan (or, without the home, leaving out both). The one sum
  * every page uses, so Overview, Net worth and Future agree. */
 export function netWorthOf(p: NetWorthPoint, home = true): number {
-  return p.accounts + p.shares + (p.crypto ?? 0) + p.super + p.other + (home ? p.home - p.loan : 0);
+  return (
+    p.accounts +
+    p.shares +
+    (p.crypto ?? 0) +
+    p.super +
+    p.other -
+    (p.owed ?? 0) +
+    (home ? p.home - p.loan - (p.home_owed ?? 0) : 0)
+  );
 }
 
 export type NetWorth = {
@@ -456,7 +495,8 @@ export type NetWorth = {
   assets: Asset[];
   now: NetWorthPoint;
   history: NetWorthPoint[];
-  kinds: Record<string, string>;
+  kinds: Record<AssetKind, string>;
+  groups: Record<AssetKind, AssetGroup>;
 };
 
 export const netWorthQuery = (range: string) =>

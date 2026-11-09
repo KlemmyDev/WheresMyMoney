@@ -256,6 +256,22 @@ def seed(db: Database, today: dt.date | None = None) -> bool:
                 "INSERT INTO asset_values (asset_id, date, value) VALUES (?, ?, ?)",
                 (home, dates.add_months(today, -months_back).isoformat(), value),
             )
+        cur = conn.execute(
+            "INSERT INTO assets (name, kind, sort, created_at, owed_name, owed_rate_bp)"
+            " VALUES ('Corolla', 'car', 1, ?, 'Car loan', 749)",
+            (now,),
+        )
+        car = int(cur.lastrowid or 0)
+        for months_back, value, note in ((20, 3450000, "What we paid"), (8, 2900000, ""), (1, 2650000, "")):
+            conn.execute(
+                "INSERT INTO asset_values (asset_id, date, value, note) VALUES (?, ?, ?, ?)",
+                (car, dates.add_months(today, -months_back).isoformat(), value, note),
+            )
+        for months_back, owed in ((20, 2500000), (12, 1980000), (4, 1450000), (1, 1310000)):
+            conn.execute(
+                "INSERT INTO asset_owed (asset_id, date, amount) VALUES (?, ?, ?)",
+                (car, dates.add_months(today, -months_back).isoformat(), owed),
+            )
         supers: tuple[tuple[str, int, str, int, int, list[dict[str, Any]], list[dict[str, Any]]], ...] = (
             (
                 "Alex",

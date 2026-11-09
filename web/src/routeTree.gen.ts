@@ -44,6 +44,7 @@ import { Route as AppEarlyRetirementStressRouteImport } from './routes/_app/earl
 import { Route as AppGoalsGoalIdRouteImport } from './routes/_app/goals_.$goalId'
 import { Route as AppInvestmentsFundIdRouteImport } from './routes/_app/investments_.$fundId'
 import { Route as AppMerchantsKeyRouteImport } from './routes/_app/merchants_.$key'
+import { Route as AppNetWorthAssetIdRouteImport } from './routes/_app/net-worth_.$assetId'
 import { Route as AppRetirementStatementRouteImport } from './routes/_app/retirement_.statement'
 import { Route as AppSpendingCategoryIdRouteImport } from './routes/_app/spending_.$categoryId'
 import { Route as AppRetirementSuperPersonIdRouteImport } from './routes/_app/retirement_.super.$personId'
@@ -227,6 +228,11 @@ const AppMerchantsKeyRoute = AppMerchantsKeyRouteImport.update({
   path: '/merchants/$key',
   getParentRoute: () => AppRoute,
 } as any)
+const AppNetWorthAssetIdRoute = AppNetWorthAssetIdRouteImport.update({
+  id: '/net-worth_/$assetId',
+  path: '/net-worth/$assetId',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppRetirementStatementRoute = AppRetirementStatementRouteImport.update({
   id: '/retirement_/statement',
   path: '/retirement/statement',
@@ -279,6 +285,7 @@ export interface FileRoutesByFullPath {
   '/goals/$goalId': typeof AppGoalsGoalIdRoute
   '/investments/$fundId': typeof AppInvestmentsFundIdRoute
   '/merchants/$key': typeof AppMerchantsKeyRoute
+  '/net-worth/$assetId': typeof AppNetWorthAssetIdRoute
   '/retirement/statement': typeof AppRetirementStatementRoute
   '/spending/$categoryId': typeof AppSpendingCategoryIdRoute
   '/retirement/super/$personId': typeof AppRetirementSuperPersonIdRoute
@@ -318,6 +325,7 @@ export interface FileRoutesByTo {
   '/goals/$goalId': typeof AppGoalsGoalIdRoute
   '/investments/$fundId': typeof AppInvestmentsFundIdRoute
   '/merchants/$key': typeof AppMerchantsKeyRoute
+  '/net-worth/$assetId': typeof AppNetWorthAssetIdRoute
   '/retirement/statement': typeof AppRetirementStatementRoute
   '/spending/$categoryId': typeof AppSpendingCategoryIdRoute
   '/retirement/super/$personId': typeof AppRetirementSuperPersonIdRoute
@@ -359,6 +367,7 @@ export interface FileRoutesById {
   '/_app/goals_/$goalId': typeof AppGoalsGoalIdRoute
   '/_app/investments_/$fundId': typeof AppInvestmentsFundIdRoute
   '/_app/merchants_/$key': typeof AppMerchantsKeyRoute
+  '/_app/net-worth_/$assetId': typeof AppNetWorthAssetIdRoute
   '/_app/retirement_/statement': typeof AppRetirementStatementRoute
   '/_app/spending_/$categoryId': typeof AppSpendingCategoryIdRoute
   '/_app/retirement_/super/$personId': typeof AppRetirementSuperPersonIdRoute
@@ -400,6 +409,7 @@ export interface FileRouteTypes {
     | '/goals/$goalId'
     | '/investments/$fundId'
     | '/merchants/$key'
+    | '/net-worth/$assetId'
     | '/retirement/statement'
     | '/spending/$categoryId'
     | '/retirement/super/$personId'
@@ -439,6 +449,7 @@ export interface FileRouteTypes {
     | '/goals/$goalId'
     | '/investments/$fundId'
     | '/merchants/$key'
+    | '/net-worth/$assetId'
     | '/retirement/statement'
     | '/spending/$categoryId'
     | '/retirement/super/$personId'
@@ -479,6 +490,7 @@ export interface FileRouteTypes {
     | '/_app/goals_/$goalId'
     | '/_app/investments_/$fundId'
     | '/_app/merchants_/$key'
+    | '/_app/net-worth_/$assetId'
     | '/_app/retirement_/statement'
     | '/_app/spending_/$categoryId'
     | '/_app/retirement_/super/$personId'
@@ -737,6 +749,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppMerchantsKeyRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/net-worth_/$assetId': {
+      id: '/_app/net-worth_/$assetId'
+      path: '/net-worth/$assetId'
+      fullPath: '/net-worth/$assetId'
+      preLoaderRoute: typeof AppNetWorthAssetIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/retirement_/statement': {
       id: '/_app/retirement_/statement'
       path: '/retirement/statement'
@@ -794,6 +813,7 @@ interface AppRouteChildren {
   AppGoalsGoalIdRoute: typeof AppGoalsGoalIdRoute
   AppInvestmentsFundIdRoute: typeof AppInvestmentsFundIdRoute
   AppMerchantsKeyRoute: typeof AppMerchantsKeyRoute
+  AppNetWorthAssetIdRoute: typeof AppNetWorthAssetIdRoute
   AppRetirementStatementRoute: typeof AppRetirementStatementRoute
   AppSpendingCategoryIdRoute: typeof AppSpendingCategoryIdRoute
   AppRetirementSuperPersonIdRoute: typeof AppRetirementSuperPersonIdRoute
@@ -832,6 +852,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppGoalsGoalIdRoute: AppGoalsGoalIdRoute,
   AppInvestmentsFundIdRoute: AppInvestmentsFundIdRoute,
   AppMerchantsKeyRoute: AppMerchantsKeyRoute,
+  AppNetWorthAssetIdRoute: AppNetWorthAssetIdRoute,
   AppRetirementStatementRoute: AppRetirementStatementRoute,
   AppSpendingCategoryIdRoute: AppSpendingCategoryIdRoute,
   AppRetirementSuperPersonIdRoute: AppRetirementSuperPersonIdRoute,

@@ -426,6 +426,28 @@ def _fire_scenarios(conn: sqlite3.Connection) -> None:
     )
 
 
+def _asset_pages(conn: sqlite3.Connection) -> None:
+    """Things owned get their own page. assets: more kinds (see app.features.networth.KINDS), `removed_at` (removed
+    with an undo; NULL while it's kept) and what's owed against it: `owed_name` (the car loan, say) and `owed_rate_bp`
+    (5.99% is 599). asset_values: a `note` per value ("What we paid", "Bank valuation"), and a value can be dated in the
+    past. asset_owed: each amount owed against it given, from `date`, as asset_values is for what it's worth."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(assets)")}
+    if "removed_at" not in cols:
+        conn.execute("ALTER TABLE assets ADD COLUMN removed_at INTEGER")
+    if "owed_name" not in cols:
+        conn.execute("ALTER TABLE assets ADD COLUMN owed_name TEXT NOT NULL DEFAULT ''")
+    if "owed_rate_bp" not in cols:
+        conn.execute("ALTER TABLE assets ADD COLUMN owed_rate_bp INTEGER")
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(asset_values)")}
+    if "note" not in cols:
+        conn.execute("ALTER TABLE asset_values ADD COLUMN note TEXT NOT NULL DEFAULT ''")
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS asset_owed (id INTEGER PRIMARY KEY, asset_id INTEGER NOT NULL, date TEXT NOT NULL,"
+        " amount INTEGER NOT NULL, note TEXT NOT NULL DEFAULT '')"
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS asset_owed_by_asset ON asset_owed (asset_id, date)")
+
+
 MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _baseline,
     _money,
@@ -457,4 +479,5 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _loan_lender,
     _what_you_earn,
     _fire_scenarios,
+    _asset_pages,
 ]
