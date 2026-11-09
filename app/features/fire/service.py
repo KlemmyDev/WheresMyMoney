@@ -28,6 +28,9 @@ from app.features.retirement.service import RetirementService
 EXTRAS = (250, 500, 1000)  # dollars a month, for loan or invest
 SAVED = "fire:plan"  # kv: the plan the household made theirs, with its path then (to check in against)
 GOAL = "fire:goal"  # kv: the age the household wants to stop work at ({"age": 55, "set_at": ...})
+EXTRA_KV = "fire:extras"  # kv: extra a month the household has made part of the plan ({"extra_super": cents, ...})
+CHECKS = "fire:checkpoints"  # kv: each checkpoint check-in, oldest first ({"date", "super", "etfs", "owed", ...})
+EXTRA_KEYS = ("extra_super", "extra_etfs", "extra_loan")
 LEAN = 0.69  # essentials as a share of the spending planned (the canvas's $55,000 of $80,000)
 
 
@@ -509,8 +512,69 @@ class FireService:
         return json.loads(row[0]) if row else None
 
     def current_plan(self) -> Plan:
-        """Today's pace: the plan the household made theirs (keep the loan money working), else as things are."""
-        return THE_PLAN if self.saved() else Plan()
+        """Today's pace: the plan the household made theirs (keep the loan money working), else as things are, with
+        any extra a month made part of the plan (from Close the gap)."""
+        base = THE_PLAN if self.saved() else Plan()
+        extras = self._kv(EXTRA_KV) or {}
+        cents = {k: float(extras.get(k) or 0) / 100 for k in EXTRA_KEYS}
+        return replace(
+            base, extra_super=cents["extra_super"], extra_etfs=cents["extra_etfs"], extra_loan=cents["extra_loan"]
+        )
+
+    def _kv(self, key: str) -> Any:
+        with self.db.reading() as conn:
+            row = conn.execute("SELECT value FROM kv WHERE key = ?", (key,)).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def _put_kv(self, key: str, value: Any) -> None:
+        with self.db.writing() as conn:
+            if value is None:
+                conn.execute("DELETE FROM kv WHERE key = ?", (key,))
+            else:
+                conn.execute("INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)", (key, json.dumps(value)))
+
+    def save_extras(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Make extra a month part of the plan: {"extra_super": cents, "extra_etfs": cents, "extra_loan": cents}
+        (totals; a key left out keeps what's there). Never moves money. Returns what was there before (to undo)
+        and the on-track answer now."""
+        was = self._kv(EXTRA_KV) or {}
+        now = dict(was)
+        try:
+            for k in EXTRA_KEYS:
+                if k in body:
+                    now[k] = int(body[k] or 0)
+        except (TypeError, ValueError):
+            raise ValueError("Those amounts aren't numbers we can use.") from None
+        if any(v < 0 or v > 2_000_000 for v in now.values()):
+            raise ValueError("Extra a month should be between $0 and $20,000.")
+        self._put_kv(EXTRA_KV, {k: v for k, v in now.items() if v} or None)
+        return {"was": was, "track": self.on_track()}
+
+    def checkpoint(self, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        """A checkpoint check-in: today's super, outside super and loan (as they are now in the app, after any
+        balances were updated) against today's needs, and against the last check-in. With {"save": true} it's
+        recorded for next time. In cents."""
+        t = self.on_track()
+        if not t["ready"]:
+            raise ValueError(t["needs"])
+        now = t["years"][0]
+        snap = {
+            "date": dates.today().isoformat(),
+            "super": now["super"],
+            "etfs": now["etfs"],
+            "owed": now["owed"],
+            "super_need": now["super_need"],
+            "outside_need": now["outside_need"],
+            "owe_max": now["owe_max"],
+            "goal": t["goal"]["age"],
+            "pace": (t["pace"] or {}).get("retire_age"),
+        }
+        history: list[dict[str, Any]] = self._kv(CHECKS) or []
+        last = next((h for h in reversed(history) if h["date"] < snap["date"]), None)
+        if (body or {}).get("save"):
+            history = [h for h in history if h["date"] != snap["date"]] + [snap]
+            self._put_kv(CHECKS, history[-40:])
+        return {"now": snap, "last": last, "track": t}
 
     def on_track(self, body: dict[str, Any] | None = None) -> dict[str, Any]:
         """Are we on track: the goal (the age to stop, spending once stopped, plan-to age), the earliest today's
@@ -532,9 +596,9 @@ class FireService:
                 base,
                 spend=spend,
                 keep=bool(b["keep"]) if b.get("keep") is not None else base.keep,
-                extra_super=float(b.get("extra_super") or 0) / 100,
-                extra_etfs=float(b.get("extra_etfs") or 0) / 100,
-                extra_loan=float(b.get("extra_loan") or 0) / 100,
+                extra_super=_lever(b, "extra_super", base.extra_super),
+                extra_etfs=_lever(b, "extra_etfs", base.extra_etfs),
+                extra_loan=_lever(b, "extra_loan", base.extra_loan),
             )
         except (TypeError, ValueError, KeyError):
             raise ValueError("Those levers aren't numbers we can use.") from None
@@ -596,6 +660,7 @@ class FireService:
                 {**x, "amount": x["amount"] if x["key"] in ("keep", "later") else c(x["amount"])}
                 for x in need.closers(h, plan, goal)
             ],
+            "extras": {k: c(getattr(base, k)) for k in EXTRA_KEYS},
             "levers": {
                 "goal": goal,
                 "spend": c(spend),
@@ -626,10 +691,10 @@ class FireService:
         }
 
     def save_goal(self, body: dict[str, Any]) -> dict[str, Any]:
-        """Set the goal: {"age": 55, "spend": cents a year, "plan_to": 92}. The age is kept for early retirement;
+        """Set the goal: {"age": 55, "spend": cents a year, "plan_to": 92} (the age can be left out to keep it). The age is kept for early retirement;
         spending and the plan-to age are the retirement settings every estimate uses."""
         try:
-            age = int(body["age"])
+            age = int(body["age"] if body.get("age") is not None else (self.goal_saved() or {})["age"])
         except (KeyError, TypeError, ValueError):
             raise ValueError("Choose an age to stop work.") from None
         if not 40 <= age <= 75:
@@ -648,6 +713,11 @@ class FireService:
     def unsave_plan(self) -> None:
         with self.db.writing() as conn:
             conn.execute("DELETE FROM kv WHERE key = ?", (SAVED,))
+
+
+def _lever(b: dict[str, Any], key: str, saved: float) -> float:
+    """A lever tried (cents a month, a total), else what the plan already has (dollars)."""
+    return float(b[key]) / 100 if b.get(key) is not None else saved
 
 
 def _with_overrides(h: Household, b: dict[str, Any]) -> Household:

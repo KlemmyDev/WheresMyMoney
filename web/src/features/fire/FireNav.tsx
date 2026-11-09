@@ -10,7 +10,7 @@ export const FIRE_PAGES = [
   { to: "/early-retirement/bridge", label: "Outside super" },
   { to: "/early-retirement/debt", label: "Home loan" },
   { to: "/early-retirement/drawdown", label: "Who pays each year" },
-  { to: "/early-retirement/setup", label: "Set your goal" },
+  { to: "/early-retirement/setup", label: "Set the goal" },
   { to: "/early-retirement/assumptions", label: "Assumptions" },
   { to: "/early-retirement/scenarios", label: "Scenarios" },
   { to: "/early-retirement/next", label: "Where the extra goes" },

@@ -168,6 +168,8 @@ export type Track =
       parts: { loan: Part; outside: Part; super: Part };
       years: TrackYear[];
       closers: Closer[];
+      /** Extra a month already made part of the plan (Close the gap). */
+      extras: { extra_super: number; extra_etfs: number; extra_loan: number };
       levers: TrackLevers;
       loan: { repayment: number; rate: number; offset: number; gone_year: number | null } | null;
       saving: { etfs: number; spare: number; room: number };
