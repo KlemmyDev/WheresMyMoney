@@ -203,9 +203,7 @@ export function ActivityChart({
                     strokeWidth="2.5"
                     strokeLinejoin="round"
                     vectorEffect="non-scaling-stroke"
-                    pathLength={1000}
-                    className="draw"
-                    style={{ strokeDasharray: 1000, ["--len" as string]: 1000 } as CSSProperties}
+                    className="wipe"
                   />
                 </svg>
                 <span className="mono absolute -top-0.5 left-1 text-[10px] text-ink-3">{money(hi)}</span>

@@ -290,9 +290,7 @@ function CardSpark({
           strokeWidth="2"
           vectorEffect="non-scaling-stroke"
           strokeLinejoin="round"
-          pathLength={1000}
-          className="draw"
-          style={{ strokeDasharray: 1000, ["--len" as string]: 1000 } as CSSProperties}
+          className="wipe"
         />
       </svg>
       {pt != null && (
