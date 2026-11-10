@@ -7,7 +7,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { simulate } from "~/features/accounts/LoanSimulator";
+import { simulate } from "~/features/accounts/LoanSchedule";
 import { apiSend, errorMessage } from "~/features/common/api";
 import { ChoiceChip, IconButton, Sheet, Stat, useSheetTop } from "~/features/common/ds";
 import { longDate, money, monthYear } from "~/features/common/format";
