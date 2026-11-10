@@ -555,7 +555,8 @@ export function LoanSchedule({ v }: { v: LoanView }) {
             { k: at(goalYear), label: "Our aim", c: "var(--color-ink-3)" },
           ]
             .filter((m) => m.k >= 0 && m.k < n)
-            .map((m) => (
+            // A second marker's label sits a row lower, so close dates never overlap; near the right edge it hangs left.
+            .map((m, row) => (
               <span
                 key={m.label}
                 aria-hidden
@@ -563,8 +564,12 @@ export function LoanSchedule({ v }: { v: LoanView }) {
                 style={{ left: `${((m.k + 0.5) / n) * 100}%`, height: TOP, borderColor: m.c }}
               >
                 <span
-                  className="absolute top-1 left-1 rounded-md bg-tile/85 px-1 text-[11px] whitespace-nowrap"
-                  style={{ color: m.c }}
+                  className="absolute rounded-md bg-tile/85 px-1 text-[11px] whitespace-nowrap"
+                  style={{
+                    color: m.c,
+                    top: 4 + row * 20,
+                    ...((m.k + 0.5) / n > 0.75 ? { right: 4 } : { left: 4 }),
+                  }}
                 >
                   {m.label}
                 </span>
