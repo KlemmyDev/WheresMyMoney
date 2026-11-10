@@ -191,6 +191,7 @@ export function MonthBars({
   format,
   describe,
   height = 200,
+  current = true,
 }: {
   months: MonthValue[];
   rest?: number;
@@ -201,17 +202,19 @@ export function MonthBars({
   format: (cents: number) => string;
   describe?: (m: MonthValue, isNow: boolean) => ReactNode;
   height?: number;
+  /** The last bar is this month, so far (false when every bar is ahead). */
+  current?: boolean;
 }) {
   const n = months.length;
   const [picked, setPicked] = useState<number | null>(null);
   const [hovering, setHovering] = useState(false);
   if (!n) return null;
-  const at = Math.min(picked ?? n - 1, n - 1);
+  const at = Math.min(picked ?? (current ? n - 1 : 0), n - 1);
   const hi = Math.max(1, line?.value ?? 0, ...months.map((m, i) => m.value + (i === n - 1 ? rest : 0)));
   const t = ticks(hi);
   const top = t.at(-1) ?? hi;
   const m = months[at];
-  const isNow = at === n - 1;
+  const isNow = current && at === n - 1;
   const colour = ROLE[role];
   return (
     <div className="flex flex-col gap-2">

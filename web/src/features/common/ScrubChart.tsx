@@ -17,6 +17,7 @@ export function ScrubChart({
   floor,
   axis,
   axisAt,
+  note,
 }: {
   lines: Line[];
   /** What a screen reader calls it. */
@@ -32,6 +33,8 @@ export function ScrubChart({
   axis?: number[];
   /** A shorter label for the bottom (defaults to `at`). */
   axisAt?: (i: number) => string;
+  /** More to say about point i in the readout (what happened that day). */
+  note?: (i: number) => ReactNode;
 }) {
   const id = useId();
   const [pt, setPt] = useState<number | null>(null);
@@ -129,7 +132,7 @@ export function ScrubChart({
         </svg>
         {marks.map((m) => (
           <span
-            key={m.label}
+            key={`${m.i}-${m.label}`}
             aria-hidden
             className="pointer-events-none absolute top-0 bottom-0 border-l border-dashed"
             style={{ left: `${(m.i / (n - 1)) * 100}%`, borderColor: m.colour ?? "var(--color-ink-3)" }}
@@ -175,6 +178,7 @@ export function ScrubChart({
                   </span>
                 ) : null,
               )}
+              {note?.(pt)}
             </span>
           </>
         )}
