@@ -97,7 +97,7 @@ export function AccountsPage() {
         }
       />
       <AccountsHero data={data} />
-      <section aria-label="Accounts" className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,220px),1fr))] gap-3">
+      <section aria-label="Accounts" className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,320px),1fr))] gap-3">
         {all.map((a, i) => (
           <AccountCard
             key={a.id}
@@ -175,7 +175,7 @@ function AccountCard({
       aria-pressed={on}
       onClick={onPick}
       className={cn(
-        "chip-host press rise relative flex min-h-[176px] w-full cursor-pointer flex-col gap-2 overflow-hidden rounded-[22px] border p-[18px] text-left transition-[box-shadow,transform] duration-200 hover:-translate-y-0.5",
+        "chip-host press rise relative flex min-h-[248px] w-full cursor-pointer flex-col gap-3 overflow-hidden rounded-[22px] border p-5 text-left transition-[box-shadow,transform] duration-200 hover:-translate-y-0.5",
         art ? "border-transparent text-white" : "text-ink",
         loan && "border-dashed",
       )}
@@ -202,7 +202,7 @@ function AccountCard({
           size="md"
           className={art ? "!bg-white/20 !text-white" : ""}
         />
-        <b className="min-w-0 flex-1 truncate text-[15px] font-semibold">{a.name}</b>
+        <b className="min-w-0 flex-1 truncate text-[16px] font-semibold">{a.name}</b>
         <span
           className={cn(
             "rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap",
@@ -214,7 +214,7 @@ function AccountCard({
       </span>
       <CardSpark id={a.id} colour={art ? "#fff" : c} loan={loan} onRead={setRead} />
       <span className="flex w-full flex-wrap items-baseline gap-x-2">
-        <span className="mono text-[28px] leading-8 font-semibold tracking-[-0.035em]">
+        <span className="mono text-[32px] leading-9 font-semibold tracking-[-0.035em]">
           {read ? money(loan ? -read.balance : read.balance) : loan ? money(-a.balance) : money(a.balance)}
         </span>
         <span
@@ -232,7 +232,7 @@ function AccountCard({
           style={{ width: `${Math.min(Math.max(j.share, 0), 1) * 100}%`, backgroundColor: art ? "#fff" : c }}
         />
       </span>
-      <span className={cn("w-full truncate text-[12.5px]", art ? "text-white/85" : "text-ink-3")}>{j.text}</span>
+      <span className={cn("w-full text-[13px] leading-snug", art ? "text-white/85" : "text-ink-3")}>{j.text}</span>
     </button>
   );
 }
@@ -254,12 +254,12 @@ function CardSpark({
   const q = useQuery(accountActivityQuery(id));
   const [pt, setPt] = useState<number | null>(null);
   const days = (q.data?.days ?? []).slice(-31);
-  if (days.length < 2) return <span className="block h-11 w-full" aria-hidden />;
+  if (days.length < 2) return <span className="mt-auto block h-16 w-full" aria-hidden />;
   const vals = days.map((d) => d.balance);
   const lo = Math.min(...vals);
   const hi = Math.max(...vals);
   const W = 200;
-  const H = 44;
+  const H = 64;
   const x = (i: number) => (i / (days.length - 1)) * W;
   const y = (v: number) => H - 4 - ((v - lo) / (hi - lo || 1)) * (H - 10);
   const d = vals.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join("");
@@ -272,7 +272,7 @@ function CardSpark({
   const end = pt ?? days.length - 1;
   return (
     <span
-      className="relative block h-11 w-full"
+      className="relative mt-auto block h-16 w-full"
       onPointerMove={read}
       onPointerLeave={() => {
         setPt(null);
