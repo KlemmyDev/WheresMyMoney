@@ -7,14 +7,14 @@
  * exact balance adds a "Balance adjustment" for the difference: as an opening balance before the history starts, so
  * the charts stay right, or today, for a one-off that can't be found.
  */
+import { AccountsHero } from "~/features/accounts/AccountsHero";
 import { Loading } from "~/features/common/brand";
 import { Chip, I, type Glyph, type Tone } from "~/features/common/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useState, type CSSProperties } from "react";
+import { useState, type CSSProperties, type PointerEvent } from "react";
 import { apiSend, errorMessage } from "~/features/common/api";
 import { Count } from "~/features/common/charts";
-import { Card, Details, Term } from "~/features/common/ds";
 import {
   amount,
   capsDate,
@@ -30,8 +30,14 @@ import {
 import { useActions } from "~/features/common/layout";
 import { Dialog, useToast } from "~/features/common/overlay";
 import { JOB, JobArt, JobPicker, StepDots, StepFlow, useStep } from "~/features/common/steps";
-import { accountQuery, accountsQuery, archivedAccountsQuery, refresh } from "~/features/common/queries";
-import type { Account, AccountsOverview, Goal, Role } from "~/features/common/types";
+import {
+  accountActivityQuery,
+  accountQuery,
+  accountsQuery,
+  archivedAccountsQuery,
+  refresh,
+} from "~/features/common/queries";
+import type { Account, Goal, Role } from "~/features/common/types";
 import {
   Button,
   Dot,
@@ -45,7 +51,6 @@ import {
   SuccessTick,
   Switch,
   Tile,
-  TileTitle,
   cn,
 } from "~/features/common/ui";
 
@@ -91,7 +96,7 @@ export function AccountsPage() {
           </>
         }
       />
-      <Summary data={data} />
+      <AccountsHero data={data} />
       <section aria-label="Accounts" className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,220px),1fr))] gap-3">
         {all.map((a, i) => (
           <AccountCard
@@ -114,133 +119,6 @@ export function AccountsPage() {
         onAdded={open}
       />
     </>
-  );
-}
-
-/**
- * The three figures across the top: what's offsetting the loan (and how much of it that covers), how the accounts
- * moved in 30 days and who moved them, and the interest the offsets save a day.
- */
-/** The page in a sentence, with the totals behind Details. */
-function Summary({ data }: { data: AccountsOverview }) {
-  const loan = data.loan;
-  const moved = data.accounts.reduce((t, a) => t + a.change_30d, 0);
-  const perDay = loan
-    ? (Math.min(Math.max(data.offsetting, 0), Math.max(loan.balance, 0)) * (loan.rate_bp ?? 0)) / 10000 / 365
-    : 0;
-  return (
-    <Card lit className="flex flex-col gap-2">
-      <p className="m-0 text-[17px] leading-relaxed text-ink">
-        {loan ? (
-          <>
-            Our accounts hold <b>{money(data.offsetting)}</b>. Because they{" "}
-            <Term k="offset">sit against the home loan</Term>, they save about{" "}
-            <b>{money((perDay * 365) / 12)} a month</b> in interest, about {money(perDay * 365)} a year.
-          </>
-        ) : (
-          <>
-            Our accounts hold <b>{money(data.total)}</b>.
-          </>
-        )}{" "}
-        {moved >= 0
-          ? `In the last 30 days they went up by ${money(moved)}.`
-          : `In the last 30 days they went down by ${money(-moved)}.`}
-      </p>
-      <p className="m-0 text-[14px] text-ink-3">Each account below has a job. Open one to see what's moved in it.</p>
-      <Details label="See the totals">
-        <Readouts data={data} />
-      </Details>
-    </Card>
-  );
-}
-
-function Readouts({ data }: { data: AccountsOverview }) {
-  const loan = data.loan;
-  const banks = data.accounts;
-  const moved = banks.reduce((s, a) => s + a.change_30d, 0);
-  const share = banks.filter((a) => a.change_30d !== 0).sort((a, b) => b.change_30d - a.change_30d);
-  const perDay = loan
-    ? (Math.min(Math.max(data.offsetting, 0), Math.max(loan.balance, 0)) * (loan.rate_bp ?? 0)) / 10000 / 365
-    : 0;
-  return (
-    <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,300px),1fr))] gap-4">
-      <Tile
-        i={0}
-        aria-labelledby="ac-off"
-        className="lit"
-        style={{
-          background:
-            "radial-gradient(420px 260px at 0% 0%, color-mix(in srgb, var(--color-accent-fill) 18%, transparent), transparent 70%), var(--color-tile)",
-        }}
-      >
-        <div className="flex items-center gap-2 text-[13px] text-ink-2">
-          <span aria-hidden className="pulse-ring size-2 rounded-full bg-teal" />
-          <span id="ac-off">{loan ? "Against the loan" : "In your accounts"}</span>
-        </div>
-        <div className="mono text-[40px] leading-[46px] font-semibold tracking-[-0.045em] sm:text-[48px] sm:leading-[54px]">
-          <Count k="acct:off" value={loan ? data.offsetting : data.total} format={(v) => money(v)} />
-        </div>
-        <div className="text-[12.5px] text-ink-3">
-          {loan
-            ? `${pct(loan.balance ? data.offsetting / loan.balance : 0)} of the ${money(loan.balance)} ${loan.name.toLowerCase()} isn't charged interest`
-            : `${banks.length} ${banks.length === 1 ? "account" : "accounts"}`}
-        </div>
-      </Tile>
-      <Tile i={1} aria-labelledby="ac-30">
-        <TileTitle id="ac-30" right={<Pill tone={moved >= 0 ? "good" : "warn"}>{moved >= 0 ? "Up" : "Down"}</Pill>}>
-          Last 30 days
-        </TileTitle>
-        <div className="mono text-[34px] leading-10 font-semibold tracking-[-0.04em]">
-          {money(moved, { sign: true })}
-        </div>
-        <div
-          className="flex h-2 gap-0.5 overflow-hidden rounded-full"
-          role="img"
-          aria-label={share.map((a) => `${a.name} ${money(a.change_30d, { sign: true })}`).join(", ")}
-        >
-          {share.map((a, i) => (
-            <i
-              key={a.id}
-              className="grow-x block"
-              style={
-                {
-                  flex: `${Math.abs(a.change_30d)} 1 0`,
-                  backgroundColor: a.change_30d >= 0 ? colour(a.colour) : "var(--color-out)",
-                  "--i": i,
-                } as CSSProperties
-              }
-            />
-          ))}
-        </div>
-        <div className="flex flex-wrap gap-x-3.5 gap-y-1 text-[13px] text-ink-3">
-          {share.map((a) => (
-            <span key={a.id}>
-              {a.name} <span className="num text-ink-2">{money(a.change_30d, { sign: true })}</span>
-            </span>
-          ))}
-        </div>
-      </Tile>
-      {loan && (
-        <Tile i={2} aria-labelledby="ac-int">
-          <TileTitle
-            id="ac-int"
-            right={<span className="mono text-teal">{((loan.rate_bp ?? 0) / 100).toFixed(2)}%</span>}
-          >
-            Interest saved
-          </TileTitle>
-          <div className="flex items-baseline gap-2">
-            <span className="mono text-[34px] leading-10 font-semibold tracking-[-0.04em]">
-              <Count k="acct:int" value={(perDay * 365) / 12} format={(v) => money(v)} />
-            </span>
-            <span className="text-[13px] text-ink-3">a month</span>
-          </div>
-          <div className="text-[12.5px] text-ink-3">
-            About <span className="mono text-ink">{money(perDay * 365)}</span> a year, and the money is still ours to
-            use
-          </div>
-        </Tile>
-      )}
-    </div>
   );
 }
 
@@ -290,6 +168,7 @@ function AccountCard({
   const c = loan ? "var(--color-bad)" : ROLE_FILL[a.role];
   // The spending account is the one with cards, so it wears the card art.
   const art = !loan && a.role === "spending";
+  const [read, setRead] = useState<{ date: string; balance: number } | null>(null);
   return (
     <button
       type="button"
@@ -333,17 +212,18 @@ function AccountCard({
           {roleBadge(a, goals)}
         </span>
       </span>
-      <span className="mt-auto flex w-full items-baseline gap-2">
+      <CardSpark id={a.id} colour={art ? "#fff" : c} loan={loan} onRead={setRead} />
+      <span className="flex w-full flex-wrap items-baseline gap-x-2">
         <span className="mono text-[28px] leading-8 font-semibold tracking-[-0.035em]">
-          {loan ? money(-a.balance) : money(a.balance)}
+          {read ? money(loan ? -read.balance : read.balance) : loan ? money(-a.balance) : money(a.balance)}
         </span>
         <span
           className={cn(
             "mono ml-auto text-xs whitespace-nowrap",
-            art ? "text-white/85" : better ? "text-good" : "text-ink-3",
+            art ? "text-white/85" : read ? "text-ink-2" : better ? "text-good" : "text-ink-3",
           )}
         >
-          {money(a.change_30d, { sign: true })} in 30 days
+          {read ? dayDate(read.date) : `${money(a.change_30d, { sign: true })} in 30 days`}
         </span>
       </span>
       <span className={cn("block h-1.5 w-full overflow-hidden rounded-full", art ? "bg-white/25" : "bg-raised")}>
@@ -354,6 +234,85 @@ function AccountCard({
       </span>
       <span className={cn("w-full truncate text-[12.5px]", art ? "text-white/85" : "text-ink-3")}>{j.text}</span>
     </button>
+  );
+}
+
+/**
+ * An account's last 30 days as a small line on its card; hovering reads a day off it (shown in place of the balance).
+ */
+function CardSpark({
+  id,
+  colour: c,
+  loan,
+  onRead,
+}: {
+  id: number;
+  colour: string;
+  loan: boolean;
+  onRead: (r: { date: string; balance: number } | null) => void;
+}) {
+  const q = useQuery(accountActivityQuery(id));
+  const [pt, setPt] = useState<number | null>(null);
+  const days = (q.data?.days ?? []).slice(-31);
+  if (days.length < 2) return <span className="block h-11 w-full" aria-hidden />;
+  const vals = days.map((d) => d.balance);
+  const lo = Math.min(...vals);
+  const hi = Math.max(...vals);
+  const W = 200;
+  const H = 44;
+  const x = (i: number) => (i / (days.length - 1)) * W;
+  const y = (v: number) => H - 4 - ((v - lo) / (hi - lo || 1)) * (H - 10);
+  const d = vals.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join("");
+  const read = (e: PointerEvent<HTMLSpanElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const i = Math.min(days.length - 1, Math.max(0, Math.round(((e.clientX - r.left) / r.width) * (days.length - 1))));
+    setPt(i);
+    onRead(days[i]);
+  };
+  const end = pt ?? days.length - 1;
+  return (
+    <span
+      className="relative block h-11 w-full"
+      onPointerMove={read}
+      onPointerLeave={() => {
+        setPt(null);
+        onRead(null);
+      }}
+      role="img"
+      aria-label={`${loan ? "Owed" : "Balance"} over the last 30 days: from ${money(vals[0])} to ${money(vals[vals.length - 1])}`}
+    >
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="absolute inset-0 h-full w-full" aria-hidden>
+        <path d={`${d}L${W} ${H}L0 ${H}Z`} fill={`color-mix(in srgb, ${c} 16%, transparent)`} className="fill-after" />
+        <path
+          d={d}
+          fill="none"
+          stroke={c}
+          strokeWidth="2"
+          vectorEffect="non-scaling-stroke"
+          strokeLinejoin="round"
+          pathLength={1000}
+          className="draw"
+          style={{ strokeDasharray: 1000, ["--len" as string]: 1000 } as CSSProperties}
+        />
+      </svg>
+      {pt != null && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute top-0 bottom-0 w-px"
+          style={{ left: `${(pt / (days.length - 1)) * 100}%`, background: c, opacity: 0.5 }}
+        />
+      )}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute size-2 -translate-x-1/2 -translate-y-1/2 rounded-full"
+        style={{
+          left: `${(end / (days.length - 1)) * 100}%`,
+          top: `${(y(vals[end]) / H) * 100}%`,
+          background: c,
+          boxShadow: `0 0 0 3px color-mix(in srgb, ${c} 30%, transparent)`,
+        }}
+      />
+    </span>
   );
 }
 
