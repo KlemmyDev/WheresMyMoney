@@ -5,7 +5,7 @@
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { simulate } from "~/features/accounts/LoanSimulator";
+import { simulate } from "~/features/accounts/LoanSchedule";
 import { apiSend, errorMessage } from "~/features/common/api";
 import { ChoiceChip, Stat } from "~/features/common/ds";
 import { EditPanel } from "~/features/common/entity";
