@@ -1,17 +1,20 @@
 /**
- * Bills (design: CkBills): the bills account against its target, what an average month and the next 30 days hold,
- * what's due before pay and this month's calendar, the months ahead as a heat strip, and every bill with how often,
- * when next, where it stands and how it's paid.
+ * Bills, as pictures: what's set aside and how far ahead it reaches, what a usual month is made of, the next 30 days
+ * (the bills account day by day, the due dates, Mark paid), the year ahead month by month, the big bills to put money
+ * aside for, and every bill as a card with when it's next due.
  */
 import { Loading } from "~/features/common/brand";
-import { Bar, BigNumber, Card, ChoiceChip, Details, EmptyState, Eyebrow, Stat, Term } from "~/features/common/ds";
-import { BeforePay, BillCalendar, STATUS } from "~/features/bills/BillsParts";
+import { ChoiceChip, EmptyState } from "~/features/common/ds";
+import { EVERY_WORD, STATUS } from "~/features/bills/BillsParts";
+import { BillsAhead } from "~/features/bills/BillsAhead";
+import { BillsHero, monthName } from "~/features/bills/BillsHero";
+import { MonthBars } from "~/features/common/entity";
+import { MerchantMark } from "~/features/spending/MerchantIcon";
 import { I } from "~/features/common/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { useState, type CSSProperties } from "react";
-import { apiGet, apiSend, errorMessage } from "~/features/common/api";
-import { AreaLine, Count } from "~/features/common/charts";
+import { apiSend, errorMessage } from "~/features/common/api";
 import {
   EVERY_LABEL,
   editable,
@@ -30,25 +33,15 @@ import { YearlyCosts } from "~/features/bills/YearlyCosts";
 import { CategoryPicker } from "~/features/common/CategoryPicker";
 import { Button, ErrorText, Input, Label, PageHead, Pill, Select, Tile, TileTitle, cn } from "~/features/common/ui";
 
-const HOW = { auto: ["AUTO", "info"], manual: ["BY HAND", "warn"] } as const;
-
 export function BillsPage() {
   const q = useQuery(billsQuery);
-  const navigate = useNavigate();
   const [editing, setEditing] = useState<Bill | "new" | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const b = q.data;
-  const acct = b?.account;
-  const history = useQuery({
-    queryKey: ["accounts", acct?.id, "history"],
-    queryFn: () => apiGet<{ history: [string, number][] }>(`accounts/${acct!.id}`),
-    enabled: !!acct,
-  });
   if (q.isError) return <ErrorText>{errorMessage(q.error)}</ErrorText>;
   if (!b) return <Loading />;
+  const acct = b.account;
   const t = acct?.target?.kind === "months" ? acct.target : null;
-  const held = t?.held ?? 0;
-  const maxMonth = Math.max(1, ...b.by_month.map((m) => m.total));
   const count = (k: Filter) => b.bills.filter(FILTERS[k].test).length;
   const shown = b.bills.filter(FILTERS[filter].test);
   return (
@@ -62,228 +55,75 @@ export function BillsPage() {
           </Button>
         }
       />
-      <Card lit tint="bills" aria-labelledby="bl-hero">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <Eyebrow id="bl-hero">{acct ? acct.name : "Bills"}</Eyebrow>
-            <BigNumber className="mt-1">
-              <Count k="bills:bal" value={acct?.balance ?? 0} format={(v) => money(v)} />
-            </BigNumber>
-          </div>
-          {t && (
-            <Pill tone={held >= t.months ? "good" : "warn"}>
-              {held >= t.months ? "Enough set aside" : "Running low"}
-            </Pill>
-          )}
-        </div>
-        {t && (
-          <p className="m-0 text-[16px] text-ink-2">
-            That's enough for {held.toFixed(1)} months of bills. We keep {t.months} months, so{" "}
-            {(acct?.balance ?? 0) >= t.amount ? (
-              <>
-                {money((acct?.balance ?? 0) - t.amount)} more than that could go to <Term k="offset">the offset</Term>.
-              </>
-            ) : (
-              <>it needs {money(t.amount - (acct?.balance ?? 0))} more.</>
-            )}{" "}
-            {`${money(b.next30.total)} of bills are due in the next 30 days.`}
-          </p>
-        )}
-        {t && (
-          <div>
-            <Bar
-              label={`Enough for ${held.toFixed(1)} months of bills; we keep ${t.months}`}
-              max={Math.max(t.months + 1, held)}
-              marker={t.months}
-              height={14}
-              segments={[{ value: held, role: "bills" }]}
-            />
-            <div className="mt-2 flex justify-between text-[12px] text-ink-3">
-              <span>0</span>
-              <span className="text-ink">we keep {t.months} months</span>
-              <span>{Math.max(t.months + 1, Math.ceil(held))} months</span>
-            </div>
-          </div>
-        )}
-        <Details label="See the numbers">
-          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-            <Stat
-              label="Bills in a usual month"
-              value={money(b.per_month)}
-              note={`${money(b.per_year)} a year · ${b.bills.length} bills`}
-              role="bills"
-            />
-            <Stat
-              label="Next 30 days"
-              value={money(b.next30.total)}
-              note={`${b.next30.count} bills${b.next30.by_hand ? ` · ${b.next30.by_hand} by hand` : ""}`}
-              role="bills"
-            />
-            {t && (
-              <Stat
-                label={(acct?.balance ?? 0) >= t.amount ? "Extra" : "Still needed"}
-                value={money(Math.abs((acct?.balance ?? 0) - t.amount))}
-                note={`${t.months} months is ${money(t.amount)}`}
-                role={(acct?.balance ?? 0) >= t.amount ? "savings" : "bills"}
-              />
-            )}
-          </div>
-        </Details>
-      </Card>
-      <div className="grid gap-4 md:grid-cols-12 [&>*]:min-w-0">
-        <BeforePay b={b} className="md:col-span-5" />
-        <BillCalendar b={b} className={b.before_pay && b.account ? "md:col-span-7" : "md:col-span-12"} />
-      </div>
-      <YearlyCosts b={b} />
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,520px),1fr))] gap-4">
-        {acct && t && (
-          <Tile i={4} aria-labelledby="bl-bal">
+      <BillsHero b={b} onAdd={() => setEditing("new")} />
+      {b.bills.length > 0 && (
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1.1fr_1fr] [&>*]:min-w-0">
+          <BillsAhead b={b} />
+          <Tile i={3} aria-labelledby="bl-year12">
             <TileTitle
-              id="bl-bal"
+              id="bl-year12"
               right={
-                <span className="flex gap-3.5 text-[13px] font-medium">
-                  <span className="inline-flex items-center gap-1.5">
-                    <i className="h-0.5 w-3.5 bg-bills" />
-                    Balance
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <i className="w-3.5 border-t-2 border-dashed border-ink-2" />
-                    {t.months} months ({money(t.amount)})
-                  </span>
-                </span>
+                <span className="num text-[13px] text-ink-3">{money(b.by_month.reduce((s, m) => s + m.total, 0))}</span>
               }
             >
-              The bills account over time
+              The year ahead
             </TileTitle>
-            <AreaLine
-              values={(history.data?.history ?? []).map(([, v]) => v)}
-              colour="var(--color-bills)"
-              target={t.amount}
-              height={200}
-              min={0}
-              label="The bills account's balance over six months, against its target"
+            <MonthBars
+              months={b.by_month.map((m) => ({ key: m.month, label: monthCaps(m.month), value: m.total }))}
+              line={{ value: b.per_month, label: "Usual month" }}
+              role="bills"
+              name="Bills"
+              current={false}
+              format={(v) => money(v)}
+              height={240}
+              describe={(m) => {
+                const mo = b.by_month.find((x) => x.month === m.key);
+                return (
+                  <>
+                    <b className="text-ink">{monthName(m.key)}</b>: {money(m.value)} across {mo?.count ?? 0}{" "}
+                    {mo?.count === 1 ? "bill" : "bills"}
+                    {m.value > b.per_month * 1.15
+                      ? `, ${money(m.value - b.per_month)} more than usual`
+                      : m.value < b.per_month * 0.85
+                        ? ", a lighter month"
+                        : ""}
+                  </>
+                );
+              }}
             />
+            <div className="text-xs text-ink-3">
+              Dashed: a usual month ({money(b.per_month)}). Tall bars are the big ones landing.
+            </div>
           </Tile>
-        )}
-        <Tile i={5} aria-labelledby="bl-heat">
-          <TileTitle
-            id="bl-heat"
-            right={<span className="mono">{money(b.by_month.reduce((s, m) => s + m.total, 0))}</span>}
-          >
-            Bills by month · next 12
-          </TileTitle>
-          <div
-            className="mono grid grid-cols-6 gap-1 sm:grid-cols-12"
-            role="img"
-            aria-label={`Monthly bills from ${money(Math.min(...b.by_month.map((m) => m.total)))} to ${money(maxMonth)}`}
-          >
-            {b.by_month.map((m, i) => {
-              const r = m.total / maxMonth;
-              const strong = r > 0.85;
-              return (
-                <div
-                  key={m.month}
-                  className="rise flex min-h-[72px] flex-col justify-between rounded-xl px-1.5 py-2.5 text-center"
-                  style={
-                    {
-                      "--i": i,
-                      background: strong
-                        ? "var(--color-bills-fill)"
-                        : `color-mix(in srgb, var(--color-bills-fill) ${Math.round((0.12 + r * 0.3) * 100)}%, transparent)`,
-                      color: strong ? "var(--color-page)" : undefined,
-                    } as CSSProperties
-                  }
-                >
-                  <span className={cn("text-xs", strong ? "font-semibold" : "text-ink-2")}>
-                    {monthCaps(m.month).slice(0, 1)}
-                  </span>
-                  <span className={cn("text-xs", strong && "font-semibold")}>{(m.total / 100000).toFixed(1)}k</span>
-                </div>
-              );
-            })}
-          </div>
-          <div className="text-xs text-ink-3">The bills account is there to cover the heaviest months.</div>
-        </Tile>
-      </div>
+        </div>
+      )}
+      <YearlyCosts b={b} />
       <SpottedBills i={6} />
-      <Tile i={8} aria-labelledby="bl-all">
-        <TileTitle id="bl-all" right={<span className="mono">{b.bills.length} BILLS</span>}>
-          All bills{acct ? ` · paid from ${acct.name}` : ""}
-        </TileTitle>
-        {b.bills.length > 0 && (
-          <div role="group" aria-label="Show" className="no-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1">
-            {(Object.keys(FILTERS) as Filter[])
-              .filter((k) => k === "all" || k === filter || count(k) > 0)
-              .map((k) => (
-                <ChoiceChip key={k} pressed={filter === k} onClick={() => setFilter(k)}>
-                  {FILTERS[k].label} · {count(k)}
-                </ChoiceChip>
-              ))}
-          </div>
-        )}
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] border-collapse text-[13px]">
-            <thead>
-              <tr className="text-left text-xs text-ink-3">
-                {["Bill", "Every", "Next", "Status", "Amount", "Per year", "How"].map((h, i) => (
-                  <th
-                    key={h}
-                    className={cn(
-                      "border-b border-line px-2.5 py-2 font-semibold whitespace-nowrap",
-                      (i === 4 || i === 5) && "text-right",
-                    )}
-                  >
-                    {h}
-                  </th>
+      <section aria-labelledby="bl-all" className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 id="bl-all" className="m-0 text-[17px] font-semibold">
+            Every bill{acct ? <span className="font-normal text-ink-3"> · most paid from {acct.name}</span> : null}
+          </h2>
+          {b.bills.length > 0 && (
+            <div role="group" aria-label="Show" className="no-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1">
+              {(Object.keys(FILTERS) as Filter[])
+                .filter((k) => k === "all" || k === filter || count(k) > 0)
+                .map((k) => (
+                  <ChoiceChip key={k} pressed={filter === k} onClick={() => setFilter(k)}>
+                    {FILTERS[k].label} · {count(k)}
+                  </ChoiceChip>
                 ))}
-              </tr>
-            </thead>
-            <tbody>
-              {shown.map((bill) => (
-                <tr
-                  key={bill.id}
-                  className="cursor-pointer hover:bg-raised/40"
-                  onClick={() => navigate({ to: "/bills/$billId", params: { billId: String(bill.id) } })}
-                >
-                  <td className="border-b border-line px-2.5 py-2.5 font-medium">
-                    <Link
-                      to="/bills/$billId"
-                      params={{ billId: String(bill.id) }}
-                      className="text-ink no-underline"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {bill.name}
-                    </Link>
-                  </td>
-                  <td className="border-b border-line px-2.5 py-2.5 text-ink-2">{EVERY_LABEL[bill.every]}</td>
-                  <td className="mono border-b border-line px-2.5 py-2.5 text-ink-2">{shortDate(bill.next_due)}</td>
-                  <td className="border-b border-line px-2.5 py-2.5">
-                    {bill.status && (
-                      <Pill tone={STATUS[bill.status][1]}>
-                        {STATUS[bill.status][0]}
-                        {(bill.status === "late" || bill.status === "paused") && bill.status_date
-                          ? ` · ${bill.status === "paused" ? "until " : ""}${shortDate(bill.status_date)}`
-                          : ""}
-                      </Pill>
-                    )}
-                  </td>
-                  <td className="mono border-b border-line px-2.5 py-2.5 text-right">
-                    {money(bill.amount, { cents: true })}
-                  </td>
-                  <td className="mono border-b border-line px-2.5 py-2.5 text-right">
-                    {money(bill.per_year, { cents: true })}
-                  </td>
-                  <td className="border-b border-line px-2.5 py-2.5">
-                    <span className="flex gap-1">
-                      <Pill tone={HOW[bill.how][1]}>{HOW[bill.how][0]}</Pill>
-                      {bill.varies && <Pill tone="good">VARIES</Pill>}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {!b.bills.length && (
+            </div>
+          )}
+        </div>
+        {b.bills.length ? (
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,300px),1fr))] gap-3">
+            {shown.map((bill, i) => (
+              <BillCard key={bill.id} bill={bill} i={i} />
+            ))}
+          </div>
+        ) : (
+          <Tile i={8}>
             <EmptyState
               g={I.bills}
               tone="bills"
@@ -296,11 +136,104 @@ export function BillsPage() {
             >
               Add the ones that come out regularly, once each: the amount and how often.
             </EmptyState>
-          )}
-        </div>
-      </Tile>
+          </Tile>
+        )}
+      </section>
       <BillDialog bill={editing} onClose={() => setEditing(null)} />
     </>
+  );
+}
+
+/** Days from today to an ISO date (negative when it's passed). */
+function daysTo(iso: string): number {
+  return Math.round((parseDate(iso).getTime() - parseDate(todayIso()).getTime()) / 86400000);
+}
+
+/** "today", "tomorrow", "in 12 days", "in 3 months", "4 days ago". */
+function whenWords(days: number): string {
+  if (days === 0) return "today";
+  if (days === 1) return "tomorrow";
+  if (days < 0) return `${-days} ${days === -1 ? "day" : "days"} ago`;
+  if (days < 45) return `in ${days} days`;
+  return `in ${Math.round(days / 30.4)} months`;
+}
+
+/** Roughly how many days apart a bill comes. */
+const GAP: Record<Every, number> = {
+  weekly: 7,
+  fortnightly: 14,
+  monthly: 30.4,
+  quarterly: 91,
+  term: 91,
+  "half-yearly": 182,
+  yearly: 365,
+};
+
+/**
+ * A bill as a card: its mark, name, amount and how often, when it's next due, and a bar of how close that is (full on
+ * the day). Where it stands sits in the corner. The card opens the bill.
+ */
+function BillCard({ bill, i }: { bill: Bill; i: number }) {
+  const days = daysTo(bill.status === "late" && bill.status_date ? bill.status_date : bill.next_due);
+  const gap = GAP[bill.every];
+  const near = Math.min(1, Math.max(0, 1 - days / gap));
+  const st = bill.status && bill.status !== "later" ? STATUS[bill.status] : null;
+  return (
+    <Link
+      to="/bills/$billId"
+      params={{ billId: String(bill.id) }}
+      className="rise press flex flex-col gap-3 rounded-2xl border border-line bg-tile p-4 text-ink no-underline hover:border-line-2"
+      style={{ "--i": Math.min(i, 12) } as CSSProperties}
+    >
+      <span className="flex items-start gap-3">
+        <MerchantMark name={bill.name} size="lg" />
+        <span className="min-w-0 flex-1">
+          <span className="block text-[15px] font-semibold break-words">{bill.name}</span>
+          <span className="block text-[12.5px] text-ink-3">
+            {EVERY_WORD[bill.every]} · {bill.how === "auto" ? "comes out by itself" : "paid by hand"}
+          </span>
+        </span>
+        {st && (
+          <Pill tone={st[1]}>
+            {st[0]}
+            {bill.status === "paused" && bill.status_date ? ` · until ${shortDate(bill.status_date)}` : ""}
+          </Pill>
+        )}
+      </span>
+      <span className="flex items-baseline justify-between gap-3">
+        <span className="mono text-[24px] leading-7 font-semibold tracking-[-0.03em]">
+          {bill.varies && <span className="mr-1 font-sans text-[13px] font-normal text-ink-3">about</span>}
+          {money(bill.amount, { cents: bill.amount % 100 !== 0 })}
+        </span>
+        <span className="num text-[12.5px] text-ink-3">{money(bill.per_year)} a year</span>
+      </span>
+      {bill.status !== "paused" && (
+        <span className="flex flex-col gap-1.5">
+          <span
+            className="relative block h-1.5 overflow-hidden rounded-full bg-raised"
+            role="img"
+            aria-label={`Next due ${shortDate(bill.next_due)}, ${whenWords(days)}`}
+          >
+            <i
+              className="grow-x absolute inset-y-0 left-0 block rounded-full"
+              style={{
+                width: `${Math.max(near * 100, 3)}%`,
+                background: bill.status === "late" ? "var(--color-bad)" : "var(--color-bills-fill)",
+              }}
+            />
+          </span>
+          <span className="flex justify-between text-[12.5px]">
+            <span className="text-ink-2">
+              {bill.status === "late" ? "Was due" : "Next"}{" "}
+              {shortDate(bill.status === "late" && bill.status_date ? bill.status_date : bill.next_due)}
+            </span>
+            <span className={cn(days <= 7 ? "text-ink" : "text-ink-3", bill.status === "late" && "text-bad")}>
+              {whenWords(days)}
+            </span>
+          </span>
+        </span>
+      )}
+    </Link>
   );
 }
 

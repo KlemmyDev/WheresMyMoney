@@ -20,6 +20,43 @@ function inWords(days: number): string {
   return `in ${months} months`;
 }
 
+/** Two amounts side by side on one scale, with what it means. */
+function Versus({
+  label,
+  rows,
+  verdict,
+}: {
+  label: string;
+  rows: { name: string; value: number; colour: string }[];
+  verdict: { good: boolean; text: string };
+}) {
+  const hi = Math.max(1, ...rows.map((r) => r.value));
+  return (
+    <div
+      role="img"
+      aria-label={`${label}: ${rows.map((r) => `${r.name} ${money(r.value)}`).join(", ")}; ${verdict.text}`}
+      className="flex flex-col gap-1"
+    >
+      <div className="flex justify-between text-[12px]">
+        <span className="text-ink-3">{label}</span>
+        <span className={verdict.good ? "text-good" : "text-warn"}>{verdict.text}</span>
+      </div>
+      {rows.map((r) => (
+        <div key={r.name} className="grid grid-cols-[minmax(0,128px)_1fr_72px] items-center gap-2 text-[12.5px]">
+          <span className="truncate text-ink-2">{r.name}</span>
+          <span className="h-2 overflow-hidden rounded-full bg-raised">
+            <i
+              className="grow-x block h-full rounded-full"
+              style={{ width: `${(r.value / hi) * 100}%`, background: r.colour }}
+            />
+          </span>
+          <span className="num text-right text-ink">{money(r.value)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** How many show before "Show all". */
 const FIRST = 5;
 
@@ -47,28 +84,45 @@ export function YearlyCosts({ b }: { b: BillsOverview }) {
       />
       {s.items.length ? (
         <>
-          <p className="m-0 text-[16px] leading-relaxed text-ink">
-            {s.items.length === 1 ? "One bill comes" : `${s.items.length} bills come`} only a few times a year,{" "}
-            {money(s.per_year)} a year in all. Putting <b>{money(s.per_month)} a month</b> aside covers{" "}
-            {s.items.length === 1 ? "it" : "them"} when {s.items.length === 1 ? "it lands" : "they land"}. By now,{" "}
-            <b>{money(s.built)}</b> should already be put aside for {s.items.length === 1 ? "it" : "them"}.
-          </p>
-          {acct && (
-            <p className="m-0 text-[15px] text-ink-2">
-              {into != null && into > 0 ? (
-                <>
-                  Every bill from {acct.name} comes to {money(fromAcct)} in a usual month, and the rules move{" "}
-                  {money(into)} a month into it,{" "}
-                  {into >= fromAcct
-                    ? "so the year is covered."
-                    : `${money(fromAcct - into)} a month short, so the big ones will catch it out.`}{" "}
-                </>
-              ) : null}
-              {acct.balance >= s.built
-                ? `${acct.name} holds ${money(acct.balance)}, more than what should be built up.`
-                : `${acct.name} holds ${money(acct.balance)}, ${money(s.built - acct.balance)} less than what should be built up.`}
-            </p>
-          )}
+          <div className="grid gap-3 sm:grid-cols-[auto_1fr] sm:items-center sm:gap-6">
+            <div>
+              <div className="text-[12px] text-ink-3">Put aside each month</div>
+              <div className="mono text-[34px] leading-10 font-semibold tracking-[-0.04em]">{money(s.per_month)}</div>
+              <div className="text-[12.5px] text-ink-3">
+                for {s.items.length} {s.items.length === 1 ? "bill" : "bills"} · {money(s.per_year)} a year
+              </div>
+            </div>
+            {acct && (
+              <div className="flex flex-col gap-2.5">
+                {into != null && into > 0 && (
+                  <Versus
+                    label={`${acct.name} each month`}
+                    rows={[
+                      { name: "Comes in", value: into, colour: "var(--color-teal)" },
+                      { name: "Bills take", value: fromAcct, colour: "var(--color-bills-fill)" },
+                    ]}
+                    verdict={
+                      into >= fromAcct
+                        ? { good: true, text: "keeps up" }
+                        : { good: false, text: `${money(fromAcct - into)} a month short` }
+                    }
+                  />
+                )}
+                <Versus
+                  label="Built up for them"
+                  rows={[
+                    { name: `In ${acct.name}`, value: Math.max(acct.balance, 0), colour: "var(--color-teal)" },
+                    { name: "Should be by now", value: s.built, colour: "var(--color-bills-fill)" },
+                  ]}
+                  verdict={
+                    acct.balance >= s.built
+                      ? { good: true, text: "ahead" }
+                      : { good: false, text: `${money(s.built - acct.balance)} behind` }
+                  }
+                />
+              </div>
+            )}
+          </div>
           <ul className="m-0 flex list-none flex-col p-0">
             {shown.map((x) => {
               const share = x.amount ? Math.min(x.built / x.amount, 1) : 0;
