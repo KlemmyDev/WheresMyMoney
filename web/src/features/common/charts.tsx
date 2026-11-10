@@ -194,16 +194,7 @@ export function AreaLine({
           className="fill-after"
         />
       )}
-      <path
-        d={d}
-        fill="none"
-        stroke={colour}
-        strokeWidth="2"
-        vectorEffect="non-scaling-stroke"
-        pathLength={1000}
-        className="draw"
-        style={{ strokeDasharray: 1000, ["--len" as string]: 1000 } as CSSProperties}
-      />
+      <path d={d} fill="none" stroke={colour} strokeWidth="2" vectorEffect="non-scaling-stroke" className="wipe" />
     </svg>
   );
 }

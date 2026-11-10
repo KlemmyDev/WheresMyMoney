@@ -342,6 +342,16 @@ body {
     stroke-dashoffset: 0;
   }
 }
+/* A stretched line (non-scaling stroke in a preserveAspectRatio="none" chart) can't draw with a dash: the dash is
+   measured on screen, so pathLength stops matching and the line ends partway. These wipe in under a clip instead. */
+@keyframes wipe {
+  from {
+    clip-path: inset(-8px 100% -8px -8px);
+  }
+  to {
+    clip-path: inset(-8px -8px -8px -8px);
+  }
+}
 @keyframes reveal {
   from {
     opacity: 0;
@@ -427,6 +437,9 @@ body {
 .draw {
   animation: draw var(--duration-chart) var(--ease-enter) both;
 }
+.wipe {
+  animation: wipe var(--duration-chart) var(--ease-enter) both;
+}
 .fill-after {
   animation: fade var(--duration-content) var(--ease-enter) both;
   animation-delay: var(--duration-chart);
@@ -486,6 +499,7 @@ body {
   .grow,
   .grow-down,
   .draw,
+  .wipe,
   .fill-after,
   .pop,
   .flash,
